@@ -27,14 +27,6 @@ st.session_state['usuario_global'] = usuario_logado
 
 
 
-# Configuração da página
-st.set_page_config(
-    page_title="Navegador Clínico - SMS-RJ",
-    page_icon="🏥",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
 # Título
 st.title("🏥 Navegador Clínico - Multimorbidade")
 st.markdown("### SMS-RJ | Superintendência de Atenção Primária")
