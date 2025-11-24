@@ -1,0 +1,40 @@
+# Ambiente virtual
+venv/
+env/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Credenciais - NUNCA SUBIR!
+*.json
+credentials/
+secrets/
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+
+# Arquivos temporários
+*.log
+*.tmp
+*.csv
+*.xlsx
+
+# Streamlit
+.streamlit/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Testes
+test_*.py
+ver_*.py
+setup_*.py
+renomear_*.py
