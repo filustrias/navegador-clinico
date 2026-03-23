@@ -10,29 +10,122 @@ from components.filtros import filtros_territoriais
 from utils.bigquery_client import get_bigquery_client
 import config
 import math
-from utils.anonimizador import (
-    anonimizar_paciente, 
-    mostrar_badge_anonimo, 
-    anonimizar_ap,
-    anonimizar_clinica,
-    anonimizar_esf,
-    MODO_ANONIMO
-)
+
+# ═══════════════════════════════════════════════════════════════
+# ANONIMIZAÇÃO DESATIVADA
+# ═══════════════════════════════════════════════════════════════
+# from utils.anonimizador import (
+#     anonimizar_paciente, 
+#     mostrar_badge_anonimo, 
+#     anonimizar_ap,
+#     anonimizar_clinica,
+#     anonimizar_esf,
+#     MODO_ANONIMO
+# )
+
+# Funções stub para substituir anonimização (retornam valor original)
+def anonimizar_paciente(x): return x
+def anonimizar_ap(x): return str(x) if x else x
+def anonimizar_clinica(x): return str(x) if x else x
+def anonimizar_esf(x): return str(x) if x else x
+def mostrar_badge_anonimo(): pass
+MODO_ANONIMO = False
 
 from utils.auth import exibir_usuario_logado
 
+
 # ═══════════════════════════════════════════════════════════════
-# VERIFICAR LOGIN (feito na Home)
+# VERIFICAR LOGIN
 # ═══════════════════════════════════════════════════════════════
-if 'usuario_logado' not in st.session_state or not st.session_state.usuario_logado:
+if 'usuario_global' not in st.session_state or not st.session_state.usuario_global:
     st.warning("⚠️ Por favor, faça login na página inicial")
     st.stop()
 
-usuario_logado = st.session_state.usuario_logado
-exibir_usuario_logado()
+usuario_logado = st.session_state['usuario_global']
 
+# Extrair dados do usuário
+if isinstance(usuario_logado, dict):
+    nome = usuario_logado.get('nome_completo', 'Usuário')
+    esf = usuario_logado.get('esf') or 'N/A'
+    clinica = usuario_logado.get('clinica') or 'N/A'
+    ap = usuario_logado.get('area_programatica') or 'N/A'
+else:
+    nome = str(usuario_logado)
+    esf = clinica = ap = 'N/A'
 
-st.cache_data.clear()
+# ═══════════════════════════════════════════════════════════════
+# 🎨 CABEÇALHO CONSISTENTE
+# ═══════════════════════════════════════════════════════════════
+from streamlit_option_menu import option_menu
+
+# Esconder o menu lateral nativo do Streamlit
+st.markdown("""
+<style>
+    [data-testid="stSidebarNav"] {display: none;}
+</style>
+""", unsafe_allow_html=True)
+
+col1, col2 = st.columns([3, 1])
+
+with col1:
+    st.markdown("""
+    <h1 style='margin: 0; padding: 0; color: #FAFAFA;'>
+        🏥 Navegador Clínico <small style='color: #999; font-size: 0.5em;'>SMS-RJ</small>
+    </h1>
+    """, unsafe_allow_html=True)
+
+with col2:
+    info_lines = [f"<strong>{nome}</strong>"]
+    if esf != 'N/A':
+        info_lines.append(f"ESF: {esf}")
+    if clinica != 'N/A':
+        info_lines.append(f"Clínica: {clinica}")
+    if ap != 'N/A':
+        info_lines.append(f"AP: {ap}")
+    
+    st.markdown(f"""
+    <div style='text-align: right; padding-top: 10px; color: #FAFAFA; font-size: 0.9em;'>
+        <span style='font-size: 1.3em;'>👤</span> {"<br>".join(info_lines)}
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+# Menu horizontal de navegação COM FUNCIONALIDADE
+selected = option_menu(
+    menu_title=None,
+    options=["Home", "Minha População", "Meus Pacientes", "Lacunas de Cuidado", "Acesso e Continuidade"],
+    icons=['house-fill', 'people-fill', 'person-lines-fill', 'exclamation-triangle-fill', 'arrow-repeat'],
+    menu_icon="cast",
+    default_index=1,
+    orientation="horizontal",
+    styles={
+        "container": {"padding": "0!important", "background-color": "#0E1117"},
+        "icon": {"color": "#FAFAFA", "font-size": "18px"}, 
+        "nav-link": {
+            "font-size": "16px",
+            "text-align": "center",
+            "margin": "0px",
+            "padding": "10px 20px",
+            "color": "#FAFAFA",
+            "background-color": "#262730",
+            "--hover-color": "#404040"
+        },
+        "nav-link-selected": {"background-color": "#404040", "color": "#FAFAFA", "font-weight": "bold"},
+    }
+)
+
+# Navegação
+if selected == "Home":
+    st.switch_page("Home.py")
+elif selected == "Meus Pacientes":
+    st.switch_page("pages/Meus_Pacientes.py")
+elif selected == "Lacunas de Cuidado":
+    st.switch_page("pages/Lacunas_de_Cuidado.py")
+elif selected == "Acesso e Continuidade":
+    st.switch_page("pages/Acesso_Continuidade.py")
+st.markdown("---")
+
 
 # ✅ DICIONÁRIO COMPLETO DE MORBIDADES COM ÍCONES
 MORBIDADES_COMPLETO = {
@@ -1356,7 +1449,7 @@ territorio = filtros_territoriais(
 
 import time
 
-st.write("### ⏱️ Medindo Performance...")
+## st.write("### ⏱️ Medindo Performance...")
 
 # 1. Teste: Carregar métricas agregadas (deveria ser instantâneo)
 inicio_metricas = time.time()

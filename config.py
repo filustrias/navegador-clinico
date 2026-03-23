@@ -13,7 +13,7 @@ DATASET_ID = "sub_pav_us"
 # ============================================
 # TABELAS PRINCIPAIS
 # ============================================
-TABELA_FATO = "MM_exames_e_risco_A1C"
+TABELA_FATO = "MM_2026_novos_cadastros"
 
 # ============================================
 # TABELAS DIMENSÕES

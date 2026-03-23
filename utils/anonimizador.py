@@ -13,7 +13,7 @@ import os
 # ═══════════════════════════════════════════════════════════════
 # ✅ TOGGLE PRINCIPAL - CONTROLADO POR VARIÁVEL DE AMBIENTE
 # ═══════════════════════════════════════════════════════════════
-MODO_ANONIMO = os.getenv('MODO_ANONIMO', 'True').lower() == 'true'
+MODO_ANONIMO = os.getenv('MODO_ANONIMO', 'False').lower() == 'true'
 
 # ═══════════════════════════════════════════════════════════════
 # 🌍 ÁREAS PROGRAMÁTICAS → CONTINENTES
