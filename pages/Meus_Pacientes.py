@@ -99,40 +99,38 @@ with col2:
 
 st.markdown("---")
 
-# Menu horizontal
+PAGINA_ATUAL = "Meus Pacientes"
+ROTAS = {
+    "Home":                  "Home.py",
+    "Minha População":       "pages/Minha_Populacao.py",
+    "Meus Pacientes":        "pages/Meus_Pacientes.py",
+    "Lacunas de Cuidado":    "pages/Lacunas_de_Cuidado.py",
+    "Acesso e Continuidade": "pages/Acesso_Continuidade.py",
+    "Polifarmácia":          "pages/Polifarmacia_ACB.py",
+}
+ICONES = ['house-fill', 'people-fill', 'person-lines-fill',
+          'exclamation-triangle-fill', 'arrow-repeat', 'capsule']
+
 selected = option_menu(
     menu_title=None,
-    options=["Home", "Minha População", "Meus Pacientes", "Lacunas de Cuidado", "Acesso e Continuidade"],
-    icons=['house-fill', 'people-fill', 'person-lines-fill', 'exclamation-triangle-fill', 'arrow-repeat'],
-    menu_icon="cast",
-    default_index=2,  # Meus Pacientes está selecionado
+    options=list(ROTAS.keys()),
+    icons=ICONES,
+    default_index=list(ROTAS.keys()).index(PAGINA_ATUAL),
     orientation="horizontal",
     styles={
         "container": {"padding": "0!important", "background-color": "#0E1117"},
-        "icon": {"color": "#FAFAFA", "font-size": "18px"}, 
+        "icon": {"color": "#FAFAFA", "font-size": "18px"},
         "nav-link": {
-            "font-size": "16px",
-            "text-align": "center",
-            "margin": "0px",
-            "padding": "10px 20px",
-            "color": "#FAFAFA",
-            "background-color": "#262730",
-            "--hover-color": "#404040"
+            "font-size": "16px", "text-align": "center", "margin": "0px",
+            "padding": "10px 20px", "color": "#FAFAFA",
+            "background-color": "#262730", "--hover-color": "#404040"
         },
         "nav-link-selected": {"background-color": "#404040", "color": "#FAFAFA", "font-weight": "bold"},
     }
 )
 
-# ⭐ NAVEGAÇÃO - TODAS AS OPÇÕES TRATADAS - INCLUINDO LACUNAS!
-if selected == "Home":
-    st.switch_page("Home.py")
-elif selected == "Minha População":
-    st.switch_page("pages/Minha_Populacao.py")
-elif selected == "Lacunas de Cuidado":
-    st.switch_page("pages/Lacunas_de_Cuidado.py")
-elif selected == "Acesso e Continuidade":
-    st.switch_page("pages/Acesso_Continuidade.py")
-# Se selected == "Meus Pacientes", não faz nada (já está na página)
+if selected != PAGINA_ATUAL:
+    st.switch_page(ROTAS[selected])
 
 st.markdown("---")
 

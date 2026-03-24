@@ -63,12 +63,23 @@ with col2:
 
 st.markdown("---")
 
+PAGINA_ATUAL = "Acesso e Continuidade"
+ROTAS = {
+    "Home":                  "Home.py",
+    "Minha População":       "pages/Minha_Populacao.py",
+    "Meus Pacientes":        "pages/Meus_Pacientes.py",
+    "Lacunas de Cuidado":    "pages/Lacunas_de_Cuidado.py",
+    "Acesso e Continuidade": "pages/Acesso_Continuidade.py",
+    "Polifarmácia":          "pages/Polifarmacia_ACB.py",
+}
+ICONES = ['house-fill', 'people-fill', 'person-lines-fill',
+          'exclamation-triangle-fill', 'arrow-repeat', 'capsule']
+
 selected = option_menu(
     menu_title=None,
-    options=["Home", "Minha População", "Meus Pacientes", "Lacunas de Cuidado", "Acesso e Continuidade"],
-    icons=['house-fill', 'people-fill', 'person-lines-fill', 'exclamation-triangle-fill', 'arrow-repeat'],
-    menu_icon="cast",
-    default_index=4,
+    options=list(ROTAS.keys()),
+    icons=ICONES,
+    default_index=list(ROTAS.keys()).index(PAGINA_ATUAL),
     orientation="horizontal",
     styles={
         "container": {"padding": "0!important", "background-color": "#0E1117"},
@@ -81,10 +92,9 @@ selected = option_menu(
         "nav-link-selected": {"background-color": "#404040", "color": "#FAFAFA", "font-weight": "bold"},
     }
 )
-if selected == "Home":                 st.switch_page("Home.py")
-elif selected == "Minha População":    st.switch_page("pages/Minha_Populacao.py")
-elif selected == "Meus Pacientes":     st.switch_page("pages/Meus_Pacientes.py")
-elif selected == "Lacunas de Cuidado": st.switch_page("pages/Lacunas_de_Cuidado.py")
+
+if selected != PAGINA_ATUAL:
+    st.switch_page(ROTAS[selected])
 
 st.markdown("---")
 
