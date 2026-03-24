@@ -1,31 +1,24 @@
+"""
+Página: Painel do Gestor
+Visão macro para gestores com KPIs e distribuição por AP
+"""
 import streamlit as st
-from utils.bigquery_client import test_connection
-from utils.data_loader import limpar_cache
-from utils.auth import requer_login
+import pandas as pd
+import plotly.express as px
+from utils.bigquery_client import get_bigquery_client
+import config
 from streamlit_option_menu import option_menu
 
 # ═══════════════════════════════════════════════════════════════
-# CONFIGURAÇÃO DA PÁGINA
+# VERIFICAR LOGIN
 # ═══════════════════════════════════════════════════════════════
-st.set_page_config(
-    page_title="Navegador Clínico",
-    page_icon="🏥",
-    layout="wide"
-)
+if 'usuario_global' not in st.session_state or not st.session_state.usuario_global:
+    st.warning("⚠️ Por favor, faça login na página inicial")
+    st.stop()
 
-# ═══════════════════════════════════════════════════════════════
-# ✅ LOGIN GLOBAL - EXIGIR EM TODA A APLICAÇÃO
-# ═══════════════════════════════════════════════════════════════
-usuario_logado = requer_login()
+usuario_logado = st.session_state['usuario_global']
 
-# ═══════════════════════════════════════════════════════════════
-# SALVAR USUÁRIO NO SESSION STATE PARA OUTRAS PÁGINAS
-# ═══════════════════════════════════════════════════════════════
-st.session_state['usuario_global'] = usuario_logado
-
-# ═══════════════════════════════════════════════════════════════
-# EXTRAIR DADOS DO USUÁRIO (é um dicionário)
-# ═══════════════════════════════════════════════════════════════
+# Extrair dados do usuário
 if isinstance(usuario_logado, dict):
     nome = usuario_logado.get('nome_completo', 'Usuário')
     esf = usuario_logado.get('esf') or 'N/A'
@@ -36,8 +29,14 @@ else:
     esf = clinica = ap = 'N/A'
 
 # ═══════════════════════════════════════════════════════════════
-# 🎨 CABEÇALHO COM INFO DO USUÁRIO E NAVEGAÇÃO
+# 🎨 CONFIGURAÇÃO DA PÁGINA E CABEÇALHO
 # ═══════════════════════════════════════════════════════════════
+st.set_page_config(
+    page_title="Painel do Gestor - Navegador Clínico",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # Esconder o menu lateral nativo do Streamlit
 st.markdown("""
@@ -46,7 +45,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Header com título e usuário
 col1, col2 = st.columns([3, 1])
 
 with col1:
@@ -73,13 +71,13 @@ with col2:
 
 st.markdown("---")
 
-# Menu horizontal de navegação COM FUNCIONALIDADE
+# Menu horizontal de navegação
 selected = option_menu(
     menu_title=None,
     options=["Home", "Painel do Gestor", "Minha População", "Meus Pacientes", "Lacunas de Cuidado", "Acesso e Continuidade"],
     icons=['house-fill', 'bar-chart-fill', 'people-fill', 'person-lines-fill', 'exclamation-triangle-fill', 'arrow-repeat'],
     menu_icon="cast",
-    default_index=0,
+    default_index=1,
     orientation="horizontal",
     styles={
         "container": {"padding": "0!important", "background-color": "#0E1117"},
@@ -97,9 +95,9 @@ selected = option_menu(
     }
 )
 
-# ⭐ NAVEGAÇÃO REAL - Redirecionar para outras páginas
-if selected == "Painel do Gestor":
-    st.switch_page("pages/Painel_do_Gestor.py")
+# Navegação
+if selected == "Home":
+    st.switch_page("home.py")
 elif selected == "Minha População":
     st.switch_page("pages/Minha_Populacao.py")
 elif selected == "Meus Pacientes":
@@ -108,57 +106,96 @@ elif selected == "Lacunas de Cuidado":
     st.switch_page("pages/Lacunas_de_Cuidado.py")
 elif selected == "Acesso e Continuidade":
     st.switch_page("pages/Acesso_Continuidade.py")
+
 st.markdown("---")
 
 # ═══════════════════════════════════════════════════════════════
-# CONTEÚDO DA HOME
+# 📊 CONTEÚDO: PAINEL DO GESTOR
 # ═══════════════════════════════════════════════════════════════
 
-# Testar conexão com BigQuery
-with st.spinner("🔍 Testando conexão com BigQuery..."):
-    conexao_ok = test_connection()
+st.title("📈 Painel do Gestor")
+st.markdown("## 1. Visão Geral (Dashboard Macro)")
 
-if conexao_ok:
-    st.success("✅ Conexão com BigQuery estabelecida com sucesso!")
+@st.cache_data(ttl=600, show_spinner="Carregando dados...")
+def carregar_kpis():
+    client = get_bigquery_client()
+    query = f"""
+    SELECT 
+        COUNT(*) as total_pacientes,
+        COUNTIF(total_morbidades >= 2) as multimorbidade,
+        COUNTIF(charlson_categoria = 'Muito Alto') as muito_alto_risco,
+        COUNTIF(polifarmacia = TRUE) as polifarmacia,
+        COUNTIF(consultas_365d = 0) as sem_acompanhamento
+    FROM `{config.PROJECT_ID}.{config.DATASET_ID}.{config.TABELA_FATO}`
+    """
+    return client.query(query).result().to_dataframe()
+
+@st.cache_data(ttl=600, show_spinner="Gerando gráficos...")
+def carregar_distribuicao_ap():
+    client = get_bigquery_client()
+    query = f"""
+    SELECT 
+        area_programatica_cadastro as ap,
+        charlson_categoria as categoria,
+        COUNT(*) as total
+    FROM `{config.PROJECT_ID}.{config.DATASET_ID}.{config.TABELA_FATO}`
+    GROUP BY 1, 2
+    ORDER BY 1, 2
+    """
+    return client.query(query).result().to_dataframe()
+
+# --- 1.1 KPIs de Linha de Frente ---
+st.subheader("📊 1.1 KPIs de Linha de Frente")
+df_kpis = carregar_kpis()
+
+if not df_kpis.empty:
+    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+    
+    with kpi1:
+        st.metric("Total de Pacientes", f"{df_kpis['total_pacientes'][0]:,}".replace(",", "."))
+    with kpi2:
+        st.metric("Multimorbidade", f"{df_kpis['multimorbidade'][0]:,}".replace(",", "."))
+    with kpi3:
+        st.metric("Muito Alto Risco", f"{df_kpis['muito_alto_risco'][0]:,}".replace(",", "."))
+    with kpi4:
+        st.metric("Polifarmácia", f"{df_kpis['polifarmacia'][0]:,}".replace(",", "."))
+    with kpi5:
+        st.metric("Sem Acompanhamento", f"{df_kpis['sem_acompanhamento'][0]:,}".replace(",", "."))
 else:
-    st.error("❌ Não foi possível conectar ao BigQuery. Verifique suas credenciais.")
-    st.stop()
+    st.warning("⚠️ Não foi possível carregar os KPIs.")
 
 st.markdown("---")
 
-# Título e apresentação
-st.title("🏥 Navegador Clínico - Multimorbidade")
-st.markdown("### SMS-RJ | Superintendência de Atenção Primária")
+# --- 1.2 Distribuição de Gravidade por AP ---
+st.subheader("📊 1.2 Distribuição de Gravidade por AP")
+df_ap = carregar_distribuicao_ap()
 
-# Conteúdo
-st.markdown("""
-## Bem-vindo ao Navegador Clínico
+if not df_ap.empty:
+    # Criar gráfico de barras empilhadas 100%
+    fig = px.bar(
+        df_ap, 
+        x="ap", 
+        y="total", 
+        color="categoria",
+        title="Distribuição de Categorias de Charlson por AP",
+        labels={"ap": "Área Programática", "total": "Pacientes", "categoria": "Categoria Charlson"},
+        barmode="stack",
+        color_discrete_sequence=px.colors.qualitative.Safe,
+        template="plotly_dark"
+    )
+    
+    fig.update_layout(
+        barmode="stack",
+        barnorm="percent",
+        yaxis_ticksuffix="%",
+        legend_title_text='Gravidade (Charlson)',
+        hovermode="x unified"
+    )
 
-Esta plataforma foi desenvolvida para apoiar a gestão e o cuidado de pacientes 
-com multimorbidade na Atenção Primária à Saúde do município do Rio de Janeiro.
-
-### 📊 Funcionalidades disponíveis:
-
-- **Painel do Gestor**: Visão macro estratégica para gestão e planejamento
-- **Minha População**: Visualize características demográficas e clínicas
-- **Meus Pacientes**: Acesse informações individuais detalhadas
-- **Lacunas de Cuidado**: Monitore indicadores de qualidade terapêutica
-- **Análise de Morbidades**: Foco em condições específicas *(em desenvolvimento)*
-- **Polifarmácia**: Identifique critérios STOPP-START *(em desenvolvimento)*
-- **Benchmarks**: Compare resultados entre territórios *(em desenvolvimento)*
-- **Base de Conhecimento**: Acesse conteúdo educativo *(em desenvolvimento)*
-
----
-
-**Use os botões no topo para navegar entre as páginas** 👆
-""")
-
-# Ferramentas na sidebar
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🔧 Ferramentas")
-if st.sidebar.button("🔄 Limpar Cache"):
-    limpar_cache()
-    st.sidebar.success("✅ Cache limpo!")
+    
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.warning("⚠️ Não foi possível carregar os dados de distribuição por AP.")
 
 # Rodapé
 st.markdown("---")

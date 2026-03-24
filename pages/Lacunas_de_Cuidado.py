@@ -91,10 +91,10 @@ st.markdown("---")
 # Menu horizontal
 selected = option_menu(
     menu_title=None,
-    options=["Home", "Minha População", "Meus Pacientes", "Lacunas de Cuidado", "Acesso e Continuidade"],
-    icons=['house-fill', 'people-fill', 'person-lines-fill', 'exclamation-triangle-fill', 'arrow-repeat'],
+    options=["Home", "Painel do Gestor", "Minha População", "Meus Pacientes", "Lacunas de Cuidado", "Acesso e Continuidade"],
+    icons=['house-fill', 'bar-chart-fill', 'people-fill', 'person-lines-fill', 'exclamation-triangle-fill', 'arrow-repeat'],
     menu_icon="cast",
-    default_index=3,
+    default_index=4,
     orientation="horizontal",
     styles={
         "container": {"padding": "0!important", "background-color": "#0E1117"},
@@ -114,7 +114,9 @@ selected = option_menu(
 
 # Navegação
 if selected == "Home":
-    st.switch_page("Home.py")
+    st.switch_page("home.py")
+elif selected == "Painel do Gestor":
+    st.switch_page("pages/Painel_do_Gestor.py")
 elif selected == "Minha População":
     st.switch_page("pages/Minha_Populacao.py")
 elif selected == "Meus Pacientes":
