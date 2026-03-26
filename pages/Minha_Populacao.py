@@ -91,18 +91,19 @@ with col2:
 
 st.markdown("---")
 
-PAGINA_ATUAL = "Minha População"
+PAGINA_ATUAL = "População"   # ← ÚNICA linha que muda em cada página
 ROTAS = {
-    "Home":                  "Home.py",
-    "Minha População":       "pages/Minha_Populacao.py",
-    "Meus Pacientes":        "pages/Meus_Pacientes.py",
-    "Lacunas de Cuidado":    "pages/Lacunas_de_Cuidado.py",
-    "Acesso e Continuidade": "pages/Acesso_Continuidade.py",
-    "Polifarmácia":          "pages/Polifarmacia_ACB.py",
+    "Home":           "Home.py",
+    "População":      "pages/Minha_Populacao.py",
+    "Pacientes":      "pages/Meus_Pacientes.py",
+    "Lacunas":        "pages/Lacunas_de_Cuidado.py",
+    "Continuidade":   "pages/Acesso_Continuidade.py",
+    "Polifarmácia":   "pages/Polifarmacia_ACB.py",
 }
-ICONES = ['house-fill', 'people-fill', 'person-lines-fill',
-          'exclamation-triangle-fill', 'arrow-repeat', 'capsule']
-
+ICONES = [
+    "house-fill", "people-fill", "person-lines-fill",
+    "exclamation-triangle-fill", "arrow-repeat", "capsule"
+]
 selected = option_menu(
     menu_title=None,
     options=list(ROTAS.keys()),
@@ -110,17 +111,37 @@ selected = option_menu(
     default_index=list(ROTAS.keys()).index(PAGINA_ATUAL),
     orientation="horizontal",
     styles={
-        "container": {"padding": "0!important", "background-color": "#0E1117"},
-        "icon": {"color": "#FAFAFA", "font-size": "18px"},
-        "nav-link": {
-            "font-size": "16px", "text-align": "center", "margin": "0px",
-            "padding": "10px 20px", "color": "#FAFAFA",
-            "background-color": "#262730", "--hover-color": "#404040"
+        "container": {
+            "padding": "0!important",
+            "background-color": "#0E1117",
         },
-        "nav-link-selected": {"background-color": "#404040", "color": "#FAFAFA", "font-weight": "bold"},
+        "icon": {
+            "font-size": "22px",
+            "color": "#FAFAFA",
+            "display": "block",
+            "margin-bottom": "4px",
+        },
+        "nav-link": {
+            "font-size": "11px",
+            "text-align": "center",
+            "margin": "0px",
+            "padding": "10px 18px",
+            "color": "#AAAAAA",
+            "background-color": "#262730",
+            "--hover-color": "#353540",
+            "display": "flex",
+            "flex-direction": "column",
+            "align-items": "center",
+            "line-height": "1.2",
+            "white-space": "nowrap",
+        },
+        "nav-link-selected": {
+            "background-color": "#404040",
+            "color": "#FFFFFF",
+            "font-weight": "600",
+        },
     }
 )
-
 if selected != PAGINA_ATUAL:
     st.switch_page(ROTAS[selected])
 

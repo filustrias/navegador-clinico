@@ -99,18 +99,19 @@ with col2:
 
 st.markdown("---")
 
-PAGINA_ATUAL = "Meus Pacientes"
+PAGINA_ATUAL = "Pacientes"   # ← ÚNICA linha que muda em cada página
 ROTAS = {
-    "Home":                  "Home.py",
-    "Minha População":       "pages/Minha_Populacao.py",
-    "Meus Pacientes":        "pages/Meus_Pacientes.py",
-    "Lacunas de Cuidado":    "pages/Lacunas_de_Cuidado.py",
-    "Acesso e Continuidade": "pages/Acesso_Continuidade.py",
-    "Polifarmácia":          "pages/Polifarmacia_ACB.py",
+    "Home":           "Home.py",
+    "População":      "pages/Minha_Populacao.py",
+    "Pacientes":      "pages/Meus_Pacientes.py",
+    "Lacunas":        "pages/Lacunas_de_Cuidado.py",
+    "Continuidade":   "pages/Acesso_Continuidade.py",
+    "Polifarmácia":   "pages/Polifarmacia_ACB.py",
 }
-ICONES = ['house-fill', 'people-fill', 'person-lines-fill',
-          'exclamation-triangle-fill', 'arrow-repeat', 'capsule']
-
+ICONES = [
+    "house-fill", "people-fill", "person-lines-fill",
+    "exclamation-triangle-fill", "arrow-repeat", "capsule"
+]
 selected = option_menu(
     menu_title=None,
     options=list(ROTAS.keys()),
@@ -118,17 +119,37 @@ selected = option_menu(
     default_index=list(ROTAS.keys()).index(PAGINA_ATUAL),
     orientation="horizontal",
     styles={
-        "container": {"padding": "0!important", "background-color": "#0E1117"},
-        "icon": {"color": "#FAFAFA", "font-size": "18px"},
-        "nav-link": {
-            "font-size": "16px", "text-align": "center", "margin": "0px",
-            "padding": "10px 20px", "color": "#FAFAFA",
-            "background-color": "#262730", "--hover-color": "#404040"
+        "container": {
+            "padding": "0!important",
+            "background-color": "#0E1117",
         },
-        "nav-link-selected": {"background-color": "#404040", "color": "#FAFAFA", "font-weight": "bold"},
+        "icon": {
+            "font-size": "22px",
+            "color": "#FAFAFA",
+            "display": "block",
+            "margin-bottom": "4px",
+        },
+        "nav-link": {
+            "font-size": "11px",
+            "text-align": "center",
+            "margin": "0px",
+            "padding": "10px 18px",
+            "color": "#AAAAAA",
+            "background-color": "#262730",
+            "--hover-color": "#353540",
+            "display": "flex",
+            "flex-direction": "column",
+            "align-items": "center",
+            "line-height": "1.2",
+            "white-space": "nowrap",
+        },
+        "nav-link-selected": {
+            "background-color": "#404040",
+            "color": "#FFFFFF",
+            "font-weight": "600",
+        },
     }
 )
-
 if selected != PAGINA_ATUAL:
     st.switch_page(ROTAS[selected])
 
@@ -654,6 +675,9 @@ def load_patient_data_paginated(
       dias_desde_ultima_prescricao_cronica,
       polifarmacia,
       hiperpolifarmacia,
+      acb_score_total,
+      categoria_acb,
+      COALESCE(alerta_acb_idoso, FALSE) AS alerta_acb_idoso,
       ultimas_tres_PA,
       ultimas_tres_glicemias,
       ultimas_tres_A1C,
@@ -705,6 +729,77 @@ def get_statistics_summary(area=None, clinica=None, esf=None, idade_min=None, id
             'hiperpolifarmacia': int(df['hiperpolifarmacia'].iloc[0]) if pd.notna(df['hiperpolifarmacia'].iloc[0]) else 0
         }
     return {'total': 0, 'multimorbidos': 0, 'polifarmacia': 0, 'hiperpolifarmacia': 0}
+
+
+@st.cache_data(show_spinner=False, ttl=900)
+def buscar_stopp_paciente(cpf: str) -> dict:
+    """Busca flags STOPP/START/Beers individuais de um paciente na MM_stopp_start."""
+    sql = f"""
+    SELECT
+        -- Resumos
+        COALESCE(total_criterios_stopp, 0) AS total_stopp,
+        COALESCE(total_criterios_start,  0) AS total_start,
+        COALESCE(total_criterios_beers,  0) AS total_beers,
+        alerta_prescricao_idoso_ativo,
+        alerta_queda_medicamentos,
+        alerta_warfarina_fa,
+        alerta_egfr_ausente_gabapentinoide,
+        alerta_egfr_ausente_metformina,
+        alerta_cascata_biperideno,
+        -- STOPP individuais (365d)
+        stopp_cv_001_365d, stopp_cv_002_365d, stopp_cv_003_365d,
+        stopp_cv_004_365d, stopp_cv_005_365d, stopp_cv_006_365d,
+        stopp_cv_007_365d, stopp_cv_008_365d, stopp_cv_009_365d,
+        stopp_cv_010,
+        stopp_snc_001_365d, stopp_snc_002_365d, stopp_snc_003_365d,
+        stopp_snc_004_365d, stopp_snc_005_365d, stopp_snc_006_365d,
+        stopp_snc_007_365d, stopp_snc_008_365d, stopp_snc_009_365d,
+        stopp_snc_010_365d, stopp_snc_011_365d,
+        stopp_end_001_365d, stopp_end_002_365d, stopp_end_003_365d,
+        stopp_end_004_365d,
+        stopp_mus_001_365d, stopp_mus_002_365d, stopp_mus_003_365d,
+        stopp_mus_004_365d, stopp_mus_005_365d, stopp_mus_006_365d,
+        stopp_acb_001_365d, stopp_acb_002_365d, stopp_acb_003_365d,
+        stopp_acb_004_365d,
+        stopp_ren_001_365d, stopp_ren_002_365d, stopp_ren_003_365d,
+        -- START individuais (365d)
+        start_cv_001_365d, start_cv_002_365d, start_cv_003_365d,
+        start_cv_004_365d, start_cv_005_365d, start_cv_006_365d,
+        start_snc_001_365d, start_snc_002_365d, start_snc_003_365d,
+        start_resp_001_365d,
+        -- Beers (365d)
+        beers_001_365d, beers_002_365d, beers_003_365d,
+        beers_004_365d, beers_005_365d, beers_006_365d, beers_007_365d
+    FROM `rj-sms-sandbox.sub_pav_us.MM_stopp_start`
+    WHERE cpf = '{cpf}'
+    LIMIT 1
+    """
+    df = bq_query(sql)
+    if df.empty:
+        return {}
+    return df.iloc[0].to_dict()
+
+
+@st.cache_data(show_spinner=False, ttl=900)
+def buscar_acb_paciente(cpf: str) -> dict:
+    """Busca dados ACB detalhados do paciente em MM_mantidos_alterados_ultimas."""
+    sql = f"""
+    SELECT
+        acb_score_total,
+        acb_score_cronicos,
+        n_meds_acb_positivo,
+        n_meds_acb_alto,
+        medicamentos_acb_positivos,
+        categoria_acb,
+        medicamentos_completos
+    FROM `rj-sms-sandbox.sub_pav_us.MM_mantidos_alterados_ultimas`
+    WHERE cpf = '{cpf}'
+    LIMIT 1
+    """
+    df = bq_query(sql)
+    if df.empty:
+        return {}
+    return df.iloc[0].to_dict()
 
 @st.cache_data(show_spinner=False, ttl=900)
 def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR"):
@@ -888,7 +983,16 @@ def create_patient_card(patient_data):
     else:
         lacunas_texto = f"{n_lacunas} lacunas"
     
-    titulo_card = f"👤 **{nome}** - {idade} anos | 🏥 {morbidades_texto} | 💊 {medicamentos_texto} | ⚠️ {lacunas_texto}"
+    # Processar ACB para o cabeçalho
+    acb_val = patient_data.get("acb_score_total")
+    if acb_val is None or (isinstance(acb_val, float) and pd.isna(acb_val)):
+        acb_texto = ""
+    else:
+        acb_int = int(float(acb_val))
+        acb_icone = "🔴" if acb_int >= 3 else "🟠" if acb_int >= 1 else "🟢"
+        acb_texto = f" | {acb_icone} ACB {acb_int}"
+
+    titulo_card = f"👤 **{nome}** - {idade} anos | 🏥 {morbidades_texto} | 💊 {medicamentos_texto}{acb_texto} | ⚠️ {lacunas_texto}"
     
     with st.expander(titulo_card, expanded=False):
         
@@ -994,9 +1098,9 @@ def create_patient_card(patient_data):
             "📊 Carga de Morbidade e Risco CV",
             "🔄 Continuidade do Cuidado",
             "⚠️ Lacunas de Cuidado",
-            "🚫 STOPP-START",
+            "💊 Polifarmácia e STOPP-START",
             "📈 Inércia Terapêutica",
-            "📝 Relatar Problemas"  # ← NOVA TAB
+            "📝 Relatar Problemas"
         ])
 
         
@@ -1148,17 +1252,215 @@ def create_patient_card(patient_data):
                             for lacuna in lacunas_por_grupo[grupo]:
                                 st.write(f"• {lacuna}")
         
-        # ========== TAB 4: STOPP-START (PLACEHOLDER) ==========
+        # ========== TAB 4: POLIFARMÁCIA E STOPP-START ==========
         with tab4:
-            st.info("🚧 **Módulo em desenvolvimento**")
-            st.markdown("""
-            Esta aba apresentará:
-            - Critérios STOPP identificados (medicamentos potencialmente inapropriados)
-            - Critérios START identificados (omissões de tratamento)
-            - Priorização por risco clínico
-            - Sugestões de ajuste terapêutico
-            """)
-        
+            cpf_pac  = str(patient_data.get("cpf", ""))
+            idade_pac = int(patient_data.get("idade", 0) or 0)
+
+            with st.spinner("Carregando dados farmacológicos..."):
+                dados_acb = buscar_acb_paciente(cpf_pac)
+                dados_ss  = buscar_stopp_paciente(cpf_pac) if idade_pac >= 60 else {}
+
+            # ── 5 colunas ──────────────────────────────────────────
+            c_rx, c_stopp, c_start, c_beers, c_acb = st.columns([2, 2, 2, 2, 1.5])
+
+            # ════════════════════════════════════════════
+            # COL 1 — PRESCRIÇÕES
+            # ════════════════════════════════════════════
+            with c_rx:
+                st.markdown("##### 💊 Prescrições crônicas")
+                meds_raw     = dados_acb.get("medicamentos_completos") or patient_data.get("medicamentos_cronicos", "")
+                acb_positivos = str(dados_acb.get("medicamentos_acb_positivos") or "")
+                acb_dict = {}
+                if acb_positivos:
+                    for item in acb_positivos.split("|"):
+                        partes = item.strip().split(":")
+                        if len(partes) == 2:
+                            acb_dict[partes[0].strip().upper()] = partes[1].strip()
+
+                if meds_raw and str(meds_raw).strip():
+                    meds_lista = [m.strip() for m in str(meds_raw).replace(";", "\n").split("\n") if m.strip()]
+                    for med in meds_lista:
+                        acb_val = next((v for k, v in acb_dict.items() if k in med.upper()), None)
+                        if acb_val:
+                            score = int(acb_val) if str(acb_val).isdigit() else 0
+                            badge = f" `ACB {acb_val}` {'⚠️' if score >= 3 else '🔸'}"
+                            st.markdown(f"• {med}{badge}")
+                        else:
+                            st.markdown(f"• {med}")
+                else:
+                    st.info("Sem prescrições.")
+
+            # ════════════════════════════════════════════
+            # MAPA DE CRITÉRIOS
+            # ════════════════════════════════════════════
+            STOPP_INFO = {
+                "stopp_cv_001_365d":  ("Anti-hipert. central",       "Clonidina/Metildopa",    "HAS",            "Hipotensão ortostática e bradicardia. Alternativas disponíveis."),
+                "stopp_cv_002_365d":  ("Alfa-bloqueador p/ HAS",     "Doxazosina/Prazosina",   "HAS",            "Risco de síncope e hipotensão ortostática."),
+                "stopp_cv_003_365d":  ("Nifedipina imediata",        "Nifedipina cp comum",    "HAS / CI",       "Hipotensão reflexa. Usar liberação lenta."),
+                "stopp_cv_004_365d":  ("Amiodarona 1ª linha FA",     "Amiodarona",             "FA sem ICC",     "Maior toxicidade que BB/digoxina/BCC."),
+                "stopp_cv_005_365d":  ("BCC não-DHP + ICC",          "Verapamil/Diltiazem",    "ICC sistólica",  "Efeito inotrópico negativo — descompensa ICC."),
+                "stopp_cv_006_365d":  ("Diurético alça p/ HAS",      "Furosemida",             "HAS sem ICC",    "Alternativas mais seguras disponíveis."),
+                "stopp_cv_007_365d":  ("Dronedarona + ICC",          "Dronedarona",            "ICC",            "Aumenta mortalidade em ICC."),
+                "stopp_cv_008_365d":  ("Digoxina + IRC grave",       "Digoxina",               "eGFR < 30",      "Toxicidade digitálica por acúmulo renal."),
+                "stopp_cv_009_365d":  ("Dabigatrana + IRC grave",    "Dabigatrana",            "eGFR < 30",      "Risco de sangramento grave."),
+                "stopp_cv_010":       ("Rivaroxabana + IRC grave",   "Rivaroxabana",           "eGFR < 15",      "Contraindicado — acúmulo."),
+                "stopp_snc_001_365d": ("Benzodiazepínico",           "BZD (qualquer)",         "Idoso ≥65",      "Quedas, sedação, confusão, dependência."),
+                "stopp_snc_002_365d": ("Hipnótico Z",                "Zolpidem/Zopiclona",     "Idoso ≥65",      "Mesmo risco de BZD para quedas."),
+                "stopp_snc_003_365d": ("Tricíclico (TCA)",           "Amitriptilina...",       "Idoso ≥65",      "Cardiotóxico, anticolinérgico, risco de queda."),
+                "stopp_snc_004_365d": ("TCA + demência",             "TCA (qualquer)",         "Demência",       "Piora cognitiva e risco de delirium."),
+                "stopp_snc_005_365d": ("Paroxetina",                 "Paroxetina",             "Idoso ≥65",      "ISRS mais anticolinérgico. Usar alternativa."),
+                "stopp_snc_006_365d": ("Antipsicótico típico",       "Haloperidol...",         "Idoso ≥65",      "Síndrome extrapiramidal, hipotensão, queda."),
+                "stopp_snc_007_365d": ("Antipsicótico + Parkinson",  "Antipsicótico",          "Parkinson/Dem.", "Piora extrapiramidal. Risco de AVC."),
+                "stopp_snc_008_365d": ("Metoclopramida + Parkinson", "Metoclopramida",         "Parkinson",      "Antagonista dopaminérgico — piora sintomas."),
+                "stopp_snc_009_365d": ("Cascata biperideno",         "Biperideno",             "Em uso antipsic.","Cascata: antipsicótico → EPE → biperideno."),
+                "stopp_snc_010_365d": ("Levodopa sem Parkinson",     "Levodopa/agonista",      "Sem Parkinson",  "Sem indicação estabelecida."),
+                "stopp_snc_011_365d": ("Opioide forte sem indic.",   "Morfina/Oxicodona",      "Dor leve-mod.",  "1ª linha inadequada — não segue escada WHO."),
+                "stopp_end_001_365d": ("Sulfonilureia longa ação",   "Glibenclamida",          "DM + idoso",     "Hipoglicemia prolongada — meia-vida longa."),
+                "stopp_end_002_365d": ("Pioglitazona + ICC",         "Pioglitazona",           "ICC + DM",       "Retenção hídrica — exacerba ICC."),
+                "stopp_end_003_365d": ("Metformina + IRC grave",     "Metformina",             "eGFR < 30",      "Risco de acidose lática."),
+                "stopp_end_004_365d": ("Insulina escala móvel",      "Insulina regular",       "DM + idoso",     "Sem basal — risco de hipoglicemia."),
+                "stopp_mus_001_365d": ("AINE + IRC",                 "AINEs",                  "eGFR < 50",      "Piora função renal."),
+                "stopp_mus_002_365d": ("AINE + ICC",                 "AINEs",                  "ICC",            "Retenção hídrica — piora ICC."),
+                "stopp_mus_003_365d": ("AINE + HAS descontr.",       "AINEs",                  "PAS ≥ 160",      "Antagoniza anti-hipertensivo."),
+                "stopp_mus_004_365d": ("AINE + anticoagulante",      "AINEs",                  "Em anticoag.",   "Risco de sangramento GI."),
+                "stopp_mus_005_365d": ("Corticoide crônico + AR",    "Prednisona",             "Artrite reum.",  "DMARDs são preferíveis."),
+                "stopp_mus_006_365d": ("Relaxante muscular",         "Ciclobenzaprina",        "Idoso ≥65",      "Sedação e queda."),
+                "stopp_acb_001_365d": ("Carga ACB ≥ 4",             "≥2 anticolinérgicos",    "ACB total ≥ 4",  "Carga cumulativa — confusão, delirium, quedas."),
+                "stopp_acb_002_365d": ("Anti-histam. 1ª ger.",       "Prometazina/Hidroxizina","Idoso ≥65",      "Alta atividade anticolinérgica central."),
+                "stopp_acb_003_365d": ("Anticolinérg. bexiga",       "Oxibutinina/Tolterodina","Idoso ≥65",      "Retenção urinária e piora cognitiva."),
+                "stopp_acb_004_365d": ("Antiespasmódico GI",         "Hioscina/Buscopan",      "Idoso ≥65",      "Anticolinérgico — sedação e confusão."),
+                "stopp_ren_001_365d": ("Gabapentinoide s/ ajuste",   "Gabapentina/Pregabalina","eGFR < 60",      "Dose precisa ajuste. Acúmulo → queda."),
+                "stopp_ren_002_365d": ("Espironolactona + IRC",      "Espironolactona",        "eGFR < 30",      "Hipercalemia grave."),
+                "stopp_ren_003_365d": ("Tramadol + IRC",             "Tramadol",               "eGFR < 30",      "Convulsão e sedação por acúmulo."),
+            }
+
+            START_INFO = {
+                "start_cv_001_365d":  ("HAS s/ tratamento",    "Anti-hipertensivo",       "PAS ≥ 160",      "Principal causa evitável de AVC e IAM."),
+                "start_cv_002_365d":  ("CI sem estatina",       "Estatina",                "Card. isquêmica","Reduz mortalidade CV comprovadamente."),
+                "start_cv_003_365d":  ("DCV sem antiplatelet",  "AAS ou Clopidogrel",      "CI/AVC/DAP",     "Reduz eventos isquêmicos recorrentes."),
+                "start_cv_004_365d":  ("ICC sem IECA/BRA",      "IECA ou BRA",             "ICC sistólica",  "Pilar do tratamento — reduz mortalidade."),
+                "start_cv_005_365d":  ("FA sem anticoag.",      "Warfarina/DOAC",          "FA",             "Prevenção de AVC cardioembólico."),
+                "start_cv_006_365d":  ("DM+IRC sem IECA/BRA",  "IECA ou BRA",             "DM + IRC",       "Retarda progressão da nefropatia."),
+                "start_snc_001_365d": ("Parkinson s/ levo.",    "Levodopa/agonista",       "Parkinson",      "1ª linha — melhora função motora."),
+                "start_snc_002_365d": ("Depressão s/ AD",       "ISRS ou IRSN",            "Depressão mod.", "AD não-TCA são mais seguros em idosos."),
+                "start_snc_003_365d": ("Demência s/ iColin.",   "Donepezila/Rivastigmina", "Demência l-m",   "Melhora cognitiva modesta. Padrão de cuidado."),
+                "start_resp_001_365d":("DPOC s/ broncodil.",    "Broncodilatador inalat.", "DPOC/Asma",      "Alívio sintomático e prevenção exacerbações."),
+            }
+
+            BEERS_INFO = {
+                "beers_001_365d": ("Sulfonilureia (toda classe)","Gliclazida/Glipizida","DM ≥65",         "Beers expande: toda classe. Risco hipoglicemia."),
+                "beers_002_365d": ("Warfarina em FA s/ DOAC",  "Warfarina",           "FA",              "DOACs preferíveis. SUS: indisponível na farm. popular."),
+                "beers_003_365d": ("Rivaroxabana em FA",        "Rivaroxabana",        "FA",              "Apixabana tem melhor perfil em idosos com IRC."),
+                "beers_004_365d": ("AAS prev. primária",        "AAS",                 "≥60 s/ DCV",      "Risco sangramento > benefício. USPSTF 2023."),
+                "beers_005_365d": ("Antipsic. + epilepsia",     "Olanzapina/Clozapina","Epilepsia",       "Reduzem limiar convulsivo."),
+                "beers_006_365d": ("Opioide + BZD",             "Opioide + BZD",       "Uso concomit.",   "Depressão respiratória sinérgica — overdose."),
+                "beers_007_365d": ("ISRS + Tramadol",           "ISRS + Tramadol",     "Uso concomit.",   "Síndrome serotonérgica."),
+            }
+
+            # ════════════════════════════════════════════
+            # COL 2 — STOPP
+            # ════════════════════════════════════════════
+            with c_stopp:
+                stopp_ativos = {f: info for f, info in STOPP_INFO.items()
+                                if dados_ss.get(f) is True}
+                n_stopp = len(stopp_ativos)
+                st.markdown(f"##### 🚫 STOPP ({n_stopp})")
+                if idade_pac < 65:
+                    st.caption("Critérios aplicam-se a ≥65 anos.")
+                elif not stopp_ativos:
+                    st.success("✅ Nenhum critério ativo.")
+                else:
+                    for flag, info in stopp_ativos.items():
+                        nome_c, med, cond, just = info
+                        sev = info[4] if len(info) > 4 else ""
+                        cor = "🔴" if sev == "Alta" else "🟠" if sev == "Média" else "🟡"
+                        st.markdown(f"**{cor} {nome_c}**")
+                        st.caption(f"💊 {med} | 🏥 {cond}")
+                        st.caption(f"_{just}_")
+                        st.markdown("---")
+
+                # Alertas compactos
+                if dados_ss.get("alerta_queda_medicamentos"):
+                    st.warning("⚠️ Risco de queda — verificar histórico.")
+                if dados_ss.get("alerta_egfr_ausente_gabapentinoide"):
+                    st.warning("⚠️ Gabapentinoide sem TFG — solicitar creatinina.")
+                if dados_ss.get("alerta_egfr_ausente_metformina"):
+                    st.warning("⚠️ Metformina sem TFG — solicitar creatinina.")
+                if dados_ss.get("alerta_cascata_biperideno"):
+                    st.warning("⚠️ Cascata biperideno — rever antipsicótico.")
+
+            # ════════════════════════════════════════════
+            # COL 3 — START
+            # ════════════════════════════════════════════
+            with c_start:
+                start_ativos = {f: info for f, info in START_INFO.items()
+                                if dados_ss.get(f) is True}
+                n_start = len(start_ativos)
+                st.markdown(f"##### ❌ START ({n_start})")
+                if idade_pac < 65:
+                    st.caption("Critérios aplicam-se a ≥65 anos.")
+                elif not start_ativos:
+                    st.success("✅ Nenhuma omissão.")
+                else:
+                    for flag, info in start_ativos.items():
+                        nome_c, med_ind, cond, just = info
+                        st.markdown(f"**❌ {nome_c}**")
+                        st.caption(f"✅ {med_ind} | 🏥 {cond}")
+                        st.caption(f"_{just}_")
+                        st.markdown("---")
+
+            # ════════════════════════════════════════════
+            # COL 4 — BEERS
+            # ════════════════════════════════════════════
+            with c_beers:
+                beers_ativos = {f: info for f, info in BEERS_INFO.items()
+                                if dados_ss.get(f) is True}
+                n_beers = len(beers_ativos)
+                st.markdown(f"##### 🔵 Beers ({n_beers})")
+                if idade_pac < 60:
+                    st.caption("Critérios aplicam-se a ≥60 anos.")
+                elif not beers_ativos:
+                    st.success("✅ Nenhum critério ativo.")
+                else:
+                    for flag, info in beers_ativos.items():
+                        nome_c, med, cond, just = info
+                        st.markdown(f"**🔵 {nome_c}**")
+                        st.caption(f"💊 {med} | 🏥 {cond}")
+                        st.caption(f"_{just}_")
+                        st.markdown("---")
+
+                if dados_ss.get("alerta_warfarina_fa"):
+                    st.info("ℹ️ Warfarina em FA — verificar se DOAC foi tentado.")
+
+            # ════════════════════════════════════════════
+            # COL 5 — ACB
+            # ════════════════════════════════════════════
+            with c_acb:
+                st.markdown("##### 🔴 ACB")
+                acb_total    = dados_acb.get("acb_score_total")
+                acb_cronicos = dados_acb.get("acb_score_cronicos")
+                n_acb_pos    = int(dados_acb.get("n_meds_acb_positivo") or 0)
+                n_acb_alto   = int(dados_acb.get("n_meds_acb_alto") or 0)
+                cat_acb      = dados_acb.get("categoria_acb", "—")
+
+                if acb_total is not None:
+                    acb_f = float(acb_total)
+                    cor   = "🔴" if acb_f >= 3 else "🟠" if acb_f >= 1 else "🟢"
+                    st.metric("Score total", f"{cor} {acb_f:.0f}")
+                    st.metric("Crônicos",    f"{float(acb_cronicos):.0f}" if acb_cronicos else "—")
+                    st.metric("Meds ACB>0",  n_acb_pos)
+                    st.metric("Meds ACB≥3",  n_acb_alto)
+                    st.caption(f"Categoria: `{cat_acb}`")
+                    if acb_f >= 3:
+                        st.error("Carga clinicamente significativa.")
+                    elif acb_f >= 1:
+                        st.warning("Carga presente — monitorar.")
+                    else:
+                        st.success("Sem carga ACB.")
+                else:
+                    st.info("Sem dados ACB.")
+
         # ========== TAB 5: INÉRCIA TERAPÊUTICA (PLACEHOLDER) ==========
         with tab5:
             st.info("🚧 **Módulo em desenvolvimento**")
