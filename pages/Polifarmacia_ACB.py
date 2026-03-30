@@ -1,140 +1,39 @@
 """
 Página: Polifarmácia e Carga Anticolinérgica
-Análise de polifarmácia, carga de morbidade e escore ACB por território
+Análise de polifarmácia, carga de morbidade e escore ACB por território.
 """
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from collections import Counter
-from components.filtros import filtros_territoriais
 from utils.bigquery_client import get_bigquery_client
+from components.cabecalho import renderizar_cabecalho
+from utils.auth import get_contexto_territorial, get_perfil
+from utils.data_loader import carregar_opcoes_filtros
 import config
 import math
-
-# ═══════════════════════════════════════════════════════════════
-# ANONIMIZAÇÃO
-# ═══════════════════════════════════════════════════════════════
-def anonimizar_ap(x): return str(x) if x else x
-def anonimizar_clinica(x): return str(x) if x else x
-def anonimizar_esf(x): return str(x) if x else x
-def anonimizar_nome(nome, genero=''):
-    import random
-    nomes_m = ['A.S.', 'J.R.', 'M.F.', 'C.O.', 'P.L.']
-    nomes_f = ['M.S.', 'A.R.', 'F.O.', 'C.L.', 'P.M.']
-    return random.choice(nomes_f if str(genero).lower() in ['f','feminino'] else nomes_m)
-MODO_ANONIMO = False
-
-from utils.auth import exibir_usuario_logado
-
-# ═══════════════════════════════════════════════════════════════
-# VERIFICAR LOGIN
-# ═══════════════════════════════════════════════════════════════
-if 'usuario_global' not in st.session_state or not st.session_state.usuario_global:
-    st.warning("⚠️ Por favor, faça login na página inicial")
-    st.stop()
-
-usuario_logado = st.session_state['usuario_global']
-if isinstance(usuario_logado, dict):
-    nome     = usuario_logado.get('nome_completo', 'Usuário')
-    esf_usr  = usuario_logado.get('esf') or 'N/A'
-    clinica_usr = usuario_logado.get('clinica') or 'N/A'
-    ap_usr   = usuario_logado.get('area_programatica') or 'N/A'
-else:
-    nome = str(usuario_logado)
-    esf_usr = clinica_usr = ap_usr = 'N/A'
-
-# ═══════════════════════════════════════════════════════════════
-# CABEÇALHO
-# ═══════════════════════════════════════════════════════════════
-from streamlit_option_menu import option_menu
-
-st.markdown("""
-<style>
-    [data-testid="stSidebarNav"] {display: none;}
-</style>
-""", unsafe_allow_html=True)
-
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.markdown("""
-    <h1 style='margin: 0; padding: 0; color: #FAFAFA;'>
-        🏥 Navegador Clínico <small style='color: #999; font-size: 0.5em;'>SMS-RJ</small>
-    </h1>
-    """, unsafe_allow_html=True)
-with col2:
-    info_lines = [f"<strong>{nome}</strong>"]
-    if esf_usr != 'N/A':  info_lines.append(f"ESF: {esf_usr}")
-    if clinica_usr != 'N/A': info_lines.append(f"Clínica: {clinica_usr}")
-    if ap_usr != 'N/A':   info_lines.append(f"AP: {ap_usr}")
-    st.markdown(f"""
-    <div style='text-align: right; padding-top: 10px; color: #FAFAFA; font-size: 0.9em;'>
-        <span style='font-size: 1.3em;'>👤</span> {"<br>".join(info_lines)}
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("---")
-
-PAGINA_ATUAL = "Polifarmácia"
-ROTAS = {
-    "Home":           "Home.py",
-    "População":      "pages/Minha_Populacao.py",
-    "Pacientes":      "pages/Meus_Pacientes.py",
-    "Lacunas":        "pages/Lacunas_de_Cuidado.py",
-    "Continuidade":   "pages/Acesso_Continuidade.py",
-    "Polifarmácia":   "pages/Polifarmacia_ACB.py",
-}
-ICONES = [
-    "house-fill", "people-fill", "person-lines-fill",
-    "exclamation-triangle-fill", "arrow-repeat", "capsule"
-]
-selected = option_menu(
-    menu_title=None,
-    options=list(ROTAS.keys()),
-    icons=ICONES,
-    default_index=list(ROTAS.keys()).index(PAGINA_ATUAL),
-    orientation="horizontal",
-    styles={
-        "container": {
-            "padding": "0!important",
-            "background-color": "#0E1117",
-        },
-        "icon": {
-            "font-size": "22px",
-            "color": "#FAFAFA",
-            "display": "block",
-            "margin-bottom": "4px",
-        },
-        "nav-link": {
-            "font-size": "11px",
-            "text-align": "center",
-            "margin": "0px",
-            "padding": "10px 18px",
-            "color": "#AAAAAA",
-            "background-color": "#262730",
-            "--hover-color": "#353540",
-            "display": "flex",
-            "flex-direction": "column",
-            "align-items": "center",
-            "line-height": "1.2",
-            "white-space": "nowrap",
-        },
-        "nav-link-selected": {
-            "background-color": "#404040",
-            "color": "#FFFFFF",
-            "font-weight": "600",
-        },
-    }
+from utils.anonimizador import (
+    anonimizar_ap, anonimizar_clinica, anonimizar_esf, mostrar_badge_anonimo, MODO_ANONIMO
 )
-if selected != PAGINA_ATUAL:
-    st.switch_page(ROTAS[selected])
-
-st.markdown("---")
 
 
-# ═══════════════════════════════════════════════════════════════
-# BIGQUERY
-# ═══════════════════════════════════════════════════════════════
+# CONFIGURAÇÃO DA PÁGINA
+st.set_page_config(
+    page_title="Polifarmácia e ACB · Navegador Clínico",
+    page_icon="💊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# CABEÇALHO UNIFICADO
+renderizar_cabecalho("Polifarmácia")
+
+# CONTEXTO TERRITORIAL
+ctx    = get_contexto_territorial()
+perfil = get_perfil()
+
+
 @st.cache_data(ttl=900, show_spinner=False)
 def run_query(query: str) -> pd.DataFrame:
     try:
@@ -507,17 +406,52 @@ def carregar_stopp_resumo(ap=None, clinica=None, esf=None) -> dict:
     df = run_query(sql)
     return df.iloc[0].to_dict() if not df.empty else {}
 
-# ═══════════════════════════════════════════════════════════════
-# SIDEBAR — FILTROS
-# ═══════════════════════════════════════════════════════════════
-mostrar_badge_anonimo = lambda: None
-territorio = filtros_territoriais(
-    key_prefix="poli",
-    obrigatorio_esf=False,
-    mostrar_todas_opcoes=True
-)
 
-# Persistência de aba
+
+
+# ═══════════════════════════════════════════════════════════════
+# SIDEBAR — FILTROS TERRITORIAIS
+# ═══════════════════════════════════════════════════════════════
+st.sidebar.markdown("---")
+st.sidebar.title("Filtros")
+
+_opcoes = carregar_opcoes_filtros()
+_areas  = _opcoes.get('areas', [])
+_ap_default  = ctx.get('ap')
+_cli_default = ctx.get('clinica')
+_esf_default = ctx.get('esf')
+
+_ap_idx = ([None] + _areas).index(_ap_default) if _ap_default in _areas else 0
+ap_sel = st.sidebar.selectbox(
+    "Área Programática",
+    options=[None] + _areas,
+    format_func=lambda x: "Todas" if x is None else anonimizar_ap(str(x)),
+    index=_ap_idx,
+    key="poli_ap"
+)
+_clinicas = sorted(_opcoes['clinicas'].get(ap_sel, [])) if ap_sel else []
+_cli_idx = ([None] + _clinicas).index(_cli_default) if _cli_default in _clinicas else 0
+cli_sel = st.sidebar.selectbox(
+    "Clínica",
+    options=[None] + _clinicas,
+    format_func=lambda x: "Todas" if x is None else anonimizar_clinica(x),
+    index=_cli_idx,
+    key="poli_cli",
+    disabled=not ap_sel
+)
+_esfs = sorted(_opcoes['esf'].get(cli_sel, [])) if cli_sel else []
+_esf_idx = ([None] + _esfs).index(_esf_default) if _esf_default in _esfs else 0
+esf_sel = st.sidebar.selectbox(
+    "ESF",
+    options=[None] + _esfs,
+    format_func=lambda x: "Todas" if x is None else anonimizar_esf(x),
+    index=_esf_idx,
+    key="poli_esf",
+    disabled=not cli_sel
+)
+territorio = {'ap': ap_sel, 'clinica': cli_sel, 'esf': esf_sel}
+
+# ── Persistência de aba ──────────────────────────────────────
 if 'aba_poli' not in st.session_state:
     st.session_state['aba_poli'] = 0
 
@@ -1260,12 +1194,6 @@ with tab5:
 
             df_exib = df_lista.copy()
 
-            if MODO_ANONIMO:
-                df_exib['nome'] = df_exib.apply(
-                    lambda r: anonimizar_nome(r['nome'], r.get('genero','')), axis=1
-                )
-                df_exib['nome_esf_cadastro']     = df_exib['nome_esf_cadastro'].apply(anonimizar_esf)
-                df_exib['nome_clinica_cadastro']  = df_exib['nome_clinica_cadastro'].apply(anonimizar_clinica)
 
             df_exib['alerta_acb_idoso'] = df_exib['alerta_acb_idoso'].map({True: '🧠 Alerta', False: '—'})
             df_exib['alerta_prescricao_idoso_ativo'] = df_exib['alerta_prescricao_idoso_ativo'].map(

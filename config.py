@@ -13,7 +13,7 @@ DATASET_ID = "sub_pav_us"
 # ============================================
 # TABELAS PRINCIPAIS
 # ============================================
-TABELA_FATO = "MM_2026_novos_cadastros"
+TABELA_FATO = "MM_2026_novos_cadastros_stopp_start"
 
 # ============================================
 # TABELAS DIMENSÕES

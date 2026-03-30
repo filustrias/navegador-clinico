@@ -265,3 +265,50 @@ def limpar_cache():
     """
     st.cache_data.clear()
     st.success("✅ Cache limpo com sucesso!")
+
+@st.cache_data(ttl=900, show_spinner=False)
+def carregar_metricas_resumo(ap=None, clinica=None, esf=None) -> dict:
+    """
+    Carrega métricas populacionais agregadas para a Home.
+    Fonte: MM_piramides_populacionais (tabela já agregada — resposta rápida).
+
+    Retorna dict com chaves:
+        total_pop, multimorbidos, polifarmacia, hiperpolifarmacia
+    """
+    client = get_bigquery_client()
+
+    if not client:
+        return {'total_pop': 0, 'multimorbidos': 0, 'polifarmacia': 0, 'hiperpolifarmacia': 0}
+
+    where_clauses = []
+    if ap:
+        where_clauses.append(f"area_programatica = '{ap}'")
+    if clinica:
+        where_clauses.append(f"clinica_familia = '{clinica}'")
+    if esf:
+        where_clauses.append(f"ESF = '{esf}'")
+
+    where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+
+    query = f"""
+    SELECT
+        SUM(total_pacientes)                                          AS total_pop,
+        SUM(n_morb_2 + n_morb_3 + n_morb_4 + n_morb_5
+            + n_morb_6 + n_morb_7 + n_morb_8 + n_morb_9
+            + n_morb_10mais)                                          AS multimorbidos,
+        SUM(n_polifarmacia)                                           AS polifarmacia,
+        SUM(n_hiperpolifarmacia)                                      AS hiperpolifarmacia
+    FROM `{PROJECT_ID}.{DATASET_ID}.{TABELA_PIRAMIDES}`
+    {where_sql}
+    """
+
+    try:
+        df = client.query(query).result().to_dataframe(create_bqstorage_client=False)
+        if not df.empty:
+            row = df.iloc[0].to_dict()
+            # Garantir que None vira 0
+            return {k: int(v) if v is not None else 0 for k, v in row.items()}
+    except Exception as e:
+        st.warning(f"⚠️ Não foi possível carregar métricas resumo: {e}")
+
+    return {'total_pop': 0, 'multimorbidos': 0, 'polifarmacia': 0, 'hiperpolifarmacia': 0}

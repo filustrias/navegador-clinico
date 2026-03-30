@@ -3,36 +3,15 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from google.cloud import bigquery
-
-# Importar do nosso sistema
 from utils.bigquery_client import get_bigquery_client
 import config
-
 from utils.relatos import formulario_relato
-
-# ═══════════════════════════════════════════════════════════════
-# ANONIMIZAÇÃO DESATIVADA
-# ═══════════════════════════════════════════════════════════════
-# from utils.anonimizador import (
-#     anonimizar_paciente, 
-#     mostrar_badge_anonimo, 
-#     anonimizar_ap,
-#     anonimizar_clinica,
-#     anonimizar_esf,
-#     MODO_ANONIMO
-# )
-
-# Funções stub para substituir anonimização (retornam valor original)
-def anonimizar_paciente(x): return x
-def anonimizar_ap(x): return str(x) if x else x
-def anonimizar_clinica(x): return str(x) if x else x
-def anonimizar_esf(x): return str(x) if x else x
-def mostrar_badge_anonimo(): pass
-MODO_ANONIMO = False
-
+from utils.anonimizador import (
+    anonimizar_ap, anonimizar_clinica, anonimizar_esf,
+    anonimizar_nome, anonimizar_paciente, mostrar_badge_anonimo, MODO_ANONIMO
+)
 from streamlit_option_menu import option_menu
 from utils.auth import exibir_usuario_logado
-
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURAÇÃO DA PÁGINA
@@ -99,23 +78,32 @@ with col2:
 
 st.markdown("---")
 
-PAGINA_ATUAL = "Pacientes"   # ← ÚNICA linha que muda em cada página
+PAGINA_ATUAL = "Pacientes"   # ← essa linha NÃO muda — cada arquivo tem o seu valor
 ROTAS = {
-    "Home":           "Home.py",
-    "População":      "pages/Minha_Populacao.py",
-    "Pacientes":      "pages/Meus_Pacientes.py",
-    "Lacunas":        "pages/Lacunas_de_Cuidado.py",
-    "Continuidade":   "pages/Acesso_Continuidade.py",
-    "Polifarmácia":   "pages/Polifarmacia_ACB.py",
+    "Home":          "Home.py",
+    "População":     "pages/Minha_Populacao.py",
+    "Pacientes":     "pages/Meus_Pacientes.py",
+    "Lacunas":       "pages/Lacunas_de_Cuidado.py",
+    "Continuidade":  "pages/Acesso_Continuidade.py",
+    "Polifarmácia":  "pages/Polifarmacia_ACB.py",
+    "Diabetes":      "pages/Diabetes.py",
+    "Hipertensão":   "pages/Hipertensao.py",
 }
-ICONES = [
-    "house-fill", "people-fill", "person-lines-fill",
-    "exclamation-triangle-fill", "arrow-repeat", "capsule"
+
+ICONES_MENU = [
+    "house-fill",               # Home
+    "people-fill",              # População
+    "person-lines-fill",        # Pacientes
+    "exclamation-triangle-fill",# Lacunas
+    "arrow-repeat",             # Continuidade
+    "capsule",                  # Polifarmácia
+    "droplet-fill",             # Diabetes
+    "heart-pulse-fill",         # Hipertensão
 ]
 selected = option_menu(
     menu_title=None,
     options=list(ROTAS.keys()),
-    icons=ICONES,
+    icons=ICONES_MENU,
     default_index=list(ROTAS.keys()).index(PAGINA_ATUAL),
     orientation="horizontal",
     styles={
@@ -660,11 +648,22 @@ def load_patient_data_paginated(
       variaveis_ausentes_calculo,
       dias_desde_ultima_medica,
       dias_desde_ultima_enfermagem,
+      dias_desde_ultima_tecnico_enfermagem,
       dias_em_acompanhamento, 
       pct_consultas_medico_365d,
       pct_consultas_medicas_na_unidade_365d,
       pct_consultas_medicas_fora_365d,
       pct_consultas_enfermeiro_365d,
+      consultas_365d,
+      consultas_medicas_365d,
+      consultas_enfermagem_365d,
+      consultas_tecnico_enfermagem_365d,
+      meses_com_consulta_12m,
+      regularidade_acompanhamento,
+      intervalo_mediano_dias,
+      baixa_longitudinalidade,
+      usuario_frequente_urgencia,
+      perfil_cuidado_365d,
       alto_risco_baixo_acesso, 
       baixo_risco_alto_acesso,
       alto_risco_intervalo_longo,
@@ -1175,81 +1174,296 @@ def create_patient_card(patient_data):
         
         # ========== TAB 2: CONTINUIDADE DO CUIDADO ==========
         with tab2:
-            col_c, col_d = st.columns(2)
-            
-            with col_c:
-                st.markdown("#### 🗓️ Última Consulta")
-                st.write(f"**Médica:** {format_dias_consulta(patient_data.get('dias_desde_ultima_medica'))}")
-                st.write(f"**Enfermagem:** {format_dias_consulta(patient_data.get('dias_desde_ultima_enfermagem'))}")
-                st.write(f"**Tempo em acompanhamento:** {format_tempo_acompanhamento(patient_data.get('dias_em_acompanhamento'))}")
-            
-            with col_d:
-                st.markdown("#### 📊 Perfil de Consultas (365 dias)")
-                
-                pct_medico = patient_data.get('pct_consultas_medico_365d')
-                pct_medico_na_unidade = patient_data.get('pct_consultas_medicas_na_unidade_365d')
-                pct_medico_fora = patient_data.get('pct_consultas_medicas_fora_365d')
-                pct_enfermeiro = patient_data.get('pct_consultas_enfermeiro_365d')
-                
-                if pd.notna(pct_medico):
-                    st.write(f"**Consultas médicas:** {pct_medico:.0f}%")
-                    
-                    if pd.notna(pct_medico_na_unidade) and pd.notna(pct_medico_fora):
-                        st.caption(f"↳ {pct_medico_na_unidade:.0f}% na unidade, {pct_medico_fora:.0f}% fora")
-                    
-                    if pd.notna(pct_enfermeiro):
-                        st.write(f"**Consultas enfermagem:** {pct_enfermeiro:.0f}%")
-            
+
+            # ── BLOCO 1: Frequência de Consultas ─────────────────
+            st.markdown("#### 🗓️ Frequência de Consultas")
+            fc1, fc2, fc3, fc4 = st.columns(4)
+
+            dias_med  = patient_data.get('dias_desde_ultima_medica')
+            dias_enf  = patient_data.get('dias_desde_ultima_enfermagem')
+            dias_tec  = patient_data.get('dias_desde_ultima_tecnico_enfermagem')
+            cons_365  = patient_data.get('consultas_365d')
+            cons_med  = patient_data.get('consultas_medicas_365d')
+            cons_enf  = patient_data.get('consultas_enfermagem_365d')
+            cons_tec  = patient_data.get('consultas_tecnico_enfermagem_365d')
+            meses_con = patient_data.get('meses_com_consulta_12m')
+            regular   = patient_data.get('regularidade_acompanhamento')
+            intervalo = patient_data.get('intervalo_mediano_dias')
+
+            with fc1:
+                with st.container(border=True):
+                    st.caption("🩺 Última consulta médica")
+                    v = format_dias_consulta(dias_med)
+                    if pd.notna(dias_med):
+                        cor = "🔴" if dias_med > 365 else ("🟠" if dias_med > 180 else "🟢")
+                        st.markdown(f"**{cor} {v}**")
+                        st.caption(f"{int(cons_med or 0)} consultas no último ano")
+                    else:
+                        st.markdown(f"**{v}**")
+
+            with fc2:
+                with st.container(border=True):
+                    st.caption("💉 Última consulta de enfermagem")
+                    v = format_dias_consulta(dias_enf)
+                    if pd.notna(dias_enf):
+                        cor = "🔴" if dias_enf > 365 else ("🟠" if dias_enf > 180 else "🟢")
+                        st.markdown(f"**{cor} {v}**")
+                        st.caption(f"{int(cons_enf or 0)} consultas no último ano")
+                    else:
+                        st.markdown(f"**{v}**")
+
+            with fc3:
+                with st.container(border=True):
+                    st.caption("🩹 Última consulta técnico de enfermagem")
+                    v = format_dias_consulta(dias_tec)
+                    if pd.notna(dias_tec):
+                        cor = "🔴" if dias_tec > 365 else ("🟠" if dias_tec > 180 else "🟢")
+                        st.markdown(f"**{cor} {v}**")
+                        st.caption(f"{int(cons_tec or 0)} consultas no último ano")
+                    else:
+                        st.markdown(f"**{v}**")
+
+            with fc4:
+                with st.container(border=True):
+                    st.caption("📅 Regularidade do acompanhamento")
+                    CORES_REG = {
+                        'regular':            ('🟢', 'Regular'),
+                        'irregular':          ('🟡', 'Irregular'),
+                        'esporadico':         ('🟠', 'Esporádico'),
+                        'sem_acompanhamento': ('🔴', 'Sem acompanhamento'),
+                    }
+                    emoji, label = CORES_REG.get(str(regular).lower(), ('⚪', str(regular) if regular else '—'))
+                    st.markdown(f"**{emoji} {label}**")
+                    if pd.notna(meses_con):
+                        st.caption(f"{int(meses_con)} meses com consulta nos últimos 12")
+
             st.markdown("---")
+
+            # ── BLOCO 2: Continuidade e Vínculo ──────────────────
+            st.markdown("#### 🔗 Continuidade e Vínculo com a Equipe")
+            cv1, cv2, cv3 = st.columns(3)
+
+            pct_medico          = patient_data.get('pct_consultas_medico_365d')
+            pct_na_unidade      = patient_data.get('pct_consultas_medicas_na_unidade_365d')
+            pct_fora            = patient_data.get('pct_consultas_medicas_fora_365d')
+            pct_enfermeiro      = patient_data.get('pct_consultas_enfermeiro_365d')
+            baixa_long          = patient_data.get('baixa_longitudinalidade')
+            perfil_cuidado      = patient_data.get('perfil_cuidado_365d')
+            freq_urgencia       = patient_data.get('usuario_frequente_urgencia')
+
+            PERFIL_LABEL = {
+                'medico_centrado': (
+                    '🩺', 'Médico-centrado',
+                    '≥75% das consultas clínicas foram com o médico, '
+                    'ou o médico foi o único profissional a consultar no período.'
+                ),
+                'enfermagem_centrado': (
+                    '💉', 'Enfermagem-centrado',
+                    '≥75% das consultas clínicas foram com o enfermeiro, '
+                    'ou o enfermeiro foi o único profissional a consultar no período.'
+                ),
+                'compartilhado': (
+                    '🤝', 'Cuidado compartilhado',
+                    'Médico e enfermeiro participaram com pelo menos 25% das consultas cada. '
+                    'Modelo de cuidado colaborativo entre os dois profissionais.'
+                ),
+                'sem_consultas': (
+                    '⚪', 'Sem consultas clínicas',
+                    'Nenhuma consulta com médico, enfermeiro ou técnico de enfermagem '
+                    'foi registrada nos últimos 365 dias.'
+                ),
+                'indefinido': (
+                    '❓', 'Perfil indefinido',
+                    'Não foi possível classificar o perfil de cuidado com os dados disponíveis.'
+                ),
+            }
+
+            with cv1:
+                with st.container(border=True):
+                    st.caption("🔄 Perfil de cuidado (últimos 365 dias)")
+                    pc = str(perfil_cuidado) if perfil_cuidado else 'indefinido'
+                    em, lb, desc = PERFIL_LABEL.get(pc, ('❓', pc, '—'))
+                    st.markdown(f"**{em} {lb}**")
+                    st.caption(desc)
+
+                    # Percentuais reais — mostrar o que compõe o perfil
+                    linhas = []
+                    if pd.notna(pct_medico) and pct_medico > 0:
+                        linhas.append(f"🩺 Médico: **{pct_medico:.0f}%** das consultas")
+                    if pd.notna(pct_enfermeiro) and pct_enfermeiro > 0:
+                        linhas.append(f"💉 Enfermeiro: **{pct_enfermeiro:.0f}%** das consultas")
+                    # técnico de enfermagem (residual)
+                    pct_tec = None
+                    if pd.notna(pct_medico) and pd.notna(pct_enfermeiro):
+                        pct_tec_calc = 100 - (pct_medico or 0) - (pct_enfermeiro or 0)
+                        if pct_tec_calc > 1:
+                            linhas.append(f"🩹 Técnico: **{pct_tec_calc:.0f}%** das consultas")
+                    if linhas:
+                        st.markdown("  \n".join(linhas))
+
+                    if pd.notna(intervalo):
+                        st.caption(f"Intervalo mediano entre consultas: **{int(intervalo)} dias**")
+
+            with cv2:
+                with st.container(border=True):
+                    st.caption("🏠 Longitudinalidade do cuidado")
+                    if baixa_long in [True, 1, '1', 'True']:
+                        st.markdown("**⚠️ Baixa longitudinalidade**")
+                        st.caption(
+                            "Mais de 50% das consultas médicas ocorreram **fora** da unidade "
+                            "de referência do cadastro. Indica fragmentação do vínculo — "
+                            "o paciente busca cuidado em outros locais com mais frequência."
+                        )
+                        if pd.notna(pct_na_unidade) and pd.notna(pct_fora):
+                            st.markdown(
+                                f"↳ **{pct_na_unidade:.0f}%** na unidade de referência  \n"
+                                f"↳ **{pct_fora:.0f}%** fora da unidade"
+                            )
+                    else:
+                        st.markdown("**✅ Longitudinalidade adequada**")
+                        st.caption(
+                            "A maioria das consultas médicas ocorre na própria unidade "
+                            "de referência. Indica vínculo preservado com a equipe."
+                        )
+                        if pd.notna(pct_na_unidade):
+                            st.markdown(f"↳ **{pct_na_unidade:.0f}%** das consultas na unidade")
+
+            with cv3:
+                with st.container(border=True):
+                    st.caption("🚨 Uso de serviços de urgência")
+                    cons_urg = patient_data.get('consultas_urgencia_365d')
+                    dias_urg = patient_data.get('dias_desde_ultima_urgencia')
+                    if freq_urgencia in [True, 1, '1', 'True']:
+                        st.markdown("**🚨 Uso frequente de urgência**")
+                        st.caption(
+                            "3 ou mais atendimentos em UPA, CER ou hospital de urgência "
+                            "nos últimos 365 dias. Pode indicar dificuldade de acesso "
+                            "à atenção primária ou descompensação clínica recorrente."
+                        )
+                        if pd.notna(cons_urg):
+                            st.markdown(f"↳ **{int(cons_urg)} atendimentos** em urgência no último ano")
+                        if pd.notna(dias_urg):
+                            st.markdown(f"↳ Último atendimento há **{int(dias_urg)} dias**")
+                    else:
+                        st.markdown("**✅ Sem uso frequente de urgência**")
+                        st.caption("Menos de 3 atendimentos em urgência nos últimos 365 dias.")
+                        if pd.notna(cons_urg) and cons_urg > 0:
+                            st.markdown(f"↳ {int(cons_urg)} atendimento(s) no período")
+                        elif pd.notna(cons_urg):
+                            st.caption("Nenhum atendimento em urgência no período.")
+
+            st.markdown("---")
+
+            # ── BLOCO 3: Alertas ─────────────────────────────────
             st.markdown("#### 🎯 Alertas de Equidade no Cuidado")
-            
-            subatendimento = patient_data.get('alto_risco_baixo_acesso')
-            sobreutilizacao = patient_data.get('baixo_risco_alto_acesso')
-            risco_descompensacao = patient_data.get('alto_risco_intervalo_longo')
-            
+
+            subatendimento      = patient_data.get('alto_risco_baixo_acesso')
+            sobreutilizacao     = patient_data.get('baixo_risco_alto_acesso')
+            risco_descompensacao= patient_data.get('alto_risco_intervalo_longo')
+            tempo_acomp         = patient_data.get('dias_em_acompanhamento')
+
             tem_alerta = False
-            
+
             if subatendimento in [True, 1, '1', 'True']:
-                st.error("🔴 **Subatendimento de Caso Grave** - Paciente grave com acesso insuficiente")
+                st.error(
+                    "🔴 **Subatendimento de Caso Grave** — Paciente com alta carga de morbidade "
+                    "e frequência de consultas abaixo do percentil 25 do seu grupo de pares. "
+                    "Requer atenção prioritária da equipe."
+                )
                 tem_alerta = True
-            
+
             if risco_descompensacao in [True, 1, '1', 'True']:
-                st.warning("🟠 **Risco de Descompensação** - Intervalos longos entre consultas")
+                st.warning(
+                    "🟠 **Risco de Descompensação** — Intervalos longos entre consultas "
+                    "para um paciente de alta complexidade. Avaliar reagendamento."
+                )
                 tem_alerta = True
-            
+
             if sobreutilizacao in [True, 1, '1', 'True']:
-                st.info("🟡 **Possível Sobreutilização** - Baixa complexidade com alto acesso")
+                st.info(
+                    "🟡 **Possível Sobreutilização** — Baixa carga de morbidade com "
+                    "alta frequência de consultas. Avaliar se há outra necessidade não registrada."
+                )
                 tem_alerta = True
-            
+
             if not tem_alerta:
-                st.success("✅ Continuidade adequada ao perfil do paciente")
+                st.success("✅ Nenhum alerta de equidade identificado para este paciente.")
+
+            if pd.notna(tempo_acomp):
+                st.caption(f"Tempo em acompanhamento na unidade: **{format_tempo_acompanhamento(tempo_acomp)}**")
         
         # ========== TAB 3: LACUNAS DE CUIDADO ==========
         with tab3:
             if n_lacunas == 0:
                 st.success("✅ **Nenhuma lacuna de cuidado identificada**")
             else:
-                st.warning(f"**{n_lacunas} lacunas identificadas**")
-                
+                # Badge de gravidade pelo número de lacunas
+                if n_lacunas >= 5:
+                    st.error(f"🔴 **{n_lacunas} lacunas identificadas** — Atenção prioritária recomendada")
+                elif n_lacunas >= 3:
+                    st.warning(f"🟠 **{n_lacunas} lacunas identificadas** — Revisão clínica necessária")
+                else:
+                    st.warning(f"🟡 **{n_lacunas} lacuna(s) identificada(s)**")
+
                 lacunas_por_grupo, flags = extrair_lacunas_paciente(patient_data)
-                
-                # Mostrar flags primeiro (controlados, melhorando, piorando)
+
+                # Mostrar flags de controle (controlado, melhorando, piorando)
                 if flags:
-                    st.markdown("#### Status do Controle")
+                    st.markdown("#### 📋 Status do Controle")
                     for flag in flags:
                         if "✅" in flag:
                             st.success(flag)
                         else:
                             st.warning(flag)
                     st.markdown("---")
-                
-                # Mostrar lacunas por grupo
+
                 st.markdown("#### Lacunas Identificadas por Categoria")
-                
-                for grupo in GRUPOS_LACUNAS.keys():
-                    if grupo in lacunas_por_grupo:
-                        with st.expander(f"{GRUPOS_LACUNAS[grupo]} ({len(lacunas_por_grupo[grupo])})", expanded=False):
-                            for lacuna in lacunas_por_grupo[grupo]:
+
+                # Ordem de prioridade: uso inadequado primeiro (risco imediato), depois falta de tratamento, depois monitoramento
+                PRIORIDADE_GRUPOS = [
+                    'Uso Inadequado',   # risco imediato — contraindicações
+                    'CI',               # cardiopatia isquêmica — falta de tratamento
+                    'ICC',              # insuficiência cardíaca — falta de tratamento
+                    'IRC',              # renal crônica — falta de tratamento
+                    'PA',               # pressão arterial — controle e monitoramento
+                    'Glicemia',         # diabetes — controle e monitoramento
+                    'Complicações DM',  # pé diabético
+                    'Exames',           # monitoramento laboratorial
+                    'Rastreamento',     # prevenção primária
+                ]
+                # Grupos definidos no GRUPOS_LACUNAS — usar ordem de prioridade se disponível, senão manter original
+                grupos_ordenados = sorted(
+                    lacunas_por_grupo.keys(),
+                    key=lambda g: PRIORIDADE_GRUPOS.index(g) if g in PRIORIDADE_GRUPOS else 99
+                )
+
+                ICONE_GRUPO = {
+                    'Uso Inadequado':  '⚠️',
+                    'CI':              '❤️',
+                    'ICC':             '💔',
+                    'IRC':             '🫘',
+                    'PA':              '🩺',
+                    'Glicemia':        '🍬',
+                    'Complicações DM': '🦶',
+                    'Exames':          '🧪',
+                    'Rastreamento':    '🔍',
+                }
+
+                for grupo in grupos_ordenados:
+                    lacunas_grupo = lacunas_por_grupo[grupo]
+                    icone = ICONE_GRUPO.get(grupo, '📌')
+                    # Usar nomes do GRUPOS_LACUNAS se disponível
+                    label_grupo = GRUPOS_LACUNAS.get(grupo, grupo)
+                    # Uso inadequado abre expandido por ser risco imediato
+                    aberto = grupo == 'Uso Inadequado'
+                    with st.expander(
+                        f"{icone} {label_grupo} ({len(lacunas_grupo)})",
+                        expanded=aberto
+                    ):
+                        for lacuna in lacunas_grupo:
+                            if '⚠️' in str(lacuna):
+                                st.error(f"• {lacuna}")
+                            else:
                                 st.write(f"• {lacuna}")
         
         # ========== TAB 4: POLIFARMÁCIA E STOPP-START ==========
@@ -1445,19 +1659,36 @@ def create_patient_card(patient_data):
                 cat_acb      = dados_acb.get("categoria_acb", "—")
 
                 if acb_total is not None:
-                    acb_f = float(acb_total)
-                    cor   = "🔴" if acb_f >= 3 else "🟠" if acb_f >= 1 else "🟢"
+                    acb_f    = float(acb_total)
+                    acb_cr_f = float(acb_cronicos) if acb_cronicos else None
+                    cor      = "🔴" if acb_f >= 3 else "🟠" if acb_f >= 1 else "🟢"
+
                     st.metric("Score total", f"{cor} {acb_f:.0f}")
-                    st.metric("Crônicos",    f"{float(acb_cronicos):.0f}" if acb_cronicos else "—")
+
+                    # Score de crônicos em destaque — mais relevante clinicamente
+                    if acb_cr_f is not None:
+                        cor_cr = "🔴" if acb_cr_f >= 3 else "🟠" if acb_cr_f >= 1 else "🟢"
+                        st.metric(
+                            "Score crônicos",
+                            f"{cor_cr} {acb_cr_f:.0f}",
+                            help="Score ACB calculado apenas sobre medicamentos de uso contínuo. "
+                                 "Mais relevante clinicamente que o score total."
+                        )
+
                     st.metric("Meds ACB>0",  n_acb_pos)
                     st.metric("Meds ACB≥3",  n_acb_alto)
                     st.caption(f"Categoria: `{cat_acb}`")
+
                     if acb_f >= 3:
-                        st.error("Carga clinicamente significativa.")
+                        st.error(
+                            "⚠️ **Carga anticolinérgica clinicamente significativa** "
+                            "(ACB ≥ 3). Risco aumentado de confusão mental, "
+                            "delirium e quedas — especialmente em idosos."
+                        )
                     elif acb_f >= 1:
-                        st.warning("Carga presente — monitorar.")
+                        st.warning("Carga presente — monitorar sintomas cognitivos.")
                     else:
-                        st.success("Sem carga ACB.")
+                        st.success("Sem carga anticolinérgica significativa.")
                 else:
                     st.info("Sem dados ACB.")
 

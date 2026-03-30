@@ -12,24 +12,39 @@ import os
 
 # ═══════════════════════════════════════════════════════════════
 # ✅ TOGGLE PRINCIPAL - CONTROLADO POR VARIÁVEL DE AMBIENTE
+# Lido em tempo de execução (não no import) para garantir que
+# mudanças na variável de ambiente sejam sempre respeitadas.
 # ═══════════════════════════════════════════════════════════════
-MODO_ANONIMO = os.getenv('MODO_ANONIMO', 'False').lower() == 'true'
+
+def _is_modo_anonimo() -> bool:
+    """Lê MODO_ANONIMO da variável de ambiente a cada chamada."""
+    import os as _os
+    return _os.getenv('MODO_ANONIMO', 'false').lower() == 'true'
+
+# Alias para compatibilidade com código existente que importa MODO_ANONIMO
+# Nota: este valor é fixado no import — use _is_modo_anonimo() para leitura dinâmica
+MODO_ANONIMO = _is_modo_anonimo()
 
 # ═══════════════════════════════════════════════════════════════
 # 🌍 ÁREAS PROGRAMÁTICAS → CONTINENTES
+# Mapeamento fixo e explícito — garante unicidade (sem colisões)
+# Formato das APs no banco: "10", "21", "22", "31", etc.
 # ═══════════════════════════════════════════════════════════════
-CONTINENTES = [
-    "América do Norte",
-    "América Central", 
-    "Caribe",
-    "América do Sul",
-    "África",
-    "Europa",
-    "Ásia",
-    "Oriente Médio",
-    "Oceania",
-    "Antártica"
-]
+
+_MAP_AP_CONTINENTE = {
+    "10": "África",
+    "21": "Ásia",
+    "22": "América do Norte",
+    "31": "América Central",
+    "32": "América do Sul",
+    "33": "Europa",
+    "40": "Antártica",
+    "51": "Oriente Médio",
+    "52": "Oceania",
+    "53": "Caribe",
+}
+
+CONTINENTES = list(_MAP_AP_CONTINENTE.values())
 
 # ═══════════════════════════════════════════════════════════════
 # ⚡ CLÍNICAS → DEUSES MITOLÓGICOS
@@ -133,22 +148,44 @@ def _hash_to_index(valor: str, lista: list) -> int:
     hash_val = int(hashlib.md5(str(valor).encode()).hexdigest(), 16)
     return hash_val % len(lista)
 
+def _normalizar_ap(ap_str: str) -> str:
+    """Extrai o código numérico da AP em qualquer formato.
+
+    Exemplos:
+        '10'                     → '10'
+        'AP 10'                  → '10'
+        'AP 3.1'                 → '31'   (remove o ponto)
+        'Área Programática 3.1'  → '31'
+        '3.1'                    → '31'
+    """
+    import re as _re
+    # Extrair todos os dígitos (ignorar pontos e espaços)
+    digits = _re.sub(r'[^\d]', '', str(ap_str).strip())
+    return digits if digits else ap_str
+
+
 def anonimizar_ap(ap_real: str) -> str:
-    """Área Programática → Continente"""
-    if not MODO_ANONIMO or not ap_real:
+    """Área Programática → Continente.
+    
+    Mapeamento fixo e explícito — sem colisões.
+    Aceita qualquer formato: '1.0', 'AP 1.0', 'Área Programática 1.0', etc.
+    """
+    if not _is_modo_anonimo() or not ap_real:
         return ap_real
-    
-    ap_str = str(ap_real).strip()
-    
-    if ap_str not in _cache_ap:
-        idx = _hash_to_index(ap_str, CONTINENTES)
-        _cache_ap[ap_str] = CONTINENTES[idx]
-    
-    return _cache_ap[ap_str]
+
+    ap_norm = _normalizar_ap(str(ap_real).strip())
+
+    if ap_norm in _MAP_AP_CONTINENTE:
+        return _MAP_AP_CONTINENTE[ap_norm]
+
+    # Fallback para APs não mapeadas
+    if ap_norm not in _cache_ap:
+        _cache_ap[ap_norm] = f"Região {ap_norm}"
+    return _cache_ap[ap_norm]
 
 def anonimizar_clinica(clinica_real: str) -> str:
     """Clínica → Deus Mitológico"""
-    if not MODO_ANONIMO or not clinica_real:
+    if not _is_modo_anonimo() or not clinica_real:
         return clinica_real
     
     clinica_str = str(clinica_real).strip()
@@ -161,7 +198,7 @@ def anonimizar_clinica(clinica_real: str) -> str:
 
 def anonimizar_esf(esf_real: str) -> str:
     """ESF → Banda de Rock"""
-    if not MODO_ANONIMO or not esf_real:
+    if not _is_modo_anonimo() or not esf_real:
         return esf_real
     
     esf_str = str(esf_real).strip()
@@ -173,32 +210,34 @@ def anonimizar_esf(esf_real: str) -> str:
     return _cache_esf[esf_str]
 
 def anonimizar_nome(identificador: str, genero: str = None) -> str:
-    """Nome do paciente → Nome Chinês em Pinyin"""
-    if not MODO_ANONIMO or not identificador:
+    """Nome do paciente → Nome Chinês em Pinyin.
+    
+    identificador deve ser o CPF (estável) — nunca o nome próprio,
+    que pode variar em maiúsculas/minúsculas/acentos entre chamadas.
+    """
+    if not _is_modo_anonimo() or not identificador:
         return identificador
-    
+
     id_str = str(identificador).strip()
-    
+
     if id_str not in _cache_nomes:
-        # Selecionar sobrenome
         idx_sobrenome = _hash_to_index(id_str + "_sobrenome", SOBRENOMES_CHINESES)
         sobrenome = SOBRENOMES_CHINESES[idx_sobrenome]
-        
-        # Selecionar nome baseado no gênero
+
         if genero and str(genero).lower() in ['f', 'feminino', 'female']:
             idx_nome = _hash_to_index(id_str + "_nome", NOMES_CHINESES_FEMININOS)
             nome = NOMES_CHINESES_FEMININOS[idx_nome]
         else:
             idx_nome = _hash_to_index(id_str + "_nome", NOMES_CHINESES_MASCULINOS)
             nome = NOMES_CHINESES_MASCULINOS[idx_nome]
-        
+
         _cache_nomes[id_str] = f"{sobrenome} {nome}"
-    
+
     return _cache_nomes[id_str]
 
 def anonimizar_paciente(patient_data: dict) -> dict:
     """Anonimiza todos os campos sensíveis de um paciente"""
-    if not MODO_ANONIMO:
+    if not _is_modo_anonimo():
         return patient_data
     
     # Cópia para não modificar original
@@ -245,7 +284,7 @@ def anonimizar_paciente(patient_data: dict) -> dict:
 
 def anonimizar_lista_territorios(tipo: str, lista_real: list) -> list:
     """Anonimiza lista de territórios para filtros dropdown"""
-    if not MODO_ANONIMO:
+    if not _is_modo_anonimo():
         return lista_real
     
     if tipo == 'ap':
@@ -260,7 +299,7 @@ def anonimizar_lista_territorios(tipo: str, lista_real: list) -> list:
 def mostrar_badge_anonimo():
     """Mostra badge na sidebar indicando modo anônimo"""
     import streamlit as st
-    if MODO_ANONIMO:
+    if _is_modo_anonimo():
         st.sidebar.markdown("""
         <div style="
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
