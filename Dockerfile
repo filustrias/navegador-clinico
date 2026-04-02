@@ -10,9 +10,10 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-ARG CACHEBUST=1
-
 COPY . .
 
+ARG GOOGLE_CREDENTIALS
+RUN echo "$GOOGLE_CREDENTIALS" > /app/credentials.json
+ENV GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+
 CMD streamlit run Home.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --browser.gatherUsageStats=false
-# cache bust: 2026-04-02 15:28:43
