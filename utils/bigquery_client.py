@@ -20,50 +20,30 @@ def test_connection():
 
 @st.cache_resource
 def get_bigquery_client():
-    # DIAGNÓSTICO TEMPORÁRIO
-    import sys
-    print(f"DIAG - Python: {sys.version}", flush=True)
-    print(f"DIAG - GCP_CLIENT_ID: '{os.getenv('GCP_CLIENT_ID', 'NAO_ENCONTRADO')}'", flush=True)
-    print(f"DIAG - GCP_CLIENT_SECRET: '{os.getenv('GCP_CLIENT_SECRET', 'NAO_ENCONTRADO')}'", flush=True)
-    print(f"DIAG - GCP_REFRESH_TOKEN: '{os.getenv('GCP_REFRESH_TOKEN', 'NAO_ENCONTRADO')}'", flush=True)
-    print(f"DIAG - Todas as vars: {[k for k in os.environ.keys() if 'GCP' in k]}", flush=True)
-
     """Conecta ao BigQuery.
 
     Ordem de prioridade:
-    1. Railway → variável GOOGLE_APPLICATION_CREDENTIALS_JSON
+    1. Railway → GOOGLE_APPLICATION_CREDENTIALS_JSON (service account JSON)
     2. Streamlit Cloud → st.secrets['gcp_service_account']
     3. Streamlit Cloud → st.secrets['gcp_credentials'] (legado)
     4. Local → Application Default Credentials
     """
 
-    # 1. Railway — OAuth com credenciais pessoais
-    client_id = os.getenv('GCP_CLIENT_ID')
-    client_secret = os.getenv('GCP_CLIENT_SECRET')
-    refresh_token = os.getenv('GCP_REFRESH_TOKEN')
-
-    print(f"DEBUG - client_id presente: {bool(client_id)}")
-    print(f"DEBUG - client_secret presente: {bool(client_secret)}")
-    print(f"DEBUG - refresh_token presente: {bool(refresh_token)}")
-
-    if client_id and client_secret and refresh_token:
+    # 1. Railway — service account JSON via variável de ambiente
+    creds_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+    if creds_json:
         try:
-            credentials = Credentials(
-                token=None,
-                refresh_token=refresh_token,
-                token_uri="https://oauth2.googleapis.com/token",
-                client_id=client_id,
-                client_secret=client_secret
+            info = json.loads(creds_json)
+            credentials = service_account.Credentials.from_service_account_info(
+                info,
+                scopes=["https://www.googleapis.com/auth/bigquery"]
             )
-            client = bigquery.Client(
+            return bigquery.Client(
                 credentials=credentials,
-                project="rj-sms-sandbox"
+                project=info.get('project_id', 'rj-sms-sandbox')
             )
-            print("DEBUG - cliente BigQuery criado com sucesso via OAuth")
-            return client
         except Exception as e:
-            print(f"DEBUG - Erro OAuth Railway: {e}")
-            raise  # re-lança o erro para aparecer no traceback
+            print(f"Erro GOOGLE_APPLICATION_CREDENTIALS_JSON: {e}")
 
     # 2. Streamlit Cloud — service account
     try:
