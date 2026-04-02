@@ -34,6 +34,10 @@ def get_bigquery_client():
     client_secret = os.getenv('GCP_CLIENT_SECRET')
     refresh_token = os.getenv('GCP_REFRESH_TOKEN')
 
+    print(f"DEBUG - client_id presente: {bool(client_id)}")
+    print(f"DEBUG - client_secret presente: {bool(client_secret)}")
+    print(f"DEBUG - refresh_token presente: {bool(refresh_token)}")
+
     if client_id and client_secret and refresh_token:
         try:
             credentials = Credentials(
@@ -43,12 +47,15 @@ def get_bigquery_client():
                 client_id=client_id,
                 client_secret=client_secret
             )
-            return bigquery.Client(
+            client = bigquery.Client(
                 credentials=credentials,
                 project="rj-sms-sandbox"
             )
+            print("DEBUG - cliente BigQuery criado com sucesso via OAuth")
+            return client
         except Exception as e:
-            print(f"Erro OAuth Railway: {e}")
+            print(f"DEBUG - Erro OAuth Railway: {e}")
+            raise  # re-lança o erro para aparecer no traceback
 
     # 2. Streamlit Cloud — service account
     try:
