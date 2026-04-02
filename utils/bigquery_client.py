@@ -29,7 +29,7 @@ def get_bigquery_client():
     4. Local → Application Default Credentials
     """
 
-    # 1. Railway — service account JSON via variável de ambiente
+# 1. Railway — service account JSON via variável de ambiente
     creds_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
     if creds_json:
         try:
@@ -43,7 +43,10 @@ def get_bigquery_client():
                 project=info.get('project_id', 'rj-sms-sandbox')
             )
         except Exception as e:
-            print(f"Erro GOOGLE_APPLICATION_CREDENTIALS_JSON: {e}")
+            print(f"ERRO JSON: {e}", flush=True)
+            raise
+    else:
+        print("VARIAVEL VAZIA OU AUSENTE", flush=True)
 
     # 2. Streamlit Cloud — service account
     try:
