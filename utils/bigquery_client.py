@@ -20,6 +20,14 @@ def test_connection():
 
 @st.cache_resource
 def get_bigquery_client():
+    # DIAGNÓSTICO TEMPORÁRIO
+    import sys
+    print(f"DIAG - Python: {sys.version}", flush=True)
+    print(f"DIAG - GCP_CLIENT_ID: '{os.getenv('GCP_CLIENT_ID', 'NAO_ENCONTRADO')}'", flush=True)
+    print(f"DIAG - GCP_CLIENT_SECRET: '{os.getenv('GCP_CLIENT_SECRET', 'NAO_ENCONTRADO')}'", flush=True)
+    print(f"DIAG - GCP_REFRESH_TOKEN: '{os.getenv('GCP_REFRESH_TOKEN', 'NAO_ENCONTRADO')}'", flush=True)
+    print(f"DIAG - Todas as vars: {[k for k in os.environ.keys() if 'GCP' in k]}", flush=True)
+
     """Conecta ao BigQuery.
 
     Ordem de prioridade:
