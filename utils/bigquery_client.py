@@ -29,21 +29,26 @@ def get_bigquery_client():
     4. Local → Application Default Credentials
     """
 
-    # 1. Railway
-    creds_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
-    if creds_json:
+    # 1. Railway — OAuth com credenciais pessoais
+    client_id = os.getenv('GCP_CLIENT_ID')
+    client_secret = os.getenv('GCP_CLIENT_SECRET')
+    refresh_token = os.getenv('GCP_REFRESH_TOKEN')
+
+    if client_id and client_secret and refresh_token:
         try:
-            info = json.loads(creds_json)
-            credentials = service_account.Credentials.from_service_account_info(
-                info,
-                scopes=["https://www.googleapis.com/auth/bigquery"]
+            credentials = Credentials(
+                token=None,
+                refresh_token=refresh_token,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=client_id,
+                client_secret=client_secret
             )
             return bigquery.Client(
                 credentials=credentials,
-                project=info.get('project_id', 'rj-sms-sandbox')
+                project="rj-sms-sandbox"
             )
         except Exception as e:
-            print(f"Erro GOOGLE_APPLICATION_CREDENTIALS_JSON: {e}")
+            print(f"Erro OAuth Railway: {e}")
 
     # 2. Streamlit Cloud — service account
     try:
