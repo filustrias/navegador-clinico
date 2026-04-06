@@ -3,6 +3,7 @@ from utils.bigquery_client import test_connection
 from utils.data_loader import limpar_cache
 from utils.auth import requer_login
 from streamlit_option_menu import option_menu
+from utils import theme as T
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURAÇÃO DA PÁGINA
@@ -50,9 +51,9 @@ st.markdown("""
 col1, col2 = st.columns([3, 1])
 
 with col1:
-    st.markdown("""
-    <h1 style='margin: 0; padding: 0; color: #FAFAFA;'>
-        🏥 Navegador Clínico <small style='color: #999; font-size: 0.5em;'>SMS-RJ</small>
+    st.markdown(f"""
+    <h1 style='margin: 0; padding: 0; color: {T.TEXT};'>
+        🏥 Navegador Clínico <small style='color: {T.TEXT_MUTED}; font-size: 0.5em;'>SMS-RJ</small>
     </h1>
     """, unsafe_allow_html=True)
 
@@ -64,9 +65,9 @@ with col2:
         info_lines.append(f"Clínica: {clinica}")
     if ap != 'N/A':
         info_lines.append(f"AP: {ap}")
-    
+
     st.markdown(f"""
-    <div style='text-align: right; padding-top: 10px; color: #FAFAFA; font-size: 0.9em;'>
+    <div style='text-align: right; padding-top: 10px; color: {T.TEXT}; font-size: 0.9em;'>
         <span style='font-size: 1.3em;'>👤</span> {"<br>".join(info_lines)}
     </div>
     """, unsafe_allow_html=True)
@@ -98,11 +99,11 @@ selected = option_menu(
     styles={
         "container": {
             "padding": "0!important",
-            "background-color": "#0E1117",
+            "background-color": T.NAV_BG,
         },
         "icon": {
             "font-size": "22px",
-            "color": "#FAFAFA",
+            "color": T.TEXT,
             "display": "block",
             "margin-bottom": "4px",
         },
@@ -111,9 +112,9 @@ selected = option_menu(
             "text-align": "center",
             "margin": "0px",
             "padding": "10px 18px",
-            "color": "#AAAAAA",
-            "background-color": "#262730",
-            "--hover-color": "#353540",
+            "color": T.NAV_LINK,
+            "background-color": T.SECONDARY_BG,
+            "--hover-color": T.NAV_HOVER,
             "display": "flex",
             "flex-direction": "column",
             "align-items": "center",
@@ -121,8 +122,8 @@ selected = option_menu(
             "white-space": "nowrap",
         },
         "nav-link-selected": {
-            "background-color": "#404040",
-            "color": "#FFFFFF",
+            "background-color": T.NAV_SELECTED_BG,
+            "color": T.NAV_SELECTED_TEXT,
             "font-weight": "600",
         },
     }
@@ -269,25 +270,25 @@ def _build_carrossel_uso(casos):
 .uso-slide {{ animation: uFade .45s ease; }}
 @keyframes uFade {{ from{{opacity:0;transform:translateY(5px)}} to{{opacity:1;transform:translateY(0)}} }}
 .uso-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }}
-.uso-esq {{ background:#1a1a2e; border-radius:12px; padding:20px 22px; min-height:190px; }}
-.uso-dir {{ background:#16213e; border-radius:12px; padding:20px 22px; min-height:190px; }}
+.uso-esq {{ background:{T.CARD_BG}; border-radius:12px; padding:20px 22px; min-height:190px; }}
+.uso-dir {{ background:{T.SECONDARY_BG}; border-radius:12px; padding:20px 22px; min-height:190px; }}
 .uso-perfil {{ font-size:.74em; font-weight:700; letter-spacing:.07em; text-transform:uppercase; margin-bottom:8px; }}
-.uso-titulo {{ font-size:1.0em; font-weight:700; color:#FAFAFA; line-height:1.35; margin-bottom:10px; }}
-.uso-tag {{ font-size:.76em; color:#666; margin-top:6px; }}
-.uso-passos-titulo {{ font-size:.72em; font-weight:700; color:#666; text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; }}
+.uso-titulo {{ font-size:1.0em; font-weight:700; color:{T.TEXT}; line-height:1.35; margin-bottom:10px; }}
+.uso-tag {{ font-size:.76em; color:{T.TEXT_MUTED}; margin-top:6px; }}
+.uso-passos-titulo {{ font-size:.72em; font-weight:700; color:{T.TEXT_MUTED}; text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; }}
 .uso-passos {{ list-style:none; padding:0; margin:0; }}
-.uso-passos li {{ font-size:.85em; color:#CCCCCC; padding:4px 0; border-bottom:1px solid #1e2a3a; line-height:1.5; }}
+.uso-passos li {{ font-size:.85em; color:{T.TEXT_SECONDARY}; padding:4px 0; border-bottom:1px solid {T.BORDER}; line-height:1.5; }}
 .uso-passos li:last-child {{ border-bottom:none; }}
-.uso-passos b {{ color:#FAFAFA; }}
-.uso-passos i {{ color:#AAAAAA; }}
+.uso-passos b {{ color:{T.TEXT}; }}
+.uso-passos i {{ color:{T.TEXT_MUTED}; }}
 .uso-nav {{ display:flex; justify-content:center; align-items:center; gap:7px; margin-top:12px; }}
-.udot {{ width:9px; height:9px; border-radius:50%; background:#333; cursor:pointer; transition:background .3s,transform .3s; display:inline-block; }}
-.udot.active {{ background:#4f8ef7; transform:scale(1.35); }}
-.uarrow {{ cursor:pointer; color:#555; font-size:1em; padding:0 8px; user-select:none; }}
-.uarrow:hover {{ color:#FAFAFA; }}
-.ucounter {{ font-size:.72em; color:#444; margin-left:8px; }}
-.uprog {{ height:3px; background:#111; border-radius:2px; margin-bottom:10px; overflow:hidden; }}
-.uprog-bar {{ height:100%; background:#4f8ef7; width:0%; transition:width 6s linear; }}
+.udot {{ width:9px; height:9px; border-radius:50%; background:{T.BORDER}; cursor:pointer; transition:background .3s,transform .3s; display:inline-block; }}
+.udot.active {{ background:{T.ACCENT}; transform:scale(1.35); }}
+.uarrow {{ cursor:pointer; color:{T.TEXT_SECONDARY}; font-size:1em; padding:0 8px; user-select:none; }}
+.uarrow:hover {{ color:{T.TEXT}; }}
+.ucounter {{ font-size:.72em; color:{T.TEXT_SECONDARY}; margin-left:8px; }}
+.uprog {{ height:3px; background:{T.GRID}; border-radius:2px; margin-bottom:10px; overflow:hidden; }}
+.uprog-bar {{ height:100%; background:{T.ACCENT}; width:0%; transition:width 6s linear; }}
 </style>
 <div class="uprog"><div class="uprog-bar" id="uprog-bar"></div></div>
 {slides}
@@ -528,33 +529,33 @@ if conexao_ok:
 .pslide.active {{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }}
 @keyframes pFade {{ from{{opacity:0;transform:translateY(5px)}} to{{opacity:1;transform:translateY(0)}} }}
 .pcard {{
-    background:#1e1e2e; border-radius:12px; padding:18px 20px;
-    border-left:4px solid #4f8ef7; min-height:260px;
+    background:{T.CARD_BG}; border-radius:12px; padding:18px 20px;
+    border-left:4px solid {T.ACCENT}; min-height:260px;
 }}
-.pcard-title {{ font-size:.78em; font-weight:700; color:#888;
+.pcard-title {{ font-size:.78em; font-weight:700; color:{T.TEXT_MUTED};
     text-transform:uppercase; letter-spacing:.07em; margin-bottom:6px; }}
-.pcard-num {{ font-size:2.2em; font-weight:800; color:#4f8ef7; line-height:1.1; }}
-.pcard-sub {{ font-size:.82em; color:#AAA; margin-top:3px; line-height:1.4; }}
-.pcard-divider {{ border:none; border-top:1px solid #353540; margin:10px 0 8px 0; }}
+.pcard-num {{ font-size:2.2em; font-weight:800; color:{T.ACCENT}; line-height:1.1; }}
+.pcard-sub {{ font-size:.82em; color:{T.TEXT_MUTED}; margin-top:3px; line-height:1.4; }}
+.pcard-divider {{ border:none; border-top:1px solid {T.BORDER}; margin:10px 0 8px 0; }}
 .pchart-wrap {{ position:relative; height:160px; margin-top:6px; }}
 .pnav {{ display:flex; justify-content:center; align-items:center;
     gap:7px; margin-top:12px; }}
-.pdot {{ width:9px; height:9px; border-radius:50%; background:#333;
+.pdot {{ width:9px; height:9px; border-radius:50%; background:{T.BORDER};
     cursor:pointer; transition:background .3s,transform .3s; display:inline-block; }}
-.pdot.active {{ background:#4f8ef7; transform:scale(1.35); }}
-.parrow {{ cursor:pointer; color:#555; font-size:1em;
+.pdot.active {{ background:{T.ACCENT}; transform:scale(1.35); }}
+.parrow {{ cursor:pointer; color:{T.TEXT_SECONDARY}; font-size:1em;
     padding:0 8px; user-select:none; }}
-.parrow:hover {{ color:#FAFAFA; }}
-.pcounter {{ font-size:.72em; color:#444; margin-left:8px; }}
-.pprog {{ height:3px; background:#111; border-radius:2px; margin-bottom:10px; overflow:hidden; }}
-.pprog-bar {{ height:100%; background:#4f8ef7; width:0%; transition:width 6s linear; }}
+.parrow:hover {{ color:{T.TEXT}; }}
+.pcounter {{ font-size:.72em; color:{T.TEXT_SECONDARY}; margin-left:8px; }}
+.pprog {{ height:3px; background:{T.GRID}; border-radius:2px; margin-bottom:10px; overflow:hidden; }}
+.pprog-bar {{ height:100%; background:{T.ACCENT}; width:0%; transition:width 6s linear; }}
 </style>
 
 <div class="pprog"><div class="pprog-bar" id="pprog-bar"></div></div>
 
 <!-- Slide 1 — Multimorbidade -->
 <div class="pslide" id="pslide-0">
-  <div class="pcard" style="border-left-color:#4f8ef7">
+  <div class="pcard" style="border-left-color:{T.ACCENT}">
     <div class="pcard-title">🏥 Multimorbidade</div>
     <div class="pcard-num">{pct_multi:.1f}%</div>
     <div class="pcard-sub">{n_multi:,} pacientes com 2 ou mais condições crônicas<br>de {total_pop:,} cadastrados</div>
@@ -562,7 +563,7 @@ if conexao_ok:
     <div class="pcard-sub">Distribuição por número de morbidades</div>
     <div class="pchart-wrap"><canvas id="c-morb"></canvas></div>
   </div>
-  <div class="pcard" style="border-left-color:#4f8ef7">
+  <div class="pcard" style="border-left-color:{T.ACCENT}">
     <div class="pcard-title">📊 Morbidades Mais Prevalentes</div>
     <div class="pcard-sub" style="margin-bottom:8px">Proporção da população com cada condição registrada</div>
     <hr class="pcard-divider">
@@ -649,17 +650,17 @@ if conexao_ok:
 
   var CFG = {{responsive:true,maintainAspectRatio:false,
     plugins:{{legend:{{display:false}}}},
-    scales:{{x:{{ticks:{{color:'#AAA',font:{{size:10}}}},grid:{{color:'#222'}}}},
-             y:{{ticks:{{color:'#AAA',font:{{size:10}}}},grid:{{color:'#222'}}}}}}}};
+    scales:{{x:{{ticks:{{color:'{T.TEXT_MUTED}',font:{{size:10}}}},grid:{{color:'{T.GRID}'}}}},
+             y:{{ticks:{{color:'{T.TEXT_MUTED}',font:{{size:10}}}},grid:{{color:'{T.GRID}'}}}}}}}};
 
   function mkBar(id,labels,data,colors,horiz){{
     var ctx=document.getElementById(id);
     if(!ctx||charts[id]) return;
     var scales=horiz
-      ? {{x:{{ticks:{{color:'#AAA',font:{{size:9}}}},grid:{{color:'#222'}}}},
-          y:{{ticks:{{color:'#FAFAFA',font:{{size:9}}}},grid:{{display:false}}}}}}
-      : {{x:{{ticks:{{color:'#AAA',font:{{size:9}}}},grid:{{color:'#222'}}}},
-          y:{{ticks:{{color:'#AAA',font:{{size:9}}}},grid:{{color:'#222'}}}}}};
+      ? {{x:{{ticks:{{color:'{T.TEXT_MUTED}',font:{{size:9}}}},grid:{{color:'{T.GRID}'}}}},
+          y:{{ticks:{{color:'{T.TEXT}',font:{{size:9}}}},grid:{{display:false}}}}}}
+      : {{x:{{ticks:{{color:'{T.TEXT_MUTED}',font:{{size:9}}}},grid:{{color:'{T.GRID}'}}}},
+          y:{{ticks:{{color:'{T.TEXT_MUTED}',font:{{size:9}}}},grid:{{color:'{T.GRID}'}}}}}};
     charts[id]=new Chart(ctx,{{
       type:'bar',
       data:{{labels:labels,datasets:[{{data:data,backgroundColor:colors,borderRadius:3}}]}},

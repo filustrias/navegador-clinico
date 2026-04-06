@@ -14,6 +14,7 @@ from utils.auth import (
     ROTULOS_PERFIS, ICONES_PERFIS
 )
 from utils.data_loader import limpar_cache
+from utils import theme as T
 
 # ═══════════════════════════════════════════════════════════════
 # ROTAS E ÍCONES — definidos UMA ÚNICA VEZ aqui
@@ -48,18 +49,18 @@ assert len(ROTAS) == len(ICONES_MENU), (
     f"Adicione o ícone correspondente ao adicionar uma nova rota."
 )
 
-_CSS_GLOBAL = """
+_CSS_GLOBAL = f"""
 <style>
-    [data-testid="stSidebarNav"] { display: none; }
-    .nav-titulo h1 { margin: 0; padding: 0; color: #FAFAFA; font-size: 1.6em; line-height: 1.2; }
-    .nav-titulo small { color: #777; font-size: 0.45em; font-weight: 400; }
-    .nav-usuario { text-align: right; padding-top: 8px; color: #FAFAFA; font-size: 0.88em; line-height: 1.6; }
-    .badge-contexto {
-        display: inline-block; background-color: #1a2540;
-        border: 1px solid #4f8ef7; border-radius: 20px;
-        padding: 2px 12px; font-size: 0.78em; color: #4f8ef7;
+    [data-testid="stSidebarNav"] {{ display: none; }}
+    .nav-titulo h1 {{ margin: 0; padding: 0; color: {T.TEXT}; font-size: 1.6em; line-height: 1.2; }}
+    .nav-titulo small {{ color: {T.TEXT_MUTED}; font-size: 0.45em; font-weight: 400; }}
+    .nav-usuario {{ text-align: right; padding-top: 8px; color: {T.TEXT}; font-size: 0.88em; line-height: 1.6; }}
+    .badge-contexto {{
+        display: inline-block; background-color: {T.BADGE_BG};
+        border: 1px solid {T.BADGE_BORDER}; border-radius: 20px;
+        padding: 2px 12px; font-size: 0.78em; color: {T.BADGE_TEXT};
         font-weight: 600; margin-top: 4px;
-    }
+    }}
 </style>
 """
 
@@ -124,12 +125,12 @@ def renderizar_cabecalho(pagina_atual: str) -> None:
         st.markdown(f"""
         <div class='nav-usuario'>
             {icone_u} <strong>{nome}</strong><br>
-            <span style='color:#AAAAAA; font-size:0.9em;'>{rotulo}</span><br>
+            <span style='color:{T.TEXT_MUTED}; font-size:0.9em;'>{rotulo}</span><br>
             <span class='badge-contexto'>{linha_ctx}</span>
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("<hr style='border:none; border-top:1px solid #353540; margin:10px 0 0 0;'>",
+    st.markdown(f"<hr style='border:none; border-top:1px solid {T.DIVIDER}; margin:10px 0 0 0;'>",
                 unsafe_allow_html=True)
 
     # 5. Menu de navegação
@@ -140,23 +141,23 @@ def renderizar_cabecalho(pagina_atual: str) -> None:
         default_index=list(ROTAS.keys()).index(pagina_atual),
         orientation="horizontal",
         styles={
-            "container":         {"padding": "0!important", "background-color": "#0E1117"},
-            "icon":              {"font-size": "22px", "color": "#FAFAFA",
+            "container":         {"padding": "0!important", "background-color": T.NAV_BG},
+            "icon":              {"font-size": "22px", "color": T.TEXT,
                                   "display": "block", "margin-bottom": "4px"},
             "nav-link":          {"font-size": "11px", "text-align": "center",
                                   "margin": "0px", "padding": "10px 18px",
-                                  "color": "#AAAAAA", "background-color": "#262730",
-                                  "--hover-color": "#353540", "display": "flex",
+                                  "color": T.NAV_LINK, "background-color": T.SECONDARY_BG,
+                                  "--hover-color": T.NAV_HOVER, "display": "flex",
                                   "flex-direction": "column", "align-items": "center",
                                   "line-height": "1.2", "white-space": "nowrap"},
-            "nav-link-selected": {"background-color": "#404040",
-                                  "color": "#FFFFFF", "font-weight": "600"},
+            "nav-link-selected": {"background-color": T.NAV_SELECTED_BG,
+                                  "color": T.NAV_SELECTED_TEXT, "font-weight": "600"},
         }
     )
     if selected != pagina_atual:
         st.switch_page(ROTAS[selected])
 
-    st.markdown("<hr style='border:none; border-top:1px solid #353540; margin:0 0 16px 0;'>",
+    st.markdown(f"<hr style='border:none; border-top:1px solid {T.DIVIDER}; margin:0 0 16px 0;'>",
                 unsafe_allow_html=True)
 
     # 6. Sidebar

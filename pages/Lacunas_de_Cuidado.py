@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from utils.bigquery_client import get_bigquery_client
+from utils import theme as T
 from components.cabecalho import renderizar_cabecalho
 from utils.auth import get_contexto_territorial, get_perfil
 import config
@@ -429,7 +430,7 @@ with tab1:
                 height=440,
             )
             fig_v.update_traces(
-                marker=dict(size=14, opacity=0.85, line=dict(width=1, color='white')),
+                marker=dict(size=14, opacity=0.85, line=dict(width=1, color=T.BORDER)),
                 jitter=0,
             )
             fig_v.update_xaxes(tickangle=-30, tickfont=dict(size=11),
@@ -465,14 +466,14 @@ with tab1:
                 tickangle=-30, tickfont=dict(size=11),
             )
 
-        fig_v.update_yaxes(ticksuffix='%', gridcolor='#2a2a3a',
+        fig_v.update_yaxes(ticksuffix='%', gridcolor=T.GRID,
                             rangemode='tozero', tickfont=dict(size=11))
         fig_v.update_layout(
             showlegend=False,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(15,20,40,0.5)',
-            font=dict(color='white'),
-            title_font=dict(size=13, color='white'),
+            paper_bgcolor=T.PAPER_BG,
+            plot_bgcolor=T.PLOT_BG,
+            font=dict(color=T.TEXT),
+            title_font=dict(size=13, color=T.TEXT),
             margin=dict(l=60, r=20, t=60, b=80),
         )
         st.plotly_chart(fig_v, use_container_width=True)

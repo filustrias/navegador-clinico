@@ -10,6 +10,7 @@ from utils.bigquery_client import get_bigquery_client
 from components.cabecalho import renderizar_cabecalho
 from utils.auth import get_contexto_territorial, get_perfil
 from components.filtros import filtros_territoriais
+from utils import theme as T
 import config
 import math
 from utils.anonimizador import (
@@ -384,7 +385,7 @@ def criar_piramide_populacional(df):
                 text=df_masc[campo],
                 texttemplate='%{text:,}',
                 textposition='inside',
-                textfont=dict(size=10, color='white'),
+                textfont=dict(size=10, color=T.TEXT),
                 legendgroup=label,
                 showlegend=True,
                 hovertemplate='<b>%{y}</b><br>Homens: %{text:,}<extra></extra>'
@@ -404,7 +405,7 @@ def criar_piramide_populacional(df):
                 text=df_fem[campo],
                 texttemplate='%{text:,}',
                 textposition='inside',
-                textfont=dict(size=10, color='white'),
+                textfont=dict(size=10, color=T.TEXT),
                 legendgroup=label,
                 showlegend=False,
                 hovertemplate='<b>%{y}</b><br>Mulheres: %{x:,}<extra></extra>'
@@ -474,7 +475,7 @@ def criar_piramide_populacional(df):
             ticktext=ticktext,
             zeroline=True,
             zerolinewidth=3,
-            zerolinecolor='white'
+            zerolinecolor=T.TEXT
         ),
         yaxis=dict(title='Faixa Etária'),
         legend=dict(
@@ -698,7 +699,7 @@ def criar_piramide_charlson(df):
             text=df_masc[campo],
             texttemplate='%{text:,}',
             textposition='inside',
-            textfont=dict(size=9, color='white'),
+            textfont=dict(size=9, color=T.TEXT),
             legendgroup=label,
             showlegend=True,
             hovertemplate=f'<b>%{{y}}</b><br>Homens ({label}): %{{text:,}}<extra></extra>'
@@ -716,7 +717,7 @@ def criar_piramide_charlson(df):
             text=df_fem[campo],
             texttemplate='%{text:,}',
             textposition='inside',
-            textfont=dict(size=9, color='white'),
+            textfont=dict(size=9, color=T.TEXT),
             legendgroup=label,
             showlegend=False,
             hovertemplate=f'<b>%{{y}}</b><br>Mulheres ({label}): %{{x:,}}<extra></extra>'
@@ -743,7 +744,7 @@ def criar_piramide_charlson(df):
         height=700,
         xaxis=dict(title='População', range=[-max_range, max_range],
                    tickvals=tickvals, ticktext=ticktext,
-                   zeroline=True, zerolinewidth=3, zerolinecolor='white'),
+                   zeroline=True, zerolinewidth=3, zerolinecolor=T.TEXT),
         yaxis=dict(title='Faixa Etária'),
         legend=dict(orientation='v', yanchor='middle', y=0.5,
                     xanchor='left', x=1.02,
@@ -806,7 +807,7 @@ def criar_piramide_medicamentos(df):
                 text=df_masc[campo],
                 texttemplate='%{text:,}',
                 textposition='inside',
-                textfont=dict(size=10, color='white'),
+                textfont=dict(size=10, color=T.TEXT),
                 legendgroup=label, 
                 showlegend=True,
                 hovertemplate='<b>%{y}</b><br>Homens: %{text:,}<extra></extra>'
@@ -823,7 +824,7 @@ def criar_piramide_medicamentos(df):
                 text=df_fem[campo],
                 texttemplate='%{text:,}',
                 textposition='inside',
-                textfont=dict(size=10, color='white'),
+                textfont=dict(size=10, color=T.TEXT),
                 legendgroup=label, 
                 showlegend=False,
                 hovertemplate='<b>%{y}</b><br>Mulheres: %{x:,}<extra></extra>'
@@ -882,7 +883,7 @@ def criar_piramide_medicamentos(df):
             ticktext=ticktext,
             zeroline=True,
             zerolinewidth=3,
-            zerolinecolor='white'
+            zerolinecolor=T.TEXT
         ),
         yaxis=dict(title='Faixa Etária'),
         legend=dict(
@@ -1820,33 +1821,33 @@ def _stacked_bar_ap(df, cols_pop, labels, cores, titulo,
             marker_color=cor,
             text=[f"{v:.1f}%" for v in vals],
             textposition='inside',
-            textfont=dict(size=9, color='white'),
+            textfont=dict(size=9, color=T.TEXT),
         ))
     fig.update_layout(
         barmode='stack',
         height=340,
         bargap=0.35,
         margin=dict(l=10, r=160, t=50, b=60 if len(terrs) <= 12 else 130),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        title=dict(text=titulo, font=dict(color='#FAFAFA', size=13)),
+        paper_bgcolor=T.PAPER_BG,
+        plot_bgcolor=T.PLOT_BG,
+        title=dict(text=titulo, font=dict(color=T.TEXT, size=13)),
         xaxis=dict(
             type='category', categoryorder='array', categoryarray=terrs,
-            tickfont=dict(color='#FAFAFA', size=11 if len(terrs) <= 12 else 9),
+            tickfont=dict(color=T.TEXT, size=11 if len(terrs) <= 12 else 9),
             tickangle=0 if len(terrs) <= 12 else -40,
         ),
         yaxis=dict(
             title=eixo_y,
-            tickfont=dict(color='#AAA', size=10),
-            gridcolor='#2a2a3a',
+            tickfont=dict(color=T.TEXT_MUTED, size=10),
+            gridcolor=T.GRID,
             range=[0, 40],
         ),
         legend=dict(
             orientation='v', xanchor='left', x=1.01,
             yanchor='middle', y=0.5,
-            font=dict(color='#FAFAFA', size=11),
-            bgcolor='rgba(30,30,46,0.7)',
-            bordercolor='#353540', borderwidth=1,
+            font=dict(color=T.TEXT, size=11),
+            bgcolor=T.LEGEND_BG,
+            bordercolor=T.LEGEND_BORDER, borderwidth=1,
         ),
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -1893,9 +1894,9 @@ def _grouped_bar_territorio(df, cols, labels, cores, titulo, eixo_y='% dos pacie
             orientation='h',
             xanchor='center', x=0.5,
             yanchor='top',    y=-0.22,
-            font=dict(color='#FAFAFA', size=11),
-            bgcolor='rgba(30,30,46,0.7)',
-            bordercolor='#353540', borderwidth=1,
+            font=dict(color=T.TEXT, size=11),
+            bgcolor=T.LEGEND_BG,
+            bordercolor=T.LEGEND_BORDER, borderwidth=1,
             traceorder='normal',
         )
         altura     = 520
@@ -1906,9 +1907,9 @@ def _grouped_bar_territorio(df, cols, labels, cores, titulo, eixo_y='% dos pacie
             orientation='v',
             xanchor='left', x=1.01,
             yanchor='middle', y=0.5,
-            font=dict(color='#FAFAFA', size=11),
-            bgcolor='rgba(30,30,46,0.7)',
-            bordercolor='#353540', borderwidth=1,
+            font=dict(color=T.TEXT, size=11),
+            bgcolor=T.LEGEND_BG,
+            bordercolor=T.LEGEND_BORDER, borderwidth=1,
         )
         altura   = 420
         margin_b = 60 if len(terrs) <= 12 else 130
@@ -1920,20 +1921,20 @@ def _grouped_bar_territorio(df, cols, labels, cores, titulo, eixo_y='% dos pacie
         bargap=0.25,
         bargroupgap=0.06,
         margin=dict(l=10, r=margin_r, t=50, b=margin_b),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        title=dict(text=titulo, font=dict(color='#FAFAFA', size=13)),
+        paper_bgcolor=T.PAPER_BG,
+        plot_bgcolor=T.PLOT_BG,
+        title=dict(text=titulo, font=dict(color=T.TEXT, size=13)),
         xaxis=dict(
             type='category',
             categoryorder='array',
             categoryarray=terrs,
-            tickfont=dict(color='#FAFAFA', size=11 if len(terrs) <= 12 else 9),
+            tickfont=dict(color=T.TEXT, size=11 if len(terrs) <= 12 else 9),
             tickangle=0 if len(terrs) <= 12 else -40,
         ),
         yaxis=dict(
             title=eixo_y,
-            tickfont=dict(color='#AAA', size=11),
-            gridcolor='#2a2a3a',
+            tickfont=dict(color=T.TEXT_MUTED, size=11),
+            gridcolor=T.GRID,
             range=[0, 62],
         ),
         legend=legend_cfg,
@@ -2214,19 +2215,19 @@ O escore integrado combina três componentes:
             fig_c.update_xaxes(
                 type='category', categoryorder='array', categoryarray=grupos_ord_c,
                 tickangle=-40 if len(grupos_ord_c) > 5 else 0,
-                tickfont=dict(size=11, color='white'),
-                title_font=dict(color='white'),
+                tickfont=dict(size=11, color=T.TEXT),
+                title_font=dict(color=T.TEXT),
             )
             fig_c.update_yaxes(
-                tickfont=dict(size=11, color='#AAA'),
-                ticksuffix='%', gridcolor='#2a2a3a', rangemode='tozero',
+                tickfont=dict(size=11, color=T.TEXT_MUTED),
+                ticksuffix='%', gridcolor=T.GRID, rangemode='tozero',
             )
             fig_c.update_layout(
                 showlegend=False,
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(15,20,40,0.5)',
-                font=dict(color='white'),
-                title_font=dict(size=12, color='white'),
+                paper_bgcolor=T.PAPER_BG,
+                plot_bgcolor=T.PLOT_BG,
+                font=dict(color=T.TEXT),
+                title_font=dict(size=12, color=T.TEXT),
                 margin=dict(l=60, r=20, t=70, b=80),
             )
             st.plotly_chart(fig_c, use_container_width=True, key='charlson_violin')
@@ -2453,21 +2454,21 @@ with tab3:
                 categoryorder='array',
                 categoryarray=grupos_ord,
                 tickangle=-40 if len(grupos_ord) > 5 else 0,
-                tickfont=dict(size=11, color='white'),
-                title_font=dict(color='white'),
+                tickfont=dict(size=11, color=T.TEXT),
+                title_font=dict(color=T.TEXT),
             )
             fig_v.update_yaxes(
-                tickfont=dict(size=11, color='#AAA'),
+                tickfont=dict(size=11, color=T.TEXT_MUTED),
                 ticksuffix='%',
-                gridcolor='#2a2a3a',
+                gridcolor=T.GRID,
                 rangemode='tozero',
             )
             fig_v.update_layout(
                 showlegend=False,
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(15,20,40,0.5)',
-                font=dict(color='white'),
-                title_font=dict(size=12, color='white'),
+                paper_bgcolor=T.PAPER_BG,
+                plot_bgcolor=T.PLOT_BG,
+                font=dict(color=T.TEXT),
+                title_font=dict(size=12, color=T.TEXT),
                 margin=dict(l=60, r=20, t=70, b=80),
             )
             st.plotly_chart(fig_v, use_container_width=True, key='violin_unico')
@@ -2762,16 +2763,7 @@ with tab4:
 
         with col_hm:
             # Escala de cor: azul escuro → teal → verde → amarelo → laranja → vermelho
-            colorscale_hm = [
-                [0.00, '#0D1B2A'],
-                [0.05, '#1A3A5C'],
-                [0.15, '#1B6CA8'],
-                [0.35, '#2E86AB'],
-                [0.55, '#44BBA4'],
-                [0.75, '#E9C46A'],
-                [0.90, '#F4A261'],
-                [1.00, '#E63946'],
-            ]
+            colorscale_hm = T.HEATMAP_COLORSCALE
 
             fig_hm = go.Figure(data=go.Heatmap(
                 z=mat_z.tolist(),
@@ -2779,18 +2771,18 @@ with tab4:
                 y=grupos_ord,
                 text=mat_txt,
                 texttemplate="%{text}",
-                textfont=dict(size=12, color='white'),
+                textfont=dict(size=12, color=T.TEXT),
                 colorscale=colorscale_hm,
                 showscale=True,
                 colorbar=dict(
                     title=dict(
                         text='Pacientes',
-                        font=dict(color='#CCCCCC', size=11),
+                        font=dict(color=T.TEXT_SECONDARY, size=11),
                     ),
-                    tickfont=dict(color='#CCCCCC', size=9),
+                    tickfont=dict(color=T.TEXT_SECONDARY, size=9),
                     thickness=14, len=0.85,
-                    bgcolor='rgba(0,0,0,0)',
-                    bordercolor='rgba(0,0,0,0)',
+                    bgcolor=T.PAPER_BG,
+                    bordercolor=T.PAPER_BG,
                 ),
                 hovertemplate=(
                     "<b>%{y} + %{x}</b><br>"
@@ -2823,18 +2815,18 @@ with tab4:
                 title=dict(
                     text=(
                         f"Sobreposição de comorbidades — hipertensos"
-                        f"<br><sup style='color:#AAAAAA'>"
+                        f"<br><sup style='color:{T.TEXT_MUTED}'>"
                         f"Total de hipertensos: {n_has_rpa:,} · "
                         f"Diagonal = total isolado · Off-diagonal = interseção"
                         f"</sup>"
                     ),
-                    font=dict(size=13, color='white'), x=0.5,
+                    font=dict(size=13, color=T.TEXT), x=0.5,
                 ),
                 height=430,
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(15,20,40,0.6)',
+                paper_bgcolor=T.PAPER_BG,
+                plot_bgcolor=T.PLOT_BG,
                 xaxis=dict(
-                    tickfont=dict(color='white', size=13, family='monospace'),
+                    tickfont=dict(color=T.TEXT, size=13, family='monospace'),
                     side='bottom', showgrid=False,
                     tickvals=list(range(5)),
                     ticktext=[
@@ -2843,7 +2835,7 @@ with tab4:
                     ],
                 ),
                 yaxis=dict(
-                    tickfont=dict(color='white', size=13, family='monospace'),
+                    tickfont=dict(color=T.TEXT, size=13, family='monospace'),
                     autorange='reversed', showgrid=False,
                     tickvals=list(range(5)),
                     ticktext=[
@@ -2861,9 +2853,9 @@ with tab4:
 
             with sub_g:
                 st.markdown(
-                    "<p style='font-size:13px;font-weight:700;"
-                    "color:#DDDDDD;margin-bottom:8px'>"
-                    "🩺 Grupos</p>",
+                    f"<p style='font-size:13px;font-weight:700;"
+                    f"color:{T.TEXT_SECONDARY};margin-bottom:8px'>"
+                    f"🩺 Grupos</p>",
                     unsafe_allow_html=True
                 )
                 for nome, val, cor in zip(grupos_ord, totais_ord, cores_ord):
@@ -2873,10 +2865,10 @@ with tab4:
                     st.markdown(
                         f"<div style='margin-bottom:10px'>"
                         f"<span style='color:{cor};font-size:15px'>⬤</span> "
-                        f"<span style='font-weight:700;color:white'>{nome}</span><br>"
-                        f"<span style='font-size:13px;color:#CCCCCC'>"
+                        f"<span style='font-weight:700;color:{T.TEXT}'>{nome}</span><br>"
+                        f"<span style='font-size:13px;color:{T.TEXT_SECONDARY}'>"
                         f"{val:,}</span> "
-                        f"<span style='font-size:11px;color:#888'>{pct_g:.1f}%</span><br>"
+                        f"<span style='font-size:11px;color:{T.TEXT_MUTED}'>{pct_g:.1f}%</span><br>"
                         f"<div style='background:{cor};height:4px;"
                         f"width:{bar_w}%;border-radius:2px;opacity:0.7'></div>"
                         f"</div>",
@@ -2885,9 +2877,9 @@ with tab4:
 
             with sub_p:
                 st.markdown(
-                    "<p style='font-size:13px;font-weight:700;"
-                    "color:#DDDDDD;margin-bottom:8px'>"
-                    "🔗 Sobreposições</p>",
+                    f"<p style='font-size:13px;font-weight:700;"
+                    f"color:{T.TEXT_SECONDARY};margin-bottom:8px'>"
+                    f"🔗 Sobreposições</p>",
                     unsafe_allow_html=True
                 )
                 pares_sorted = sorted(pares.items(), key=lambda x: -x[1])
@@ -2900,10 +2892,10 @@ with tab4:
                             f"<div style='margin-bottom:8px'>"
                             f"<span style='color:{cor1}'>⬤</span>"
                             f"<span style='color:{cor2}'>⬤</span> "
-                            f"<span style='font-size:12px;color:white'>"
+                            f"<span style='font-size:12px;color:{T.TEXT}'>"
                             f"<b>{g1}+{g2}</b></span><br>"
-                            f"<span style='font-size:12px;color:#CCCCCC'>{val:,}</span> "
-                            f"<span style='font-size:11px;color:#888'>{pct_p:.1f}%</span>"
+                            f"<span style='font-size:12px;color:{T.TEXT_SECONDARY}'>{val:,}</span> "
+                            f"<span style='font-size:11px;color:{T.TEXT_MUTED}'>{pct_p:.1f}%</span>"
                             f"</div>",
                             unsafe_allow_html=True
                         )
@@ -2915,10 +2907,10 @@ with tab4:
                     f"<div style='margin-top:12px;padding:8px 12px;"
                     f"border-left:3px solid #E63946;"
                     f"background:rgba(230,57,70,0.1);border-radius:4px'>"
-                    f"<span style='font-size:11px;color:#AAAAAA'>Com todas as 5</span><br>"
-                    f"<span style='font-size:18px;font-weight:700;color:white'>"
+                    f"<span style='font-size:11px;color:{T.TEXT_MUTED}'>Com todas as 5</span><br>"
+                    f"<span style='font-size:18px;font-weight:700;color:{T.TEXT}'>"
                     f"{n_todas5:,}</span> "
-                    f"<span style='font-size:11px;color:#888'>"
+                    f"<span style='font-size:11px;color:{T.TEXT_MUTED}'>"
                     f"({_p(n_todas5, n_has_rpa):.1f}%)</span>"
                     f"</div>",
                     unsafe_allow_html=True
@@ -3371,27 +3363,22 @@ with tab5:
             return f"rgba({r},{g},{b},{a})"
 
         with col_hm_dm:
-            colorscale_dm = [
-                [0.00, '#0D1B2A'], [0.05, '#1A3A5C'],
-                [0.15, '#1B6CA8'], [0.35, '#2E86AB'],
-                [0.55, '#44BBA4'], [0.75, '#E9C46A'],
-                [0.90, '#F4A261'], [1.00, '#E63946'],
-            ]
+            colorscale_dm = T.HEATMAP_COLORSCALE
             fig_hm_dm = go.Figure(data=go.Heatmap(
                 z=mat_z_dm.tolist(),
                 x=grupos_dm, y=grupos_dm,
                 text=mat_txt_dm,
                 texttemplate="%{text}",
-                textfont=dict(size=12, color='white'),
+                textfont=dict(size=12, color=T.TEXT),
                 colorscale=colorscale_dm,
                 showscale=True,
                 colorbar=dict(
                     title=dict(text='Pacientes',
-                               font=dict(color='#CCCCCC', size=11)),
-                    tickfont=dict(color='#CCCCCC', size=9),
+                               font=dict(color=T.TEXT_SECONDARY, size=11)),
+                    tickfont=dict(color=T.TEXT_SECONDARY, size=9),
                     thickness=14, len=0.85,
-                    bgcolor='rgba(0,0,0,0)',
-                    bordercolor='rgba(0,0,0,0)',
+                    bgcolor=T.PAPER_BG,
+                    bordercolor=T.PAPER_BG,
                 ),
                 hovertemplate=(
                     "<b>DM + %{y} + %{x}</b><br>"
@@ -3409,22 +3396,22 @@ with tab5:
                 title=dict(
                     text=(
                         f"Comorbidades em diabéticos"
-                        f"<br><sup style='color:#AAAAAA'>"
+                        f"<br><sup style='color:{T.TEXT_MUTED}'>"
                         f"Total de diabéticos: {n_dm:,} · "
                         f"Diagonal = total com DM+comorbidade · "
                         f"Off-diagonal = interseção</sup>"
                     ),
-                    font=dict(size=13, color='white'), x=0.5,
+                    font=dict(size=13, color=T.TEXT), x=0.5,
                 ),
                 height=430,
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(15,20,40,0.6)',
+                paper_bgcolor=T.PAPER_BG,
+                plot_bgcolor=T.PLOT_BG,
                 xaxis=dict(
-                    tickfont=dict(color='white', size=13, family='monospace'),
+                    tickfont=dict(color=T.TEXT, size=13, family='monospace'),
                     side='bottom', showgrid=False,
                 ),
                 yaxis=dict(
-                    tickfont=dict(color='white', size=13, family='monospace'),
+                    tickfont=dict(color=T.TEXT, size=13, family='monospace'),
                     autorange='reversed', showgrid=False,
                 ),
                 margin=dict(l=10, r=10, t=70, b=30),
@@ -3435,8 +3422,8 @@ with tab5:
             sub_g_dm, sub_p_dm = st.columns(2)
             with sub_g_dm:
                 st.markdown(
-                    "<p style='font-size:13px;font-weight:700;"
-                    "color:#DDDDDD;margin-bottom:8px'>🩺 Grupos</p>",
+                    f"<p style='font-size:13px;font-weight:700;"
+                    f"color:{T.TEXT_SECONDARY};margin-bottom:8px'>🩺 Grupos</p>",
                     unsafe_allow_html=True
                 )
                 for nome, val, cor in zip(grupos_dm, totais_dm, cores_dm):
@@ -3445,9 +3432,9 @@ with tab5:
                     st.markdown(
                         f"<div style='margin-bottom:10px'>"
                         f"<span style='color:{cor};font-size:15px'>⬤</span> "
-                        f"<span style='font-weight:700;color:white'>{nome}</span><br>"
-                        f"<span style='font-size:13px;color:#CCCCCC'>{val:,}</span> "
-                        f"<span style='font-size:11px;color:#888'>{pct_g:.1f}%</span><br>"
+                        f"<span style='font-weight:700;color:{T.TEXT}'>{nome}</span><br>"
+                        f"<span style='font-size:13px;color:{T.TEXT_SECONDARY}'>{val:,}</span> "
+                        f"<span style='font-size:11px;color:{T.TEXT_MUTED}'>{pct_g:.1f}%</span><br>"
                         f"<div style='background:{cor};height:4px;"
                         f"width:{bar_w}%;border-radius:2px;opacity:0.7'></div>"
                         f"</div>",
@@ -3455,8 +3442,8 @@ with tab5:
                     )
             with sub_p_dm:
                 st.markdown(
-                    "<p style='font-size:13px;font-weight:700;"
-                    "color:#DDDDDD;margin-bottom:8px'>🔗 Sobreposições</p>",
+                    f"<p style='font-size:13px;font-weight:700;"
+                    f"color:{T.TEXT_SECONDARY};margin-bottom:8px'>🔗 Sobreposições</p>",
                     unsafe_allow_html=True
                 )
                 pares_dm_sorted = sorted(pares_dm.items(), key=lambda x: -x[1])
@@ -3469,10 +3456,10 @@ with tab5:
                             f"<div style='margin-bottom:8px'>"
                             f"<span style='color:{cor1}'>⬤</span>"
                             f"<span style='color:{cor2}'>⬤</span> "
-                            f"<span style='font-size:12px;color:white'>"
+                            f"<span style='font-size:12px;color:{T.TEXT}'>"
                             f"<b>{g1}+{g2}</b></span><br>"
-                            f"<span style='font-size:12px;color:#CCCCCC'>{val:,}</span> "
-                            f"<span style='font-size:11px;color:#888'>{pct_p:.1f}%</span>"
+                            f"<span style='font-size:12px;color:{T.TEXT_SECONDARY}'>{val:,}</span> "
+                            f"<span style='font-size:11px;color:{T.TEXT_MUTED}'>{pct_p:.1f}%</span>"
                             f"</div>",
                             unsafe_allow_html=True
                         )
@@ -3482,11 +3469,11 @@ with tab5:
                     f"<div style='margin-top:12px;padding:8px 12px;"
                     f"border-left:3px solid #E63946;"
                     f"background:rgba(230,57,70,0.1);border-radius:4px'>"
-                    f"<span style='font-size:11px;color:#AAAAAA'>"
+                    f"<span style='font-size:11px;color:{T.TEXT_MUTED}'>"
                     f"DM + todas as 5 comorbidades</span><br>"
-                    f"<span style='font-size:18px;font-weight:700;color:white'>"
+                    f"<span style='font-size:18px;font-weight:700;color:{T.TEXT}'>"
                     f"{n_dm_todas5:,}</span> "
-                    f"<span style='font-size:11px;color:#888'>"
+                    f"<span style='font-size:11px;color:{T.TEXT_MUTED}'>"
                     f"({_p(n_dm_todas5, n_dm):.1f}%)</span>"
                     f"</div>",
                     unsafe_allow_html=True
@@ -3809,13 +3796,13 @@ with tab6:
         # ── Card Alto Risco + Baixo Acesso ──
         n_arba = sumario.get('n_alto_risco_baixo_acesso', 0)
         st.markdown(f"""
-        <div style='background:#1e1e2e; border-left:4px solid #E74C3C;
+        <div style='background:{T.CARD_BG}; border-left:4px solid #E74C3C;
                     border-radius:10px; padding:16px; margin:8px 0;'>
             <span style='color:#E74C3C; font-weight:700;'>🚨 Alto Risco + Baixo Acesso</span>
             &nbsp;&nbsp;
-            <span style='color:#FAFAFA; font-size:1.6em; font-weight:800;'>{n_arba:,}</span>
+            <span style='color:{T.TEXT}; font-size:1.6em; font-weight:800;'>{n_arba:,}</span>
             &nbsp;&nbsp;
-            <span style='color:#AAAAAA; font-size:0.85em;'>
+            <span style='color:{T.TEXT_MUTED}; font-size:0.85em;'>
             pacientes com Charlson muito alto que consultam abaixo do P25 do seu grupo —
             os que <strong>mais precisam</strong> e <strong>menos acessam</strong>.
             </span>
@@ -4003,29 +3990,29 @@ with tab6:
 
             fig.update_layout(
                 barmode='overlay', height=520,
-                title=dict(text=titulo, font=dict(color='#FAFAFA', size=14), x=0.5),
+                title=dict(text=titulo, font=dict(color=T.TEXT, size=14), x=0.5),
                 margin=dict(l=60, r=20, t=60, b=40),
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
                 xaxis=dict(
                     range=[-max_val, max_val], zeroline=True,
-                    zerolinecolor='#AAAAAA', zerolinewidth=2,
+                    zerolinecolor=T.TEXT_MUTED, zerolinewidth=2,
                     title='← Masculino | Feminino →',
                     tickformat=',',
                     tickvals=[-max_val,-max_val*0.5,0,max_val*0.5,max_val],
                     ticktext=[f'{abs(v):,.0f}' for v in [-max_val,-max_val*0.5,0,max_val*0.5,max_val]],
-                    tickfont=dict(color='#AAAAAA', size=10)
+                    tickfont=dict(color=T.TEXT_MUTED, size=10)
                 ),
                 yaxis=dict(
                     type='category', categoryorder='array',
                     categoryarray=ORDEM_FAIXA, title='',
-                    tickfont=dict(color='#FAFAFA', size=10)
+                    tickfont=dict(color=T.TEXT, size=10)
                 ),
                 legend=dict(
                     orientation='v', xanchor='left', x=1.01,
                     yanchor='middle', y=0.5,
-                    font=dict(color='#FAFAFA', size=10),
-                    bgcolor='rgba(30,30,46,0.7)',
-                    bordercolor='#353540', borderwidth=1,
+                    font=dict(color=T.TEXT, size=10),
+                    bgcolor=T.LEGEND_BG,
+                    bordercolor=T.LEGEND_BORDER, borderwidth=1,
                 ),
                 bargap=0.1
             )
@@ -4059,21 +4046,21 @@ with tab6:
                     hovertemplate='%{y:.1f}%<extra>'+nome+'</extra>'
                 ))
             fig.update_layout(
-                title=dict(text=titulo, font=dict(color='#FAFAFA', size=14)),
+                title=dict(text=titulo, font=dict(color=T.TEXT, size=14)),
                 height=360, margin=dict(l=50, r=20, t=50, b=80),
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
                 xaxis=dict(type='category', categoryorder='array',
                            categoryarray=ORDEM_FAIXA,
-                           tickangle=45, tickfont=dict(color='#FAFAFA', size=10),
-                           title='Faixa etária', gridcolor='#2a2a3a'),
+                           tickangle=45, tickfont=dict(color=T.TEXT, size=10),
+                           title='Faixa etária', gridcolor=T.GRID),
                 yaxis=dict(title='% com atendimento', range=[0,105],
-                           tickfont=dict(color='#AAAAAA', size=10), gridcolor='#2a2a3a'),
+                           tickfont=dict(color=T.TEXT_MUTED, size=10), gridcolor=T.GRID),
                 legend=dict(
                     orientation='v', xanchor='left', x=1.01,
                     yanchor='middle', y=0.5,
-                    font=dict(color='#FAFAFA', size=11),
-                    bgcolor='rgba(30,30,46,0.7)',
-                    bordercolor='#353540', borderwidth=1,
+                    font=dict(color=T.TEXT, size=11),
+                    bgcolor=T.LEGEND_BG,
+                    bordercolor=T.LEGEND_BORDER, borderwidth=1,
                 )
             )
             return fig
@@ -4155,29 +4142,29 @@ with tab6:
             fig.update_layout(
                 barmode='relative',
                 height=580,
-                title=dict(text=titulo, font=dict(color='#FAFAFA', size=14), x=0.5),
+                title=dict(text=titulo, font=dict(color=T.TEXT, size=14), x=0.5),
                 margin=dict(l=60, r=20, t=70, b=130),
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
                 xaxis=dict(
                     range=[-max_val*1.02, max_val*1.02],
-                    zeroline=True, zerolinecolor='#888', zerolinewidth=2,
+                    zeroline=True, zerolinecolor=T.TEXT_MUTED, zerolinewidth=2,
                     title='← Masculino  |  Feminino →',
                     tickvals=tick_vals, ticktext=tick_text,
-                    tickfont=dict(color='#AAAAAA', size=10),
-                    gridcolor='#2a2a3a'
+                    tickfont=dict(color=T.TEXT_MUTED, size=10),
+                    gridcolor=T.GRID
                 ),
                 yaxis=dict(
                     type='category', categoryorder='array',
                     categoryarray=ordem_filtrada, title='',
-                    tickfont=dict(color='#FAFAFA', size=10)
+                    tickfont=dict(color=T.TEXT, size=10)
                 ),
                 legend=dict(
                     orientation='h',
                     xanchor='center', x=0.5,
                     yanchor='top',    y=-0.18,
-                    font=dict(color='#FAFAFA', size=10),
-                    bgcolor='rgba(30,30,46,0.7)',
-                    bordercolor='#353540', borderwidth=1,
+                    font=dict(color=T.TEXT, size=10),
+                    bgcolor=T.LEGEND_BG,
+                    bordercolor=T.LEGEND_BORDER, borderwidth=1,
                 ),
                 bargap=0.35
             )
@@ -4431,7 +4418,7 @@ with tab6:
                         height=420,
                     )
                     fig_bar.update_traces(
-                        marker=dict(size=14, opacity=0.85, line=dict(width=1, color='white')),
+                        marker=dict(size=14, opacity=0.85, line=dict(width=1, color=T.BORDER)),
                         jitter=0,
                     )
                 else:
@@ -4461,22 +4448,22 @@ with tab6:
                     categoryorder='array',
                     categoryarray=grupos_ord,
                     tickangle=-40 if len(grupos_ord) > 5 else 0,
-                    tickfont=dict(color='white', size=11),
-                    title_font=dict(color='white'),
+                    tickfont=dict(color=T.TEXT, size=11),
+                    title_font=dict(color=T.TEXT),
                 )
                 fig_bar.update_yaxes(
-                    tickfont=dict(color='#AAA', size=11),
+                    tickfont=dict(color=T.TEXT_MUTED, size=11),
                     ticksuffix='%',
-                    gridcolor='#2a2a3a',
+                    gridcolor=T.GRID,
                     rangemode='tozero',
-                    title_font=dict(color='white'),
+                    title_font=dict(color=T.TEXT),
                 )
                 fig_bar.update_layout(
                     showlegend=False,
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(15,20,40,0.5)',
-                    font=dict(color='white'),
-                    title_font=dict(size=12, color='white'),
+                    paper_bgcolor=T.PAPER_BG,
+                    plot_bgcolor=T.PLOT_BG,
+                    font=dict(color=T.TEXT),
+                    title_font=dict(size=12, color=T.TEXT),
                     margin=dict(l=60, r=20, t=55, b=80),
                 )
                 st.plotly_chart(fig_bar, use_container_width=True, key='violin_barreira')

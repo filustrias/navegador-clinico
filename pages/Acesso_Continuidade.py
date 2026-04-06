@@ -13,6 +13,7 @@ from utils.anonimizador import (
     anonimizar_nome, mostrar_badge_anonimo, MODO_ANONIMO
 )
 import config
+from utils import theme as T
 
 # ═══════════════════════════════════════════════════════════════
 # VERIFICAR LOGIN
@@ -44,9 +45,9 @@ st.markdown("""
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    st.markdown("""
-    <h1 style='margin: 0; padding: 0; color: #FAFAFA;'>
-        🏥 Navegador Clínico <small style='color: #999; font-size: 0.5em;'>SMS-RJ</small>
+    st.markdown(f"""
+    <h1 style='margin: 0; padding: 0; color: {T.TEXT};'>
+        🏥 Navegador Clínico <small style='color: {T.TEXT_MUTED}; font-size: 0.5em;'>SMS-RJ</small>
     </h1>
     """, unsafe_allow_html=True)
 with col2:
@@ -55,7 +56,7 @@ with col2:
     if clinica != 'N/A': info_lines.append(f"Clínica: {clinica}")
     if ap      != 'N/A': info_lines.append(f"AP: {ap}")
     st.markdown(f"""
-    <div style='text-align: right; padding-top: 10px; color: #FAFAFA; font-size: 0.9em;'>
+    <div style='text-align: right; padding-top: 10px; color: {T.TEXT}; font-size: 0.9em;'>
         <span style='font-size: 1.3em;'>👤</span> {"<br>".join(info_lines)}
     </div>
     """, unsafe_allow_html=True)
@@ -93,11 +94,11 @@ selected = option_menu(
     styles={
         "container": {
             "padding": "0!important",
-            "background-color": "#0E1117",
+            "background-color": T.NAV_BG,
         },
         "icon": {
             "font-size": "22px",
-            "color": "#FAFAFA",
+            "color": T.TEXT,
             "display": "block",
             "margin-bottom": "4px",
         },
@@ -106,9 +107,9 @@ selected = option_menu(
             "text-align": "center",
             "margin": "0px",
             "padding": "10px 18px",
-            "color": "#AAAAAA",
-            "background-color": "#262730",
-            "--hover-color": "#353540",
+            "color": T.NAV_LINK,
+            "background-color": T.SECONDARY_BG,
+            "--hover-color": T.NAV_HOVER,
             "display": "flex",
             "flex-direction": "column",
             "align-items": "center",
@@ -116,8 +117,8 @@ selected = option_menu(
             "white-space": "nowrap",
         },
         "nav-link-selected": {
-            "background-color": "#404040",
-            "color": "#FFFFFF",
+            "background-color": T.NAV_SELECTED_BG,
+            "color": T.NAV_SELECTED_TEXT,
             "font-weight": "600",
         },
     }
@@ -165,7 +166,7 @@ INDICADORES_VIOLIN = {
         ),
     },
     'pct_baixa_longitudinalidade': {
-        'label': '% baixa longitudinalidade',
+        'label': '% fragmentação do cuidado',
         'descricao': (
             'Proporção de pacientes cujas consultas médicas ocorrem predominantemente '
             'fora da unidade de cadastro (>50% fora). Reflete fragmentação do cuidado '
@@ -181,7 +182,7 @@ INDICADORES_VIOLIN = {
         ),
     },
     'pct_regular': {
-        'label': '% acompanhamento regular',
+        'label': '% com > de 6 meses com consulta no ano',
         'descricao': (
             'Proporção de pacientes com pelo menos 6 meses distintos com consulta '
             'nos últimos 12 meses. Mede regularidade do cuidado ao longo do ano — '
@@ -598,11 +599,11 @@ def criar_violin(df: pd.DataFrame, col_y: str, label_y: str,
 
     layout_comum = dict(
         showlegend=False,
-        font=dict(size=13),
+        font=dict(size=13, color=T.TEXT),
         title_font=dict(size=15),
         margin=dict(l=60, r=40, t=70, b=110),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor=T.PLOT_BG,
+        paper_bgcolor=T.PAPER_BG,
     )
     xaxes_comum = dict(
         type='category',
@@ -613,7 +614,7 @@ def criar_violin(df: pd.DataFrame, col_y: str, label_y: str,
     yaxes_comum = dict(
         tickfont=dict(size=12),
         title_font=dict(size=14),
-        gridcolor='rgba(255,255,255,0.06)',
+        gridcolor=T.GRID,
         zeroline=False,
     )
 
@@ -631,7 +632,7 @@ def criar_violin(df: pd.DataFrame, col_y: str, label_y: str,
             color_discrete_sequence=px.colors.qualitative.Bold,
         )
         fig.update_traces(
-            marker=dict(size=14, opacity=0.85, line=dict(width=1, color='white')),
+            marker=dict(size=14, opacity=0.85, line=dict(width=1, color=T.BORDER)),
             jitter=0,
         )
         fig.update_xaxes(**xaxes_comum,
@@ -878,7 +879,7 @@ with tab1:
     df_exib = df_tot[[
         'charlson_categoria', 'total_pacientes',
         'intervalo_mediano_medio', 'consultas_365d_media',
-        'dias_sem_medico_medio', 'pct_sem_medico_180d',
+        'pct_sem_medico_180d',
         'pct_regular', 'pct_baixa_long', 'pct_alto_risco_baixo_acesso',
         'alto_risco_baixo_acesso',
     ]].copy()
@@ -898,7 +899,7 @@ with tab1:
         pct = min(val, 100)
         return (
             f'<div style="display:flex;align-items:center;gap:6px">'
-            f'<div style="flex:1;background:#2a2a3a;border-radius:3px;height:8px">'
+            f'<div style="flex:1;background:{T.PROGRESS_BAR_BG};border-radius:3px;height:8px">'
             f'<div style="width:{pct:.0f}%;background:{cor};height:8px;border-radius:3px"></div>'
             f'</div>'
             f'<span style="white-space:nowrap;font-size:0.85em">{val:.1f}%</span>'
@@ -910,10 +911,9 @@ with tab1:
         "Pacientes",
         "Intervalo<br>mediano<br>(dias)",
         "Consultas<br>médicas<br>por ano",
-        "Dias sem<br>médico<br>(média)",
         "% sem médico<br>há mais de<br>180 dias",
-        "% acompa-<br>nhamento<br>regular",
-        "% baixa<br>longitudi-<br>nalidade",
+        "% com > de 6<br>meses com<br>consulta no ano",
+        "% fragmentação<br>do cuidado",
         "% alto risco<br>+ baixo<br>acesso",
         "N alto risco<br>+ baixo<br>acesso",
     ]
@@ -928,7 +928,6 @@ with tab1:
             f'<td style="text-align:right">{int(row["total_pacientes"]):,}</td>'
             f'<td style="text-align:right">{row["intervalo_mediano_medio"]:.1f} d</td>'
             f'<td style="text-align:right">{row["consultas_365d_media"]:.1f}</td>'
-            f'<td style="text-align:right">{row["dias_sem_medico_medio"]:.0f} d</td>'
             f'<td>{_barra(row["pct_sem_medico_180d"], "#E74C3C")}</td>'
             f'<td>{_barra(row["pct_regular"], "#27AE60")}</td>'
             f'<td>{_barra(row["pct_baixa_long"], "#E67E22")}</td>'
@@ -938,18 +937,18 @@ with tab1:
         )
 
     th = (
-        "background:#1a1a2e;color:#CCC;font-size:0.78em;font-weight:600;"
-        "text-align:center;padding:8px 10px;border-bottom:2px solid #333;"
-        "vertical-align:bottom;line-height:1.4;"
+        f"background:{T.TABLE_HEADER_BG};color:{T.TABLE_HEADER_TEXT};font-size:0.78em;font-weight:600;"
+        f"text-align:center;padding:8px 10px;border-bottom:2px solid {T.TABLE_BORDER};"
+        f"vertical-align:bottom;line-height:1.4;"
     )
-    td = "padding:8px 10px;border-bottom:1px solid #2a2a3a;font-size:0.88em;color:#EEE;vertical-align:middle;"
+    td = f"padding:8px 10px;border-bottom:1px solid {T.TABLE_BORDER};font-size:0.88em;color:{T.TABLE_CELL_TEXT};vertical-align:middle;"
     headers_html = "".join(f'<th style="{th}">{h}</th>' for h in headers)
 
     table_html = f"""
     <style>
-      .nav-table {{width:100%;border-collapse:collapse;background:#0e1117;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}}
+      .nav-table {{width:100%;border-collapse:collapse;background:{T.TABLE_BG};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}}
       .nav-table td {{{td}}}
-      .nav-table tr:hover td {{background:#1a1a2e;}}
+      .nav-table tr:hover td {{background:{T.TABLE_HOVER};}}
     </style>
     <table class="nav-table">
       <thead><tr>{headers_html}</tr></thead>
@@ -967,10 +966,9 @@ with tab1:
 | **Pacientes** | Total de pacientes cadastrados nessa categoria no território selecionado. |
 | **Intervalo mediano (dias)** | Mediana dos dias entre consultas médicas consecutivas nos últimos 12 meses. Menor = mais frequente. Pacientes de maior risco deveriam ter intervalos **menores**. |
 | **Consultas médicas por ano** | Média de consultas com médico nos últimos 365 dias. Reflete a intensidade do acompanhamento clínico. |
-| **Dias sem médico (média)** | Média de dias desde a última consulta médica. Inclui pacientes sem nenhuma consulta registrada, o que pode elevar consideravelmente este valor. |
 | **% sem médico >180 dias** | Proporção do grupo sem consulta médica há mais de 6 meses. Indica abandono ou barreira de acesso ao cuidado médico. |
-| **% acompanhamento regular** | Proporção com pelo menos 6 meses distintos com consulta (médico, enfermeiro ou técnico) nos últimos 12 meses. |
-| **% baixa longitudinalidade** | Proporção que realizou mais de 50% das consultas médicas fora da unidade de referência. Indica fragmentação do cuidado e menor vínculo com a equipe. |
+| **% com > de 6 meses com consulta no ano** | Proporção com pelo menos 6 meses distintos com consulta (médico, enfermeiro ou técnico) nos últimos 12 meses. |
+| **% fragmentação do cuidado** | Proporção que realizou mais de 50% das consultas médicas fora da unidade de referência. Indica fragmentação do cuidado e menor vínculo com a equipe. |
 | **% alto risco + baixo acesso** | Proporção com carga de morbidade muito alta (Charlson ≥7) que consulta abaixo do P25 do seu grupo de pares. Principal indicador de **iniquidade no cuidado**. |
 | **N alto risco + baixo acesso** | Número absoluto de pacientes em situação de alto risco com baixo acesso — útil para dimensionar a magnitude do problema no território. |
         """)
@@ -1145,6 +1143,9 @@ with tab3:
         )
 
         df_exib = df_lista.head(n_exibir).copy()
+        df_exib['regularidade_acompanhamento'] = df_exib['regularidade_acompanhamento'].replace(
+            {'regular': 'Assíduo', 'irregular': 'Irregular',
+             'esporadico': 'Esporádico', 'sem_acompanhamento': 'Sem acompanhamento'})
         df_exib['baixa_longitudinalidade']  = df_exib['baixa_longitudinalidade'].map(
             {True: '⚠️ Sim', False: '✅ Não'})
         df_exib['alto_risco_baixo_acesso']  = df_exib['alto_risco_baixo_acesso'].map(
@@ -1180,7 +1181,7 @@ with tab3:
             'consultas_365d':                'Consultas Clínicas no Último Ano',
             'meses_com_consulta_12m':        'Meses com Consulta nos Últimos 12 Meses',
             'regularidade_acompanhamento':   'Regularidade do Acompanhamento',
-            'baixa_longitudinalidade':       'Baixa Longitudinalidade',
+            'baixa_longitudinalidade':       'Fragmentação do Cuidado',
             'alto_risco_baixo_acesso':       'Alto Risco + Baixo Acesso',
             'usuario_frequente_urgencia':    'Uso Frequente de Urgência',
             'ICA':                           'ICA',
@@ -1208,7 +1209,7 @@ with tab3:
             'Consultas Clínicas no Último Ano':          'Consultas<br>no Último<br>Ano',
             'Meses com Consulta nos Últimos 12 Meses':   'Meses com<br>Consulta<br>(12m)',
             'Regularidade do Acompanhamento':            'Regulari-<br>dade',
-            'Baixa Longitudinalidade':                   'Baixa<br>Longitu-<br>dinalidade',
+            'Fragmentação do Cuidado':                   'Fragmen-<br>tação do<br>Cuidado',
             'Alto Risco + Baixo Acesso':                 'Alto Risco<br>+ Baixo<br>Acesso',
             'Uso Frequente de Urgência':                 'Uso Freq.<br>Urgência',
             'ICA':                                       'ICA',
@@ -1230,14 +1231,14 @@ with tab3:
         }
 
         th = (
-            "background:#1a1a2e;color:#CCC;font-size:0.75em;font-weight:600;"
-            "text-align:center;padding:7px 8px;border-bottom:2px solid #333;"
-            "vertical-align:bottom;line-height:1.35;white-space:normal;"
+            f"background:{T.TABLE_HEADER_BG};color:{T.TABLE_HEADER_TEXT};font-size:0.75em;font-weight:600;"
+            f"text-align:center;padding:7px 8px;border-bottom:2px solid {T.TABLE_BORDER};"
+            f"vertical-align:bottom;line-height:1.35;white-space:normal;"
         )
         td_base = (
-            "padding:6px 8px;border-bottom:1px solid #2a2a3a;"
-            "font-size:0.83em;color:#EEE;vertical-align:middle;"
-            "white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;"
+            f"padding:6px 8px;border-bottom:1px solid {T.TABLE_BORDER};"
+            f"font-size:0.83em;color:{T.TABLE_CELL_TEXT};vertical-align:middle;"
+            f"white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;"
         )
 
         cols_render = [c for c in df_render.columns if c in HEADERS_QUEBRA]
@@ -1257,11 +1258,11 @@ with tab3:
                 if col == 'Carga de Morbidade':
                     cor = CORES_CAT.get(val_str, '#888')
                     cell = f'<td style="{td_base}"><span style="color:{cor};font-weight:700">{val_str}</span></td>'
-                elif col in ('Alto Risco + Baixo Acesso', 'Baixa Longitudinalidade',
+                elif col in ('Alto Risco + Baixo Acesso', 'Fragmentação do Cuidado',
                              'Uso Frequente de Urgência', 'Polifarmácia', 'Hiperpolifarmácia'):
                     cor = BADGE_COLORS.get(val_str, 'transparent')
                     if '—' in val_str or 'Não' in val_str:
-                        cell = f'<td style="{td_base};color:#666">{val_str}</td>'
+                        cell = f'<td style="{td_base};color:{T.TEXT_MUTED}">{val_str}</td>'
                     else:
                         cell = (
                             f'<td style="{td_base}">'
@@ -1278,7 +1279,7 @@ with tab3:
                 elif col in ('Morbidades', 'Medicamentos em Uso'):
                     cell = (
                         f'<td style="{td_base};white-space:normal;max-width:220px;'
-                        f'font-size:0.78em;color:#BCC" title="{val_str}">{val_str}</td>'
+                        f'font-size:0.78em;color:{T.TEXT_MUTED}" title="{val_str}">{val_str}</td>'
                     )
                 elif col in ('Intervalo Mediano entre Consultas (dias)',
                              'Dias sem Consulta Médica', 'Score',
@@ -1296,10 +1297,10 @@ with tab3:
         <style>
           .pac-table {{
             width:100%;border-collapse:collapse;
-            background:#0e1117;
+            background:{T.TABLE_BG};
             font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
           }}
-          .pac-table tr:hover td {{ background:#1a1a2e; }}
+          .pac-table tr:hover td {{ background:{T.TABLE_HOVER}; }}
         </style>
         <div style="overflow-x:auto;max-height:520px;overflow-y:auto">
           <table class="pac-table">
@@ -1327,9 +1328,9 @@ with tab3:
 | **Intervalo Mediano entre Consultas (dias)** | Mediana dos dias entre consultas consecutivas nos últimos 12 meses. Menor = mais frequente. Nulo se não houve consultas no período. |
 | **Dias sem Consulta Médica** | Dias desde a última consulta médica. Acima de 180 dias indica possível abandono. |
 | **Consultas Clínicas no Último Ano** | Total de consultas com médico, enfermeiro ou técnico de enfermagem nos últimos 365 dias. |
-| **Meses com Consulta (12 meses)** | Meses distintos com pelo menos uma consulta nos últimos 12 meses. **Regular** = ≥6 · **Irregular** = 3–5 · **Esporádico** = 1–2 · **Sem acompanhamento** = 0. |
-| **Regularidade** | Classificação derivada dos meses com consulta: Regular, Irregular, Esporádico ou Sem acompanhamento. |
-| **Baixa Longitudinalidade** | Mais de 50% das consultas ocorreram fora da unidade de referência — indica fragmentação do cuidado. |
+| **Meses com Consulta (12 meses)** | Meses distintos com pelo menos uma consulta nos últimos 12 meses. **Assíduo** = ≥6 · **Irregular** = 3–5 · **Esporádico** = 1–2 · **Sem acompanhamento** = 0. |
+| **Regularidade** | Classificação derivada dos meses com consulta: Assíduo, Irregular, Esporádico ou Sem acompanhamento. |
+| **Fragmentação do Cuidado** | Mais de 50% das consultas ocorreram fora da unidade de referência — indica fragmentação do cuidado. |
 | **Alto Risco + Baixo Acesso** | Score ≥7 com consultas abaixo do P25 do grupo. Principal indicador de iniquidade no cuidado. |
 | **Uso Frequente de Urgência** | ≥3 atendimentos em urgência nos últimos 365 dias. Pode indicar falha no acesso à APS. |
 | **ICA** | Índice Composto de Acesso (0 a 1). Combina necessidade clínica e déficit de acesso. Quanto maior, maior a prioridade de atenção. |
@@ -1479,12 +1480,13 @@ with tab4:
 
         fig_g1.update_layout(
             barmode='group',
+            font=dict(color=T.TEXT),
             xaxis=dict(
                 title="Carga de Morbidade",
                 categoryorder='array', categoryarray=ordem_cat,
                 tickfont=dict(size=12),
             ),
-            yaxis=dict(title="Consultas por ano (média)", gridcolor='#2a2a3a'),
+            yaxis=dict(title="Consultas por ano (média)", gridcolor=T.GRID),
             legend=dict(
                 title="Profissional",
                 orientation='v', x=1.01, xanchor='left', y=0.5, yanchor='middle',
@@ -1492,8 +1494,8 @@ with tab4:
             bargap=0.25, bargroupgap=0.06,
             height=420,
             margin=dict(t=40, b=60, r=200),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor=T.PAPER_BG,
+            plot_bgcolor=T.PLOT_BG,
         )
         st.plotly_chart(fig_g1, use_container_width=True)
         st.caption(
@@ -1559,6 +1561,7 @@ with tab4:
             janela_txt = "mais de 6 meses" if "6" in janela_sel else "mais de 12 meses"
             fig_g2.update_layout(
                 barmode='group',
+                font=dict(color=T.TEXT),
                 xaxis=dict(
                     title="Carga de Morbidade",
                     categoryorder='array', categoryarray=ordem_cat,
@@ -1566,7 +1569,7 @@ with tab4:
                 ),
                 yaxis=dict(
                     title=f"% sem consulta há {janela_txt}",
-                    ticksuffix='%', range=[0, 100], gridcolor='#2a2a3a',
+                    ticksuffix='%', range=[0, 100], gridcolor=T.GRID,
                 ),
                 legend=dict(
                     title="Profissional",
@@ -1575,8 +1578,8 @@ with tab4:
                 bargap=0.25, bargroupgap=0.06,
                 height=440,
                 margin=dict(t=40, b=60, r=220),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor=T.PAPER_BG,
+                plot_bgcolor=T.PLOT_BG,
             )
             st.plotly_chart(fig_g2, use_container_width=True)
             st.caption(

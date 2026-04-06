@@ -12,6 +12,7 @@ from utils.anonimizador import (
 )
 from streamlit_option_menu import option_menu
 from utils.auth import exibir_usuario_logado
+from utils import theme as T
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURAÇÃO DA PÁGINA
@@ -55,9 +56,9 @@ st.markdown("""
 col1, col2 = st.columns([3, 1])
 
 with col1:
-    st.markdown("""
-    <h1 style='margin: 0; padding: 0; color: #FAFAFA;'>
-        🏥 Navegador Clínico <small style='color: #999; font-size: 0.5em;'>SMS-RJ</small>
+    st.markdown(f"""
+    <h1 style='margin: 0; padding: 0; color: {T.TEXT};'>
+        🏥 Navegador Clínico <small style='color: {T.TEXT_MUTED}; font-size: 0.5em;'>SMS-RJ</small>
     </h1>
     """, unsafe_allow_html=True)
 
@@ -69,9 +70,9 @@ with col2:
         info_lines.append(f"Clínica: {clinica}")
     if ap != 'N/A':
         info_lines.append(f"AP: {ap}")
-    
+
     st.markdown(f"""
-    <div style='text-align: right; padding-top: 10px; color: #FAFAFA; font-size: 0.9em;'>
+    <div style='text-align: right; padding-top: 10px; color: {T.TEXT}; font-size: 0.9em;'>
         <span style='font-size: 1.3em;'>👤</span> {"<br>".join(info_lines)}
     </div>
     """, unsafe_allow_html=True)
@@ -109,11 +110,11 @@ selected = option_menu(
     styles={
         "container": {
             "padding": "0!important",
-            "background-color": "#0E1117",
+            "background-color": T.NAV_BG,
         },
         "icon": {
             "font-size": "22px",
-            "color": "#FAFAFA",
+            "color": T.TEXT,
             "display": "block",
             "margin-bottom": "4px",
         },
@@ -122,9 +123,9 @@ selected = option_menu(
             "text-align": "center",
             "margin": "0px",
             "padding": "10px 18px",
-            "color": "#AAAAAA",
-            "background-color": "#262730",
-            "--hover-color": "#353540",
+            "color": T.NAV_LINK,
+            "background-color": T.SECONDARY_BG,
+            "--hover-color": T.NAV_HOVER,
             "display": "flex",
             "flex-direction": "column",
             "align-items": "center",
@@ -132,8 +133,8 @@ selected = option_menu(
             "white-space": "nowrap",
         },
         "nav-link-selected": {
-            "background-color": "#404040",
-            "color": "#FFFFFF",
+            "background-color": T.NAV_SELECTED_BG,
+            "color": T.NAV_SELECTED_TEXT,
             "font-weight": "600",
         },
     }
@@ -154,32 +155,16 @@ st.markdown("---")
 if 'pagina_atual' not in st.session_state:
     st.session_state.pagina_atual = 0
 
-if 'tema_escuro' not in st.session_state:
-    st.session_state.tema_escuro = True
-
-# Cores do tema
-if st.session_state.tema_escuro:
-    CORES = {
-        'background': '#0e1117',
-        'secondary_bg': '#262730',
-        'text': '#fafafa',
-        'primary': '#ff4b4b',
-        'card_bg': '#1e1e2e',
-        'border': '#464646',
-        'input_bg': '#262730',
-        'input_text': '#fafafa',
-    }
-else:
-    CORES = {
-        'background': '#ffffff',
-        'secondary_bg': '#f0f2f6',
-        'text': '#262730',
-        'primary': '#ff4b4b',
-        'card_bg': '#f8f9fa',
-        'border': '#dee2e6',
-        'input_bg': '#ffffff',
-        'input_text': '#262730',
-    }
+CORES = {
+    'background': T.BG,
+    'secondary_bg': T.SECONDARY_BG,
+    'text': T.TEXT,
+    'primary': T.PRIMARY,
+    'card_bg': T.CARD_BG,
+    'border': T.BORDER,
+    'input_bg': T.BG,
+    'input_text': T.TEXT,
+}
 
 # CSS customizado com tema
 st.markdown(f"""
@@ -1714,49 +1699,7 @@ def create_patient_card(patient_data):
 # INTERFACE PRINCIPAL
 # ============================================
 
-col_titulo, col_tema = st.columns([10, 1])
-
-with col_titulo:
-    st.title("👥 Meus Pacientes")
-
-with col_tema:
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    if st.session_state.tema_escuro:
-        st.markdown("""
-            <style>
-                div[data-testid="column"]:last-child button {
-                    background-color: #fafafa !important;
-                    color: #262730 !important;
-                    border: 1px solid #fafafa !important;
-                }
-                div[data-testid="column"]:last-child button:hover {
-                    background-color: #e0e0e0 !important;
-                    color: #262730 !important;
-                }
-            </style>
-        """, unsafe_allow_html=True)
-        if st.button("☀️ Claro", help="Mudar para tema claro", use_container_width=True):
-            st.session_state.tema_escuro = False
-            st.rerun()
-    else:
-        st.markdown("""
-            <style>
-                div[data-testid="column"]:last-child button {
-                    background-color: #262730 !important;
-                    color: #ffffff !important;
-                    border: 1px solid #262730 !important;
-                }
-                div[data-testid="column"]:last-child button:hover {
-                    background-color: #1e1e2e !important;
-                    color: #ffffff !important;
-                    border: 1px solid #1e1e2e !important;
-                }
-            </style>
-        """, unsafe_allow_html=True)
-        if st.button("🌙 Escuro", help="Mudar para tema escuro", use_container_width=True):
-            st.session_state.tema_escuro = True
-            st.rerun()
+st.title("👥 Meus Pacientes")
 
 st.markdown("### 📖 Lista Nominal de Pacientes")
 st.markdown("---")

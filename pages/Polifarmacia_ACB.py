@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from collections import Counter
 from utils.bigquery_client import get_bigquery_client
+from utils import theme as T
 from components.cabecalho import renderizar_cabecalho
 from utils.auth import get_contexto_territorial, get_perfil
 from utils.data_loader import carregar_opcoes_filtros
@@ -654,12 +655,12 @@ with tab1:
                 height=650,
                 xaxis=dict(tickvals=tick_vals, ticktext=tick_texts,
                            title="Número de Pacientes",
-                           gridcolor='rgba(255,255,255,0.08)'),
+                           gridcolor=T.GRID),
                 yaxis=dict(title="Faixa Etária"),
                 legend=dict(orientation='h', yanchor='bottom', y=1.02,
                             xanchor='right', x=1),
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor=T.PLOT_BG,
+                paper_bgcolor=T.PAPER_BG,
                 margin=dict(l=60, r=40, t=60, b=60),
                 annotations=[
                     dict(x=-max_val*0.5, y=1.02, xref='x', yref='paper',
@@ -745,8 +746,8 @@ with tab2:
                         xanchor='right', x=1),
             height=460,
             margin=dict(t=80, b=60),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor=T.PLOT_BG,
+            paper_bgcolor=T.PAPER_BG,
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
@@ -843,8 +844,8 @@ with tab3:
                 showlegend=False,
                 xaxis=dict(title="Carga de Morbidade"),
                 yaxis=dict(title="ACB Score Total", zeroline=False),
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor=T.PLOT_BG,
+                paper_bgcolor=T.PAPER_BG,
                 margin=dict(t=60, b=60),
             )
             st.plotly_chart(fig_viol, use_container_width=True)
@@ -898,7 +899,7 @@ with tab3:
                     text=[f"Score {s}" for s in scores[::-1]],
                     textposition='inside',
                     insidetextanchor='middle',
-                    textfont=dict(size=10, color='white'),
+                    textfont=dict(size=10, color=T.TEXT),
                     hovertemplate=(
                         "<b>%{y}</b><br>"
                         "Pacientes: %{x:,}<extra></extra>"
@@ -908,8 +909,8 @@ with tab3:
                     xaxis=dict(title="Número de Pacientes"),
                     yaxis=dict(title=""),
                     height=480,
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor=T.PLOT_BG,
+                    paper_bgcolor=T.PAPER_BG,
                     margin=dict(l=160, r=40, t=20, b=60),
                 )
                 st.plotly_chart(fig_top, use_container_width=True)
@@ -1023,8 +1024,8 @@ with tab4:
                     xaxis=dict(title="Pacientes idosos afetados"),
                     yaxis=dict(title=""),
                     margin=dict(l=10, r=80, t=20, b=40),
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor=T.PLOT_BG,
+                    paper_bgcolor=T.PAPER_BG,
                 )
                 st.plotly_chart(fig_stopp, use_container_width=True)
                 st.caption("Medicamentos potencialmente inapropriados — prescrição ativa nos últimos 12 meses.")
@@ -1064,8 +1065,8 @@ with tab4:
                     xaxis=dict(title="Pacientes idosos afetados"),
                     yaxis=dict(title=""),
                     margin=dict(l=10, r=80, t=20, b=40),
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor=T.PLOT_BG,
+                    paper_bgcolor=T.PAPER_BG,
                 )
                 st.plotly_chart(fig_start, use_container_width=True)
                 st.caption("Medicamentos indicados ausentes na prescrição — oportunidades de melhoria.")

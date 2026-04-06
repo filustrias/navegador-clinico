@@ -30,7 +30,8 @@ def get_bigquery_client():
     """
 
 # 1. Railway — service account JSON via variável de ambiente
-    creds_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+
+    creds_json = os.getenv('GOOGLE_CREDENTIALS') or os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
     if creds_json:
         try:
             info = json.loads(creds_json)

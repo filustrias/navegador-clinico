@@ -16,6 +16,7 @@ from utils.anonimizador import (
     anonimizar_esf, mostrar_badge_anonimo, MODO_ANONIMO
 )
 import config
+from utils import theme as T
 
 st.set_page_config(
     page_title="Hipertensão · Navegador Clínico",
@@ -58,9 +59,9 @@ st.markdown("""
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    st.markdown("""
-    <h1 style='margin: 0; padding: 0; color: #FAFAFA;'>
-        🏥 Navegador Clínico <small style='color: #999; font-size: 0.5em;'>SMS-RJ</small>
+    st.markdown(f"""
+    <h1 style='margin: 0; padding: 0; color: {T.TEXT};'>
+        🏥 Navegador Clínico <small style='color: {T.TEXT_MUTED}; font-size: 0.5em;'>SMS-RJ</small>
     </h1>
     """, unsafe_allow_html=True)
 with col2:
@@ -69,7 +70,7 @@ with col2:
     if clinica != 'N/A': info_lines.append(f"Clínica: {clinica}")
     if ap      != 'N/A': info_lines.append(f"AP: {ap}")
     st.markdown(f"""
-    <div style='text-align: right; padding-top: 10px; color: #FAFAFA; font-size: 0.9em;'>
+    <div style='text-align: right; padding-top: 10px; color: {T.TEXT}; font-size: 0.9em;'>
         <span style='font-size: 1.3em;'>👤</span> {"<br>".join(info_lines)}
     </div>
     """, unsafe_allow_html=True)
@@ -99,13 +100,13 @@ selected = option_menu(
     default_index=list(ROTAS.keys()).index(PAGINA_ATUAL),
     orientation="horizontal",
     styles={
-        "container":         {"padding": "0!important", "background-color": "#0E1117"},
-        "icon":              {"font-size": "22px", "color": "#FAFAFA", "display": "block", "margin-bottom": "4px"},
+        "container":         {"padding": "0!important", "background-color": T.NAV_BG},
+        "icon":              {"font-size": "22px", "color": T.TEXT, "display": "block", "margin-bottom": "4px"},
         "nav-link":          {"font-size": "11px", "text-align": "center", "margin": "0px",
-                              "padding": "10px 18px", "color": "#AAAAAA", "background-color": "#262730",
-                              "--hover-color": "#353540", "display": "flex", "flex-direction": "column",
+                              "padding": "10px 18px", "color": T.NAV_LINK, "background-color": T.SECONDARY_BG,
+                              "--hover-color": T.NAV_HOVER, "display": "flex", "flex-direction": "column",
                               "align-items": "center", "line-height": "1.2", "white-space": "nowrap"},
-        "nav-link-selected": {"background-color": "#404040", "color": "#FFFFFF", "font-weight": "600"},
+        "nav-link-selected": {"background-color": T.NAV_SELECTED_BG, "color": T.NAV_SELECTED_TEXT, "font-weight": "600"},
     }
 )
 if selected != PAGINA_ATUAL:
@@ -565,16 +566,16 @@ def _stacked_bar(df, cols_pop, labels, cores, titulo):
     fig.update_layout(
         barmode='stack', height=320, bargap=0.35,
         margin=dict(l=10, r=160, t=50, b=60 if len(terrs)<=12 else 130),
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        title=dict(text=titulo, font=dict(color='#FAFAFA', size=13)),
+        paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
+        title=dict(text=titulo, font=dict(color=T.TEXT, size=13)),
         xaxis=dict(type='category', categoryorder='array', categoryarray=terrs,
-                   tickfont=dict(color='#FAFAFA', size=11 if len(terrs)<=12 else 9),
+                   tickfont=dict(color=T.TEXT, size=11 if len(terrs)<=12 else 9),
                    tickangle=0 if len(terrs)<=12 else -40),
-        yaxis=dict(title='% da população total', tickfont=dict(color='#AAA', size=10),
-                   gridcolor='#2a2a3a', range=[0, 50]),
+        yaxis=dict(title='% da população total', tickfont=dict(color=T.TEXT_MUTED, size=10),
+                   gridcolor=T.GRID, range=[0, 50]),
         legend=dict(orientation='v', xanchor='left', x=1.01, yanchor='middle', y=0.5,
-                    font=dict(color='#FAFAFA', size=11),
-                    bgcolor='rgba(30,30,46,0.7)', bordercolor='#353540', borderwidth=1),
+                    font=dict(color=T.TEXT, size=11),
+                    bgcolor=T.LEGEND_BG, bordercolor=T.LEGEND_BORDER, borderwidth=1),
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -829,17 +830,14 @@ with tab3:
             h = h.lstrip('#')
             r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
             return f"rgba({r},{g},{b},{a})"
-        colorscale = [[0.00,'#0D1B2A'],[0.05,'#1A3A5C'],[0.15,'#1B6CA8'],
-                      [0.35,'#2E86AB'],[0.55,'#44BBA4'],[0.75,'#E9C46A'],
-                      [0.90,'#F4A261'],[1.00,'#E63946']]
         fig_hm = go.Figure(data=go.Heatmap(
             z=mat_z.tolist(), x=grupos, y=grupos,
             text=mat_txt, texttemplate="%{text}",
-            textfont=dict(size=12, color='white'),
-            colorscale=colorscale, showscale=True,
-            colorbar=dict(title=dict(text='Pacientes', font=dict(color='#CCC', size=11)),
-                          tickfont=dict(color='#CCC', size=9), thickness=14, len=0.85,
-                          bgcolor='rgba(0,0,0,0)', bordercolor='rgba(0,0,0,0)'),
+            textfont=dict(size=12, color=T.TEXT),
+            colorscale=T.HEATMAP_COLORSCALE, showscale=True,
+            colorbar=dict(title=dict(text='Pacientes', font=dict(color=T.TEXT_SECONDARY, size=11)),
+                          tickfont=dict(color=T.TEXT_SECONDARY, size=9), thickness=14, len=0.85,
+                          bgcolor=T.PAPER_BG, bordercolor=T.PAPER_BG),
             hovertemplate="<b>HAS + %{y} + %{x}</b><br>Pacientes: <b>%{z:,}</b><extra></extra>",
         ))
         for i, (nome_g, cor) in enumerate(zip(grupos, cores_g)):
@@ -848,11 +846,11 @@ with tab3:
                              fillcolor=_hex_rgba(cor), line=dict(color=cor, width=3))
         fig_hm.update_layout(
             title=dict(text=f"Comorbidades em hipertensos<br>"
-                            f"<sup style='color:#AAA'>Total: {n_has:,} · Diagonal = HAS+comorbidade · Off-diagonal = interseção</sup>",
-                       font=dict(size=13, color='white'), x=0.5),
-            height=430, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(15,20,40,0.6)',
-            xaxis=dict(tickfont=dict(color='white',size=13,family='monospace'), showgrid=False),
-            yaxis=dict(tickfont=dict(color='white',size=13,family='monospace'), autorange='reversed', showgrid=False),
+                            f"<sup style='color:{T.TEXT_MUTED}'>Total: {n_has:,} · Diagonal = HAS+comorbidade · Off-diagonal = interseção</sup>",
+                       font=dict(size=13, color=T.TEXT), x=0.5),
+            height=430, paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
+            xaxis=dict(tickfont=dict(color=T.TEXT,size=13,family='monospace'), showgrid=False),
+            yaxis=dict(tickfont=dict(color=T.TEXT,size=13,family='monospace'), autorange='reversed', showgrid=False),
             margin=dict(l=10, r=10, t=70, b=30),
         )
         st.plotly_chart(fig_hm, use_container_width=True)
@@ -860,21 +858,21 @@ with tab3:
     with col_leg:
         sg, sp = st.columns(2)
         with sg:
-            st.markdown("<p style='font-size:13px;font-weight:700;color:#DDD;margin-bottom:8px'>🩺 Grupos</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='font-size:13px;font-weight:700;color:{T.TEXT_SECONDARY};margin-bottom:8px'>🩺 Grupos</p>", unsafe_allow_html=True)
             for nome_g, val, cor in zip(grupos, totais, cores_g):
                 pct_g = _p(val, n_has)
                 bar_w = max(4, int(pct_g * 1.5))
                 st.markdown(
                     f"<div style='margin-bottom:10px'>"
                     f"<span style='color:{cor};font-size:15px'>⬤</span> "
-                    f"<span style='font-weight:700;color:white'>{nome_g}</span><br>"
-                    f"<span style='font-size:13px;color:#CCC'>{val:,}</span> "
-                    f"<span style='font-size:11px;color:#888'>{pct_g:.1f}%</span><br>"
+                    f"<span style='font-weight:700;color:{T.TEXT}'>{nome_g}</span><br>"
+                    f"<span style='font-size:13px;color:{T.TEXT_SECONDARY}'>{val:,}</span> "
+                    f"<span style='font-size:11px;color:{T.TEXT_MUTED}'>{pct_g:.1f}%</span><br>"
                     f"<div style='background:{cor};height:4px;width:{bar_w}%;border-radius:2px;opacity:0.7'></div>"
                     f"</div>", unsafe_allow_html=True
                 )
         with sp:
-            st.markdown("<p style='font-size:13px;font-weight:700;color:#DDD;margin-bottom:8px'>🔗 Sobreposições</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='font-size:13px;font-weight:700;color:{T.TEXT_SECONDARY};margin-bottom:8px'>🔗 Sobreposições</p>", unsafe_allow_html=True)
             for (g1,g2), val in sorted(pares.items(), key=lambda x: -x[1]):
                 if val > 0:
                     c1 = cores_g[grupos.index(g1)]
@@ -882,9 +880,9 @@ with tab3:
                     st.markdown(
                         f"<div style='margin-bottom:8px'>"
                         f"<span style='color:{c1}'>⬤</span><span style='color:{c2}'>⬤</span> "
-                        f"<span style='font-size:12px;color:white'><b>{g1}+{g2}</b></span><br>"
-                        f"<span style='font-size:12px;color:#CCC'>{val:,}</span> "
-                        f"<span style='font-size:11px;color:#888'>{_p(val,n_has):.1f}%</span>"
+                        f"<span style='font-size:12px;color:{T.TEXT}'><b>{g1}+{g2}</b></span><br>"
+                        f"<span style='font-size:12px;color:{T.TEXT_SECONDARY}'>{val:,}</span> "
+                        f"<span style='font-size:11px;color:{T.TEXT_MUTED}'>{_p(val,n_has):.1f}%</span>"
                         f"</div>", unsafe_allow_html=True
                     )
         n_todas5 = int(sumario.get('n_has_todas5', 0) or 0)
@@ -893,9 +891,9 @@ with tab3:
                 f"<div style='margin-top:12px;padding:8px 12px;"
                 f"border-left:3px solid #E63946;"
                 f"background:rgba(230,57,70,0.1);border-radius:4px'>"
-                f"<span style='font-size:11px;color:#AAAAAA'>HAS + todas as 5 comorbidades</span><br>"
-                f"<span style='font-size:18px;font-weight:700;color:white'>{n_todas5:,}</span> "
-                f"<span style='font-size:11px;color:#888'>({_p(n_todas5, n_has):.1f}%)</span>"
+                f"<span style='font-size:11px;color:{T.TEXT_MUTED}'>HAS + todas as 5 comorbidades</span><br>"
+                f"<span style='font-size:18px;font-weight:700;color:{T.TEXT}'>{n_todas5:,}</span> "
+                f"<span style='font-size:11px;color:{T.TEXT_MUTED}'>({_p(n_todas5, n_has):.1f}%)</span>"
                 f"</div>", unsafe_allow_html=True
             )
 
@@ -1062,7 +1060,7 @@ with tab5:
         if n_filtrado < n_total:
             st.markdown(
                 f"**{n_filtrado:,} pacientes** exibidos "
-                f"<span style='color:#888;font-size:0.9em'>"
+                f"<span style='color:{T.TEXT_MUTED};font-size:0.9em'>"
                 f"(de {n_total:,} carregados)</span>",
                 unsafe_allow_html=True,
             )
