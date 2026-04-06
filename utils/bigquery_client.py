@@ -99,5 +99,37 @@ def get_bigquery_client():
     except Exception as e:
         print(f"Erro gcp_credentials: {e}")
 
-    # 5. Local
+    # 5. Railway — STREAMLIT_SECRETS (variável de ambiente)
+    streamlit_secrets = os.getenv('STREAMLIT_SECRETS')
+    if streamlit_secrets:
+        info = None
+        # Tenta TOML (formato secrets.toml do Streamlit)
+        try:
+            import tomllib
+            parsed = tomllib.loads(streamlit_secrets)
+            info = parsed.get('gcp_service_account', parsed)
+        except Exception:
+            pass
+        # Tenta JSON
+        if not info:
+            try:
+                parsed = json.loads(streamlit_secrets)
+                info = parsed.get('gcp_service_account', parsed) if isinstance(parsed, dict) else None
+            except Exception:
+                pass
+        if info and info.get('type') == 'service_account':
+            try:
+                credentials = service_account.Credentials.from_service_account_info(
+                    info,
+                    scopes=["https://www.googleapis.com/auth/bigquery"]
+                )
+                print("DEBUG - autenticado via STREAMLIT_SECRETS", flush=True)
+                return bigquery.Client(
+                    credentials=credentials,
+                    project=info.get('project_id', 'rj-sms-sandbox')
+                )
+            except Exception as e:
+                print(f"ERRO STREAMLIT_SECRETS: {e}", flush=True)
+
+    # 6. Local
     return bigquery.Client(project="rj-sms-sandbox")
