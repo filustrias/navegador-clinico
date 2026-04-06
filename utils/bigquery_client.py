@@ -102,21 +102,25 @@ def get_bigquery_client():
     # 5. Railway — STREAMLIT_SECRETS (variável de ambiente)
     streamlit_secrets = os.getenv('STREAMLIT_SECRETS')
     if streamlit_secrets:
+        print(f"DEBUG - STREAMLIT_SECRETS encontrada ({len(streamlit_secrets)} chars)", flush=True)
         info = None
         # Tenta TOML (formato secrets.toml do Streamlit)
         try:
             import tomllib
-            parsed = tomllib.loads(streamlit_secrets)
+            import io
+            parsed = tomllib.load(io.BytesIO(streamlit_secrets.encode('utf-8')))
             info = parsed.get('gcp_service_account', parsed)
-        except Exception:
-            pass
+            print(f"DEBUG - TOML parse ok, keys: {list(info.keys())[:5]}", flush=True)
+        except Exception as e:
+            print(f"DEBUG - TOML parse falhou: {e}", flush=True)
         # Tenta JSON
         if not info:
             try:
                 parsed = json.loads(streamlit_secrets)
                 info = parsed.get('gcp_service_account', parsed) if isinstance(parsed, dict) else None
-            except Exception:
-                pass
+                print(f"DEBUG - JSON parse ok, keys: {list(info.keys())[:5]}", flush=True)
+            except Exception as e:
+                print(f"DEBUG - JSON parse falhou: {e}", flush=True)
         if info and info.get('type') == 'service_account':
             try:
                 credentials = service_account.Credentials.from_service_account_info(
@@ -130,6 +134,8 @@ def get_bigquery_client():
                 )
             except Exception as e:
                 print(f"ERRO STREAMLIT_SECRETS: {e}", flush=True)
+        else:
+            print(f"DEBUG - info nao encontrado ou nao eh service_account", flush=True)
 
     # 6. Local
     return bigquery.Client(project="rj-sms-sandbox")
