@@ -23,14 +23,32 @@ def get_bigquery_client():
     """Conecta ao BigQuery.
 
     Ordem de prioridade:
-    1. Railway → GOOGLE_APPLICATION_CREDENTIALS_JSON (service account JSON)
-    2. Streamlit Cloud → st.secrets['gcp_service_account']
-    3. Streamlit Cloud → st.secrets['gcp_credentials'] (legado)
-    4. Local → Application Default Credentials
+    1. Railway → gcp_creds.txt (via GOOGLE_APPLICATION_CREDENTIALS)
+    2. Railway → variável GOOGLE_APPLICATION_CREDENTIALS_JSON
+    3. Streamlit Cloud → st.secrets['gcp_service_account']
+    4. Streamlit Cloud → st.secrets['gcp_credentials'] (legado)
+    5. Local → Application Default Credentials
     """
 
-# 1. Railway — service account JSON via variável de ambiente
+    # 1. Railway — arquivo de credenciais via ENV
+    creds_file = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    if creds_file and os.path.exists(creds_file):
+        try:
+            with open(creds_file) as f:
+                info = json.load(f)
+            credentials = service_account.Credentials.from_service_account_info(
+                info,
+                scopes=["https://www.googleapis.com/auth/bigquery"]
+            )
+            print("DEBUG - autenticado via arquivo", flush=True)
+            return bigquery.Client(
+                credentials=credentials,
+                project=info.get('project_id', 'rj-sms-sandbox')
+            )
+        except Exception as e:
+            print(f"ERRO arquivo credenciais: {e}", flush=True)
 
+    # 2. Railway — JSON via variável de ambiente
     creds_json = os.getenv('GOOGLE_CREDENTIALS') or os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
     if creds_json:
         try:
@@ -39,17 +57,17 @@ def get_bigquery_client():
                 info,
                 scopes=["https://www.googleapis.com/auth/bigquery"]
             )
+            print("DEBUG - autenticado via variável JSON", flush=True)
             return bigquery.Client(
                 credentials=credentials,
                 project=info.get('project_id', 'rj-sms-sandbox')
             )
         except Exception as e:
-            print(f"ERRO JSON: {e}", flush=True)
-            raise
+            print(f"ERRO JSON variável: {e}", flush=True)
     else:
         print("VARIAVEL VAZIA OU AUSENTE", flush=True)
 
-    # 2. Streamlit Cloud — service account
+    # 3. Streamlit Cloud — service account
     try:
         if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
             info = dict(st.secrets['gcp_service_account'])
@@ -64,7 +82,7 @@ def get_bigquery_client():
     except Exception as e:
         print(f"Erro gcp_service_account: {e}")
 
-    # 3. Streamlit Cloud — OAuth legado
+    # 4. Streamlit Cloud — OAuth legado
     try:
         if hasattr(st, 'secrets') and 'gcp_credentials' in st.secrets:
             credentials = Credentials(
@@ -81,5 +99,5 @@ def get_bigquery_client():
     except Exception as e:
         print(f"Erro gcp_credentials: {e}")
 
-    # 4. Local
+    # 5. Local
     return bigquery.Client(project="rj-sms-sandbox")
