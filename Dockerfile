@@ -12,4 +12,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD streamlit run Home.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --browser.gatherUsageStats=false
+# Cria o secrets.toml a partir da variável de ambiente
+RUN mkdir -p /app/.streamlit
+CMD mkdir -p /root/.streamlit && \
+    echo "$STREAMLIT_SECRETS" > /root/.streamlit/secrets.toml && \
+    streamlit run Home.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --browser.gatherUsageStats=false
