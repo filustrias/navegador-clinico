@@ -145,6 +145,59 @@ def carregar_violin_charlson(ap=None, clinica=None, esf=None,
     return run_query(sql)
 
 
+@st.cache_data(ttl=900, show_spinner=False)
+def carregar_violin_esf(ap=None, clinica=None, esf=None) -> pd.DataFrame:
+    """Query simples por ESF — sem filtro de charlson. Usada no drill-down clínica→ESF."""
+    clauses = [
+        "nome_esf_cadastro IS NOT NULL",
+        "nome_clinica_cadastro IS NOT NULL",
+    ]
+    if ap:      clauses.append(f"area_programatica_cadastro = '{ap}'")
+    if clinica: clauses.append(f"nome_clinica_cadastro = '{clinica}'")
+    if esf:     clauses.append(f"nome_esf_cadastro = '{esf}'")
+    where = "WHERE " + " AND ".join(clauses)
+
+    sql = f"""
+    SELECT
+        nome_clinica_cadastro       AS clinica,
+        nome_esf_cadastro           AS esf,
+        COUNT(*)                    AS n_pacientes,
+
+        ROUND(COUNTIF(lacuna_CI_sem_AAS = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_CI_sem_AAS,
+        ROUND(COUNTIF(lacuna_CI_sem_estatina_qualquer = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_CI_sem_estatina,
+        ROUND(COUNTIF(lacuna_FA_sem_anticoagulacao = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_FA_sem_anticoag,
+        ROUND(COUNTIF(lacuna_ICC_sem_SGLT2 = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_ICC_sem_SGLT2,
+        ROUND(COUNTIF(lacuna_ICC_sem_IECA_BRA = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_ICC_sem_IECA_BRA,
+        ROUND(COUNTIF(lacuna_IRC_sem_SGLT2 = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_IRC_sem_SGLT2,
+        ROUND(COUNTIF(lacuna_DM_sem_HbA1c_recente = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_DM_sem_HbA1c,
+        ROUND(COUNTIF(lacuna_DM_descontrolado = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_DM_descontrolado,
+        ROUND(COUNTIF(lacuna_HAS_descontrolado_menor80 = TRUE
+                   OR lacuna_HAS_descontrolado_80mais = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_HAS_descontrolado,
+        ROUND(COUNTIF(lacuna_PA_hipertenso_180d = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_HAS_sem_PA_180d,
+        ROUND(COUNTIF(lacuna_creatinina_HAS_DM = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_sem_creatinina,
+        ROUND(COUNTIF(lacuna_colesterol_HAS_DM = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_sem_colesterol,
+        ROUND(COUNTIF(lacuna_DM_sem_exame_pe_365d = TRUE)
+              * 100.0 / COUNT(*), 1)                          AS pct_DM_sem_exame_pe
+
+    FROM `{_fqn(config.TABELA_FATO)}`
+    {where}
+    GROUP BY nome_clinica_cadastro, nome_esf_cadastro
+    """
+    return run_query(sql)
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def carregar_pacientes_com_lacunas(ap=None, clinica=None, esf=None,
                                     charlson_cats=None) -> pd.DataFrame:
@@ -418,8 +471,13 @@ with tab1:
     ch_v  = charlson_sel if charlson_sel else None
 
     with st.spinner("Carregando dados do violino..."):
-        df_ch = carregar_violin_charlson(ap=ap_v, clinica=cli_v, esf=esf_v,
-                                          charlson_cats=ch_v)
+        if cli_v or esf_v:
+            # Nível clínica/ESF — query simples sem charlson
+            df_ch = carregar_violin_esf(ap=ap_v, clinica=cli_v, esf=esf_v)
+        else:
+            # Nível AP — query com charlson
+            df_ch = carregar_violin_charlson(ap=ap_v, clinica=cli_v, esf=esf_v,
+                                              charlson_cats=ch_v)
 
     if df_ch.empty or col_v not in df_ch.columns:
         st.info(f"Sem dados suficientes para os filtros selecionados. "
