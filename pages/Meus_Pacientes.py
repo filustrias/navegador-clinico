@@ -58,7 +58,7 @@ col1, col2 = st.columns([3, 1])
 with col1:
     st.markdown(f"""
     <h1 style='margin: 0; padding: 0; color: {T.TEXT};'>
-        🏥 Navegador Clínico <small style='color: {T.TEXT_MUTED}; font-size: 0.5em;'>SMS-RJ</small>
+        🏥 Navegador Clínico de Multimorbidade e Polifarmácia
     </h1>
     """, unsafe_allow_html=True)
 

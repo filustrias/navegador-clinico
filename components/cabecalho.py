@@ -116,8 +116,8 @@ def renderizar_cabecalho(pagina_atual: str) -> None:
     with col_titulo:
         st.markdown("""
         <div class='nav-titulo'>
-            <h1>🏥 Navegador Clínico
-                <small>SMS-RJ · Atenção Primária</small>
+            <h1>🏥 Navegador Clínico de Multimorbidade e Polifarmácia
+                <small>Atenção Primária</small>
             </h1>
         </div>
         """, unsafe_allow_html=True)
