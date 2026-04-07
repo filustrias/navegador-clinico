@@ -19,7 +19,7 @@ import os
 def _is_modo_anonimo() -> bool:
     """Lê MODO_ANONIMO da variável de ambiente a cada chamada."""
     import os as _os
-    return _os.getenv('MODO_ANONIMO', 'false').lower() == 'true'
+    return _os.getenv('MODO_ANONIMO', 'true').lower() == 'true'
 
 # Alias para compatibilidade com código existente que importa MODO_ANONIMO
 # Nota: este valor é fixado no import — use _is_modo_anonimo() para leitura dinâmica
