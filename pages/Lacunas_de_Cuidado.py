@@ -412,14 +412,14 @@ with tab1:
     if df_ch.empty or col_v not in df_ch.columns:
         st.info("Sem dados suficientes para os filtros selecionados.")
     else:
-        # Drill-down progressivo:
-        # Sem filtro       → APs (violin, 1 ponto = clínica)
-        # AP filtrada      → Clínicas daquela AP (strip, 1 ponto = clínica)
-        # Clínica filtrada → ESFs daquela clínica (strip, 1 ponto = ESF)
-        # ESF filtrada     → Só a ESF (strip)
+        # Drill-down progressivo (sempre violin quando possível):
+        # Sem filtro       → violin por AP (cada ponto = clínica)
+        # AP filtrada      → violin por clínica (cada ponto = ESF)
+        # Clínica filtrada → strip com ESFs (poucos pontos)
+        # ESF filtrada     → strip só a ESF
 
         if esf_v is not None:
-            # Nível ESF — mostra só a equipe
+            # Nível ESF — mostra só a equipe (strip)
             df_plot = (
                 df_ch.groupby(['esf'])[col_v]
                 .mean().reset_index()
@@ -429,7 +429,7 @@ with tab1:
             fig_v = px.strip(
                 df_plot, x='unidade', y='valor', color='unidade',
                 labels={'valor': '% com lacuna', 'unidade': 'ESF'},
-                title=f"{lac_violin_sel} · % de pacientes com lacuna — ESF selecionada",
+                title=f"{lac_violin_sel} · ESF selecionada",
                 color_discrete_sequence=px.colors.qualitative.Bold,
                 height=440,
             )
@@ -441,7 +441,7 @@ with tab1:
             nivel_txt = 'ESF'
 
         elif cli_v is not None:
-            # Nível Clínica — mostra ESFs da clínica
+            # Nível Clínica — strip com ESFs (poucas unidades)
             df_plot = (
                 df_ch.groupby(['clinica', 'esf'])[col_v]
                 .mean().reset_index()
@@ -451,7 +451,7 @@ with tab1:
             fig_v = px.strip(
                 df_plot, x='unidade', y='valor', color='unidade',
                 labels={'valor': '% com lacuna', 'unidade': 'ESF'},
-                title=f"{lac_violin_sel} · % de pacientes com lacuna por ESF",
+                title=f"{lac_violin_sel} · ESFs da clínica",
                 color_discrete_sequence=px.colors.qualitative.Bold,
                 height=440,
             )
@@ -463,29 +463,39 @@ with tab1:
             nivel_txt = 'ESF'
 
         elif ap_v is not None:
-            # Nível AP — mostra clínicas daquela AP
+            # Nível AP — violin por clínica (cada ponto = ESF)
             df_plot = (
-                df_ch.groupby(['ap', 'clinica'])[col_v]
+                df_ch.groupby(['clinica', 'esf'])[col_v]
                 .mean().reset_index()
-                .rename(columns={'clinica': 'unidade', col_v: 'valor'})
+                .rename(columns={'clinica': 'categoria', 'esf': 'unidade',
+                                 col_v: 'valor'})
             )
             df_plot['valor'] = df_plot['valor'].round(1)
-            fig_v = px.strip(
-                df_plot, x='unidade', y='valor', color='unidade',
-                labels={'valor': '% com lacuna', 'unidade': 'Clínica'},
-                title=f"{lac_violin_sel} · % de pacientes com lacuna por Clínica da Família",
+            cli_ord = sorted(df_plot['categoria'].unique().tolist())
+            fig_v = px.violin(
+                df_plot, x='categoria', y='valor', color='categoria',
+                box=True, points='all',
+                hover_data={'unidade': True, 'valor': True, 'categoria': False},
+                labels={'valor': '% com lacuna', 'categoria': 'Clínica',
+                        'unidade': 'ESF'},
+                title=f"{lac_violin_sel} · % de pacientes com lacuna por Clínica",
+                category_orders={'categoria': cli_ord},
                 color_discrete_sequence=px.colors.qualitative.Bold,
-                height=440,
+                height=540,
             )
             fig_v.update_traces(
-                marker=dict(size=14, opacity=0.85, line=dict(width=1, color=T.BORDER)),
-                jitter=0,
+                meanline_visible=True,
+                marker=dict(size=8, opacity=0.65, line=dict(width=0)),
+                spanmode='hard',
             )
-            fig_v.update_xaxes(tickangle=-30, tickfont=dict(size=11), title_text='Clínica')
-            nivel_txt = 'clínica da família'
+            fig_v.update_xaxes(
+                type='category', categoryorder='array', categoryarray=cli_ord,
+                tickangle=-30, tickfont=dict(size=11),
+            )
+            nivel_txt = 'ESF'
 
         else:
-            # Sem filtro — mostra APs (violin, 1 ponto = clínica)
+            # Sem filtro — violin por AP (cada ponto = clínica)
             df_plot = (
                 df_ch.groupby(['ap', 'clinica'])[col_v]
                 .mean().reset_index()
