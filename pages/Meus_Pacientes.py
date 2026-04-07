@@ -1879,14 +1879,17 @@ busca_nome_input = st.text_input(
     placeholder="Digite o nome do paciente...",
     key="busca_nome_input",
 )
-busca_nome = busca_nome_input.strip() if busca_nome_input else None
+busca_nome_raw = busca_nome_input.strip() if busca_nome_input else None
+# No modo anônimo, a busca é feita no DataFrame (após anonimização), não no SQL
+busca_nome_sql = busca_nome_raw if (busca_nome_raw and not MODO_ANONIMO) else None
+busca_nome_local = busca_nome_raw if (busca_nome_raw and MODO_ANONIMO) else None
 
 # Se busca mudou, volta para página 1
 if 'busca_nome_anterior' not in st.session_state:
     st.session_state.busca_nome_anterior = None
-if busca_nome != st.session_state.busca_nome_anterior:
+if busca_nome_raw != st.session_state.busca_nome_anterior:
     st.session_state.pagina_atual = 0
-    st.session_state.busca_nome_anterior = busca_nome
+    st.session_state.busca_nome_anterior = busca_nome_raw
 
 # ÁREA PRINCIPAL - PAGINAÇÃO
 estatisticas = get_statistics_summary(
@@ -1905,7 +1908,7 @@ total_pacientes = count_total_patients(
     idade_max=faixa_idade[1],
     morbidades=morbidades_selecionadas,
     operador_morb=operador_morb,
-    busca_nome=busca_nome
+    busca_nome=busca_nome_sql
 )
 
 if total_pacientes == 0:
@@ -1946,22 +1949,53 @@ else:
 offset = pagina_atual * PACIENTES_POR_PAGINA
 
 with st.spinner(f"Carregando página {pagina_atual + 1}..."):
-    df_pacientes = load_patient_data_paginated(
-        area=area_selecionada,
-        clinica=clinica_selecionada,
-        esf=esf_selecionada,
-        idade_min=faixa_idade[0],
-        idade_max=faixa_idade[1],
-        morbidades=morbidades_selecionadas,
-        operador_morb=operador_morb,
-        ordem=ordem,
-        offset=offset,
-        limit=PACIENTES_POR_PAGINA,
-        busca_nome=busca_nome
-    )
+    if busca_nome_local:
+        # Modo anônimo: carregar todos os pacientes e filtrar localmente
+        df_pacientes = load_patient_data_paginated(
+            area=area_selecionada,
+            clinica=clinica_selecionada,
+            esf=esf_selecionada,
+            idade_min=faixa_idade[0],
+            idade_max=faixa_idade[1],
+            morbidades=morbidades_selecionadas,
+            operador_morb=operador_morb,
+            ordem=ordem,
+            offset=0,
+            limit=5000,
+        )
+        # Anonimizar nomes e filtrar
+        if not df_pacientes.empty and 'nome' in df_pacientes.columns:
+            df_pacientes['nome_anon'] = df_pacientes.apply(
+                lambda r: anonimizar_nome(
+                    str(r.get('cpf') or r.get('nome', '')),
+                    r.get('genero', '')
+                ), axis=1
+            )
+            df_pacientes = df_pacientes[
+                df_pacientes['nome_anon'].str.lower().str.contains(busca_nome_local.lower(), na=False)
+            ]
+            df_pacientes = df_pacientes.drop(columns=['nome_anon'])
+        total_pacientes = len(df_pacientes)
+        total_paginas = max(1, (total_pacientes + PACIENTES_POR_PAGINA - 1) // PACIENTES_POR_PAGINA)
+        pagina_atual = min(pagina_atual, total_paginas - 1)
+        df_pacientes = df_pacientes.iloc[offset:offset + PACIENTES_POR_PAGINA]
+    else:
+        df_pacientes = load_patient_data_paginated(
+            area=area_selecionada,
+            clinica=clinica_selecionada,
+            esf=esf_selecionada,
+            idade_min=faixa_idade[0],
+            idade_max=faixa_idade[1],
+            morbidades=morbidades_selecionadas,
+            operador_morb=operador_morb,
+            ordem=ordem,
+            offset=offset,
+            limit=PACIENTES_POR_PAGINA,
+            busca_nome=busca_nome_sql
+        )
 
 if df_pacientes.empty:
-    st.warning("⚠️ Nenhum dado retornado")
+    st.warning("⚠️ Nenhum paciente encontrado" + (" para a busca informada." if busca_nome_raw else "."))
     st.stop()
 
 # Botões de navegação (topo)
