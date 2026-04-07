@@ -94,9 +94,11 @@ def carregar_violin_charlson(ap=None, clinica=None, esf=None,
     # Agrupamento: inclui charlson apenas no nível agregado
     if clinica or esf:
         group_by = "ap, clinica, esf"
+        charlson_select = "'N/A' AS charlson_categoria,"
         min_pac = 1
     else:
         group_by = "ap, clinica, esf, charlson_categoria"
+        charlson_select = "charlson_categoria,"
         min_pac = 5
 
     sql = f"""
@@ -104,7 +106,7 @@ def carregar_violin_charlson(ap=None, clinica=None, esf=None,
         area_programatica_cadastro  AS ap,
         nome_clinica_cadastro       AS clinica,
         nome_esf_cadastro           AS esf,
-        charlson_categoria,
+        {charlson_select}
         COUNT(*)                    AS n_pacientes,
 
         ROUND(COUNTIF(lacuna_CI_sem_AAS = TRUE)
