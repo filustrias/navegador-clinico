@@ -49,7 +49,7 @@ def get_bigquery_client():
             print(f"ERRO arquivo credenciais: {e}", flush=True)
 
     # 2. Railway — JSON via variável de ambiente
-    creds_json = os.getenv('GOOGLE_CREDENTIALS') or os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+    creds_json = os.getenv('GOOGLE_CREDENTIALS') or os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON') or os.getenv('GCP_CREDENTIALS_JSON')
     if creds_json:
         try:
             info = json.loads(creds_json)

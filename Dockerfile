@@ -19,6 +19,6 @@ secrets = secrets.replace('\\\\n', '\\n');\
 os.makedirs('/root/.streamlit', exist_ok=True);\
 open('/root/.streamlit/secrets.toml', 'w').write(secrets);\
 print('secrets.toml criado:', len(secrets), 'chars');\
-print('ENV vars:', [k for k in os.environ if 'SECRET' in k or 'GOOGLE' in k or 'GCP' in k or 'CRED' in k]);\
+print('TODAS ENV vars:', list(os.environ.keys()));\
 print('secrets preview:', secrets[:80] if secrets else 'VAZIO')\
 " && streamlit run Home.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --browser.gatherUsageStats=false
