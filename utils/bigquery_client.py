@@ -1,6 +1,7 @@
 # utils/bigquery_client.py
 import os
 import json
+import base64
 import streamlit as st
 from google.cloud import bigquery
 from google.oauth2 import service_account
@@ -48,7 +49,24 @@ def get_bigquery_client():
         except Exception as e:
             print(f"ERRO arquivo credenciais: {e}", flush=True)
 
-    # 2. Railway — JSON via variável de ambiente
+    # 2. Railway — Base64 (mais confiável para variáveis com caracteres especiais)
+    creds_b64 = os.getenv('GCP_CREDENTIALS_B64')
+    if creds_b64:
+        try:
+            info = json.loads(base64.b64decode(creds_b64))
+            credentials = service_account.Credentials.from_service_account_info(
+                info,
+                scopes=["https://www.googleapis.com/auth/bigquery"]
+            )
+            print("DEBUG - autenticado via GCP_CREDENTIALS_B64", flush=True)
+            return bigquery.Client(
+                credentials=credentials,
+                project=info.get('project_id', 'rj-sms-sandbox')
+            )
+        except Exception as e:
+            print(f"ERRO GCP_CREDENTIALS_B64: {e}", flush=True)
+
+    # 3. Railway — JSON via variável de ambiente
     creds_json = os.getenv('GOOGLE_CREDENTIALS') or os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON') or os.getenv('GCP_CREDENTIALS_JSON')
     if creds_json:
         try:
