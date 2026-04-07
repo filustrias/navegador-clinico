@@ -78,18 +78,26 @@ def carregar_violin_charlson(ap=None, clinica=None, esf=None,
     clauses = [
         "area_programatica_cadastro IS NOT NULL",
         "nome_clinica_cadastro IS NOT NULL",
-        "charlson_categoria IS NOT NULL",
-        "charlson_categoria != 'Não Classificado'",
     ]
+    # Filtro de charlson só no nível agregado (sem filtro de clínica/ESF)
+    if not (clinica or esf):
+        clauses.append("charlson_categoria IS NOT NULL")
+        clauses.append("charlson_categoria != 'Não Classificado'")
     if ap:      clauses.append(f"area_programatica_cadastro = '{ap}'")
     if clinica: clauses.append(f"nome_clinica_cadastro = '{clinica}'")
     if esf:     clauses.append(f"nome_esf_cadastro = '{esf}'")
-    if charlson_cats:
+    if charlson_cats and not (clinica or esf):
         cats = "', '".join(charlson_cats)
         clauses.append(f"charlson_categoria IN ('{cats}')")
     where = "WHERE " + " AND ".join(clauses)
-    # Mínimo de pacientes: relaxa quando filtra por clínica/ESF
-    min_pac = 1 if (clinica or esf) else 5
+
+    # Agrupamento: inclui charlson apenas no nível agregado
+    if clinica or esf:
+        group_by = "ap, clinica, esf"
+        min_pac = 1
+    else:
+        group_by = "ap, clinica, esf, charlson_categoria"
+        min_pac = 5
 
     sql = f"""
     SELECT
@@ -129,7 +137,7 @@ def carregar_violin_charlson(ap=None, clinica=None, esf=None,
 
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
-    GROUP BY ap, clinica, esf, charlson_categoria
+    GROUP BY {group_by}
     HAVING COUNT(*) >= {min_pac}
     """
     return run_query(sql)
