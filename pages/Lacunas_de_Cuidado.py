@@ -68,7 +68,7 @@ def carregar_lacunas_agregadas() -> pd.DataFrame:
     return run_query(sql)
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def carregar_violin_charlson(ap=None, clinica=None, esf=None,
                               charlson_cats=None) -> pd.DataFrame:
     """

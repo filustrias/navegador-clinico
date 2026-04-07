@@ -1031,7 +1031,7 @@ with tab2:
                 ap_filtro=ap_ativo, clinica_filtro=clinica_ativo,
                 charlson_cats=cats_violin
             )
-            label_x   = "ESF"
+            label_x   = "Clínica"
             nivel_txt = f"ESFs — {anonimizar_clinica(clinica_ativo) if MODO_ANONIMO else clinica_ativo}"
             ponto_txt = "ESF"
         elif ap_ativo:
