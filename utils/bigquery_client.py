@@ -102,6 +102,8 @@ def get_bigquery_client():
     # 5. Railway — STREAMLIT_SECRETS (variável de ambiente)
     streamlit_secrets = os.getenv('STREAMLIT_SECRETS')
     if streamlit_secrets:
+        # Converte \\n literais em newlines reais
+        streamlit_secrets = streamlit_secrets.replace('\\n', '\n')
         print(f"DEBUG - STREAMLIT_SECRETS encontrada ({len(streamlit_secrets)} chars)", flush=True)
         info = None
         # Tenta TOML (formato secrets.toml do Streamlit)
