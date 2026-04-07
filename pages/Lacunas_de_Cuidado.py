@@ -16,6 +16,10 @@ import config
 from utils.anonimizador import (
     anonimizar_ap, anonimizar_clinica, anonimizar_esf, mostrar_badge_anonimo, MODO_ANONIMO
 )
+from utils.lacunas_config import (
+    LACUNAS, get_mapa_lac_col, get_grupos_ordenados,
+    get_lacunas_por_grupo, gerar_countif_sql
+)
 st.set_page_config(
     page_title="Lacunas de Cuidado · Navegador Clínico",
     page_icon="⚠️",
@@ -101,6 +105,7 @@ def carregar_violin_charlson(ap=None, clinica=None, esf=None,
         charlson_select = "charlson_categoria,"
         min_pac = 5
 
+    countif_sql = gerar_countif_sql()
     sql = f"""
     SELECT
         area_programatica_cadastro  AS ap,
@@ -108,34 +113,7 @@ def carregar_violin_charlson(ap=None, clinica=None, esf=None,
         nome_esf_cadastro           AS esf,
         {charlson_select}
         COUNT(*)                    AS n_pacientes,
-
-        ROUND(COUNTIF(lacuna_CI_sem_AAS = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_CI_sem_AAS,
-        ROUND(COUNTIF(lacuna_CI_sem_estatina_qualquer = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_CI_sem_estatina,
-        ROUND(COUNTIF(lacuna_FA_sem_anticoagulacao = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_FA_sem_anticoag,
-        ROUND(COUNTIF(lacuna_ICC_sem_SGLT2 = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_ICC_sem_SGLT2,
-        ROUND(COUNTIF(lacuna_ICC_sem_IECA_BRA = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_ICC_sem_IECA_BRA,
-        ROUND(COUNTIF(lacuna_IRC_sem_SGLT2 = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_IRC_sem_SGLT2,
-        ROUND(COUNTIF(lacuna_DM_sem_HbA1c_recente = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_DM_sem_HbA1c,
-        ROUND(COUNTIF(lacuna_DM_descontrolado = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_DM_descontrolado,
-        ROUND(COUNTIF(lacuna_HAS_descontrolado_menor80 = TRUE
-                   OR lacuna_HAS_descontrolado_80mais = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_HAS_descontrolado,
-        ROUND(COUNTIF(lacuna_PA_hipertenso_180d = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_HAS_sem_PA_180d,
-        ROUND(COUNTIF(lacuna_creatinina_HAS_DM = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_sem_creatinina,
-        ROUND(COUNTIF(lacuna_colesterol_HAS_DM = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_sem_colesterol,
-        ROUND(COUNTIF(lacuna_DM_sem_exame_pe_365d = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_DM_sem_exame_pe
+{countif_sql}
 
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
@@ -186,39 +164,13 @@ def carregar_violin_esf(ap=None, clinica=None, esf=None) -> pd.DataFrame:
     if esf:     clauses.append(f"nome_esf_cadastro = '{esf}'")
     where = "WHERE " + " AND ".join(clauses)
 
+    countif_sql = gerar_countif_sql()
     sql = f"""
     SELECT
         nome_clinica_cadastro       AS clinica,
         nome_esf_cadastro           AS esf,
         COUNT(*)                    AS n_pacientes,
-
-        ROUND(COUNTIF(lacuna_CI_sem_AAS = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_CI_sem_AAS,
-        ROUND(COUNTIF(lacuna_CI_sem_estatina_qualquer = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_CI_sem_estatina,
-        ROUND(COUNTIF(lacuna_FA_sem_anticoagulacao = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_FA_sem_anticoag,
-        ROUND(COUNTIF(lacuna_ICC_sem_SGLT2 = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_ICC_sem_SGLT2,
-        ROUND(COUNTIF(lacuna_ICC_sem_IECA_BRA = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_ICC_sem_IECA_BRA,
-        ROUND(COUNTIF(lacuna_IRC_sem_SGLT2 = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_IRC_sem_SGLT2,
-        ROUND(COUNTIF(lacuna_DM_sem_HbA1c_recente = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_DM_sem_HbA1c,
-        ROUND(COUNTIF(lacuna_DM_descontrolado = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_DM_descontrolado,
-        ROUND(COUNTIF(lacuna_HAS_descontrolado_menor80 = TRUE
-                   OR lacuna_HAS_descontrolado_80mais = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_HAS_descontrolado,
-        ROUND(COUNTIF(lacuna_PA_hipertenso_180d = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_HAS_sem_PA_180d,
-        ROUND(COUNTIF(lacuna_creatinina_HAS_DM = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_sem_creatinina,
-        ROUND(COUNTIF(lacuna_colesterol_HAS_DM = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_sem_colesterol,
-        ROUND(COUNTIF(lacuna_DM_sem_exame_pe_365d = TRUE)
-              * 100.0 / COUNT(*), 1)                          AS pct_DM_sem_exame_pe
+{countif_sql}
 
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
@@ -453,42 +405,30 @@ with tab1:
         "Ao filtrar por clínica, os pontos passam a representar as ESFs."
     )
 
-    # Mapeamento lacuna → coluna na tabela fato
-    MAPA_LAC_COL = {
-        'CI sem AAS':                 'pct_CI_sem_AAS',
-        'CI sem estatina alta intensidade': 'pct_CI_sem_estatina',
-        'CI sem estatina qualquer':   'pct_CI_sem_estatina',
-        'FA sem anticoagulação':      'pct_FA_sem_anticoag',
-        'ICC sem SGLT-2':             'pct_ICC_sem_SGLT2',
-        'ICC sem IECA/BRA':           'pct_ICC_sem_IECA_BRA',
-        'IRC sem SGLT-2':             'pct_IRC_sem_SGLT2',
-        'DM sem HbA1c recente':       'pct_DM_sem_HbA1c',
-        'DM descontrolado':           'pct_DM_descontrolado',
-        'HAS descontrolada':          'pct_HAS_descontrolado',
-        'HAS sem aferição de PA em 180 dias': 'pct_HAS_sem_PA_180d',
-        'Sem creatinina':             'pct_sem_creatinina',
-        'Sem colesterol':             'pct_sem_colesterol',
-        'DM sem exame do pé':         'pct_DM_sem_exame_pe',
-    }
+    # Mapeamento completo: 39 lacunas (gerado de lacunas_config.py)
+    MAPA_LAC_COL = get_mapa_lac_col()
 
-    # Filtros inline — mesmo padrão da tabela
+    # Filtros inline — grupo + lacuna
     vf1, vf2 = st.columns(2)
     with vf1:
-        cats_vio = ['Todas'] + sorted({
-            k.split(' sem ')[0].split(' des')[0].strip()
-            for k in MAPA_LAC_COL.keys()
-        })
-        # Categorias reais da MM_sumario_lacunas
-        cats_vio = ['Todas'] + sorted(df_lac['categoria'].dropna().unique().tolist())
-        cat_vio_sel = st.selectbox("📋 Categoria", options=cats_vio, key="vio_cat")
+        grupos_disp = ['Todos os grupos'] + get_grupos_ordenados()
+        grupo_sel = st.selectbox("📋 Grupo", options=grupos_disp, key="vio_grupo")
     with vf2:
-        df_lac_vio = df_lac if cat_vio_sel == 'Todas' else df_lac[df_lac['categoria'] == cat_vio_sel]
-        # Filtrar lacunas disponíveis no MAPA_LAC_COL
-        lacs_vio_disp = sorted(MAPA_LAC_COL.keys())
+        if grupo_sel == 'Todos os grupos':
+            lacs_disp = sorted(MAPA_LAC_COL.keys())
+        else:
+            lacs_disp = get_lacunas_por_grupo(grupo_sel)
         lac_violin_sel = st.selectbox(
-            "🏷️ Lacuna", options=lacs_vio_disp, key="lac_violin_sel",
+            "🏷️ Lacuna", options=lacs_disp, key="lac_violin_sel",
         )
     col_v = MAPA_LAC_COL[lac_violin_sel]
+
+    # Texto explicativo da lacuna selecionada
+    info_lac = LACUNAS[lac_violin_sel]
+    st.info(
+        f"**{lac_violin_sel}** — {info_lac['descricao']}\n\n"
+        f"**Regra:** {info_lac['regra']}"
+    )
 
     charlson_opts = ['Muito Alto', 'Alto', 'Moderado', 'Baixo']
     charlson_sel = st.multiselect(
