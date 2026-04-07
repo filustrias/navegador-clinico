@@ -412,10 +412,36 @@ with tab1:
     if df_ch.empty or col_v not in df_ch.columns:
         st.info("Sem dados suficientes para os filtros selecionados.")
     else:
-        modo_strip = cli_v is not None
+        # Drill-down progressivo:
+        # Sem filtro       → APs (violin, 1 ponto = clínica)
+        # AP filtrada      → Clínicas daquela AP (strip, 1 ponto = clínica)
+        # Clínica filtrada → ESFs daquela clínica (strip, 1 ponto = ESF)
+        # ESF filtrada     → Só a ESF (strip)
 
-        if modo_strip:
-            # Strip — 1 ponto por ESF
+        if esf_v is not None:
+            # Nível ESF — mostra só a equipe
+            df_plot = (
+                df_ch.groupby(['esf'])[col_v]
+                .mean().reset_index()
+                .rename(columns={'esf': 'unidade', col_v: 'valor'})
+            )
+            df_plot['valor'] = df_plot['valor'].round(1)
+            fig_v = px.strip(
+                df_plot, x='unidade', y='valor', color='unidade',
+                labels={'valor': '% com lacuna', 'unidade': 'ESF'},
+                title=f"{lac_violin_sel} · % de pacientes com lacuna — ESF selecionada",
+                color_discrete_sequence=px.colors.qualitative.Bold,
+                height=440,
+            )
+            fig_v.update_traces(
+                marker=dict(size=14, opacity=0.85, line=dict(width=1, color=T.BORDER)),
+                jitter=0,
+            )
+            fig_v.update_xaxes(tickangle=-30, tickfont=dict(size=11), title_text='ESF')
+            nivel_txt = 'ESF'
+
+        elif cli_v is not None:
+            # Nível Clínica — mostra ESFs da clínica
             df_plot = (
                 df_ch.groupby(['clinica', 'esf'])[col_v]
                 .mean().reset_index()
@@ -433,10 +459,33 @@ with tab1:
                 marker=dict(size=14, opacity=0.85, line=dict(width=1, color=T.BORDER)),
                 jitter=0,
             )
-            fig_v.update_xaxes(tickangle=-30, tickfont=dict(size=11),
-                                title_text='ESF')
+            fig_v.update_xaxes(tickangle=-30, tickfont=dict(size=11), title_text='ESF')
+            nivel_txt = 'ESF'
+
+        elif ap_v is not None:
+            # Nível AP — mostra clínicas daquela AP
+            df_plot = (
+                df_ch.groupby(['ap', 'clinica'])[col_v]
+                .mean().reset_index()
+                .rename(columns={'clinica': 'unidade', col_v: 'valor'})
+            )
+            df_plot['valor'] = df_plot['valor'].round(1)
+            fig_v = px.strip(
+                df_plot, x='unidade', y='valor', color='unidade',
+                labels={'valor': '% com lacuna', 'unidade': 'Clínica'},
+                title=f"{lac_violin_sel} · % de pacientes com lacuna por Clínica da Família",
+                color_discrete_sequence=px.colors.qualitative.Bold,
+                height=440,
+            )
+            fig_v.update_traces(
+                marker=dict(size=14, opacity=0.85, line=dict(width=1, color=T.BORDER)),
+                jitter=0,
+            )
+            fig_v.update_xaxes(tickangle=-30, tickfont=dict(size=11), title_text='Clínica')
+            nivel_txt = 'clínica da família'
+
         else:
-            # Violin — 1 ponto por clínica
+            # Sem filtro — mostra APs (violin, 1 ponto = clínica)
             df_plot = (
                 df_ch.groupby(['ap', 'clinica'])[col_v]
                 .mean().reset_index()
@@ -465,6 +514,7 @@ with tab1:
                 type='category', categoryorder='array', categoryarray=ap_ord,
                 tickangle=-30, tickfont=dict(size=11),
             )
+            nivel_txt = 'clínica da família'
 
         fig_v.update_yaxes(ticksuffix='%', gridcolor=T.GRID,
                             rangemode='tozero', tickfont=dict(size=11))
@@ -482,7 +532,7 @@ with tab1:
         st.caption(
             f"Lacuna: **{lac_violin_sel}** · "
             f"Carga de morbidade: **{ch_txt}** · "
-            f"Cada ponto = uma {'ESF' if modo_strip else 'clínica da família'}."
+            f"Cada ponto = uma {nivel_txt}."
         )
 
 

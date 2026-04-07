@@ -1026,21 +1026,24 @@ with tab2:
         clinica_ativo = territorio['clinica']
 
         if clinica_ativo:
+            # Clínica filtrada → mostra ESFs daquela clínica
             df_viol   = carregar_violin_esfs(
                 ap_filtro=ap_ativo, clinica_filtro=clinica_ativo,
                 charlson_cats=cats_violin
             )
-            label_x   = "Clínica"
+            label_x   = "ESF"
             nivel_txt = f"ESFs — {anonimizar_clinica(clinica_ativo) if MODO_ANONIMO else clinica_ativo}"
             ponto_txt = "ESF"
         elif ap_ativo:
-            df_viol   = carregar_violin_esfs(
+            # AP filtrada → mostra clínicas daquela AP
+            df_viol   = carregar_violin_clinicas(
                 ap_filtro=ap_ativo, charlson_cats=cats_violin
             )
             label_x   = "Clínica"
-            nivel_txt = f"ESFs por Clínica — AP {anonimizar_ap(ap_ativo) if MODO_ANONIMO else ap_ativo}"
-            ponto_txt = "ESF"
+            nivel_txt = f"Clínicas — AP {anonimizar_ap(ap_ativo) if MODO_ANONIMO else ap_ativo}"
+            ponto_txt = "Clínica"
         else:
+            # Sem filtro → mostra APs (violin, 1 ponto = clínica)
             df_viol   = carregar_violin_clinicas(charlson_cats=cats_violin)
             label_x   = "Área Programática"
             nivel_txt = "Clínicas por Área Programática"
@@ -1068,7 +1071,7 @@ with tab2:
             label_y=ind_sel_label,
             label_x=label_x,
             titulo=f"{ind_sel_label} — {nivel_txt}",
-            modo_strip=bool(clinica_ativo),
+            modo_strip=bool(clinica_ativo or ap_ativo),
         )
 
         if fig_viol:
