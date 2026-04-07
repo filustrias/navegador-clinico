@@ -554,8 +554,8 @@ def load_filter_options_cascata(area=None, clinica=None):
 
 @st.cache_data(show_spinner=False, ttl=900)
 def load_patient_data_paginated(
-    area=None, 
-    clinica=None, 
+    area=None,
+    clinica=None,
     esf=None,
     idade_min=None,
     idade_max=None,
@@ -563,28 +563,33 @@ def load_patient_data_paginated(
     operador_morb="OR",
     ordem="desc",
     offset=0,
-    limit=20
+    limit=20,
+    busca_nome=None
 ):
     """Carrega pacientes com paginação e filtros"""
-    
+
     where_clauses = ["area_programatica_cadastro IS NOT NULL"]
-    
+
     if area is not None:
         where_clauses.append(f"area_programatica_cadastro = '{str(area)}'")
-    
+
     if clinica:
         where_clauses.append(f"nome_clinica_cadastro = '{str(clinica)}'")
-    
+
     if esf:
         where_clauses.append(f"nome_esf_cadastro = '{str(esf)}'")
-    
+
     if idade_min is not None and idade_max is not None:
         where_clauses.append(f"idade BETWEEN {int(idade_min)} AND {int(idade_max)}")
-    
+
+    if busca_nome:
+        termo = busca_nome.replace("'", "\\'")
+        where_clauses.append(f"LOWER(nome) LIKE '%{termo.lower()}%'")
+
     # Filtro de morbidades
     if morbidades and len(morbidades) > 0:
         morb_cols = [MORBIDADES_MAP.get(m) for m in morbidades if m in MORBIDADES_MAP]
-        
+
         if operador_morb == "AND":
             for col in morb_cols:
                 where_clauses.append(f"{col} IS NOT NULL")
@@ -786,27 +791,31 @@ def buscar_acb_paciente(cpf: str) -> dict:
     return df.iloc[0].to_dict()
 
 @st.cache_data(show_spinner=False, ttl=900)
-def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR"):
+def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR", busca_nome=None):
     """Conta total de pacientes para paginação"""
-    
+
     where_clauses = ["area_programatica_cadastro IS NOT NULL"]
-    
+
     if area is not None:
         where_clauses.append(f"area_programatica_cadastro = '{str(area)}'")
-    
+
     if clinica:
         where_clauses.append(f"nome_clinica_cadastro = '{str(clinica)}'")
-    
+
     if esf:
         where_clauses.append(f"nome_esf_cadastro = '{str(esf)}'")
-    
+
     if idade_min is not None and idade_max is not None:
         where_clauses.append(f"idade BETWEEN {int(idade_min)} AND {int(idade_max)}")
-    
+
+    if busca_nome:
+        termo = busca_nome.replace("'", "\\'")
+        where_clauses.append(f"LOWER(nome) LIKE '%{termo.lower()}%'")
+
     # Filtro de morbidades
     if morbidades and len(morbidades) > 0:
         morb_cols = [MORBIDADES_MAP.get(m) for m in morbidades if m in MORBIDADES_MAP]
-        
+
         if operador_morb == "AND":
             for col in morb_cols:
                 where_clauses.append(f"{col} IS NOT NULL")
@@ -1863,6 +1872,22 @@ ordem_selecionada = st.sidebar.selectbox(
 )
 ordem = ordem_opcoes[ordem_selecionada]
 
+# Campo de busca por nome
+busca_nome_input = st.text_input(
+    "🔍 Buscar paciente por nome",
+    value=st.session_state.get('busca_nome_input', ''),
+    placeholder="Digite o nome do paciente...",
+    key="busca_nome_input",
+)
+busca_nome = busca_nome_input.strip() if busca_nome_input else None
+
+# Se busca mudou, volta para página 1
+if 'busca_nome_anterior' not in st.session_state:
+    st.session_state.busca_nome_anterior = None
+if busca_nome != st.session_state.busca_nome_anterior:
+    st.session_state.pagina_atual = 0
+    st.session_state.busca_nome_anterior = busca_nome
+
 # ÁREA PRINCIPAL - PAGINAÇÃO
 estatisticas = get_statistics_summary(
     area=area_selecionada,
@@ -1879,7 +1904,8 @@ total_pacientes = count_total_patients(
     idade_min=faixa_idade[0],
     idade_max=faixa_idade[1],
     morbidades=morbidades_selecionadas,
-    operador_morb=operador_morb
+    operador_morb=operador_morb,
+    busca_nome=busca_nome
 )
 
 if total_pacientes == 0:
@@ -1930,7 +1956,8 @@ with st.spinner(f"Carregando página {pagina_atual + 1}..."):
         operador_morb=operador_morb,
         ordem=ordem,
         offset=offset,
-        limit=PACIENTES_POR_PAGINA
+        limit=PACIENTES_POR_PAGINA,
+        busca_nome=busca_nome
     )
 
 if df_pacientes.empty:
