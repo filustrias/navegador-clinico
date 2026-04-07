@@ -145,6 +145,35 @@ def carregar_violin_charlson(ap=None, clinica=None, esf=None,
     return run_query(sql)
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _opcoes_territorio_fato() -> dict:
+    """Carrega opções de território direto do TABELA_FATO (fonte de verdade)."""
+    sql = f"""
+    SELECT DISTINCT
+        area_programatica_cadastro AS ap,
+        nome_clinica_cadastro      AS clinica,
+        nome_esf_cadastro          AS esf
+    FROM `{_fqn(config.TABELA_FATO)}`
+    WHERE area_programatica_cadastro IS NOT NULL
+      AND nome_clinica_cadastro IS NOT NULL
+      AND nome_esf_cadastro IS NOT NULL
+    ORDER BY ap, clinica, esf
+    """
+    df = run_query(sql)
+    if df.empty:
+        return {'areas': [], 'clinicas': {}, 'esfs': {}}
+    areas = sorted(df['ap'].unique().tolist(), key=_ord_ap)
+    clinicas = {
+        ap: sorted(df[df['ap'] == ap]['clinica'].unique().tolist())
+        for ap in areas
+    }
+    esfs = {
+        cli: sorted(df[df['clinica'] == cli]['esf'].unique().tolist())
+        for cli in df['clinica'].unique()
+    }
+    return {'areas': areas, 'clinicas': clinicas, 'esfs': esfs}
+
+
 @st.cache_data(ttl=900, show_spinner=False)
 def carregar_violin_esf(ap=None, clinica=None, esf=None) -> pd.DataFrame:
     """Query simples por ESF — sem filtro de charlson. Usada no drill-down clínica→ESF."""
@@ -303,6 +332,7 @@ st.sidebar.title("Filtros")
 
 with st.spinner("Carregando opções..."):
     df_lac = carregar_lacunas_agregadas()
+    opcoes_fato = _opcoes_territorio_fato()
 
 if df_lac.empty:
     st.error("❌ Não foi possível carregar os dados de lacunas.")
@@ -318,27 +348,29 @@ def _lac_reset_cli_esf():
 def _lac_reset_esf():
     st.session_state['lac_esf'] = 'Todas'
 
-# Inicializar session_state
+# Filtros usam valores do TABELA_FATO (mesma fonte das queries)
 if 'lac_ap' not in st.session_state:
     ap_init = ctx.get('ap')
-    aps_init = ['Todas'] + sorted(df_lac['ap'].dropna().unique().tolist(), key=_ord_ap)
+    aps_init = ['Todas'] + opcoes_fato['areas']
     st.session_state['lac_ap'] = ap_init if ap_init in aps_init else 'Todas'
 if 'lac_cli' not in st.session_state:
     st.session_state['lac_cli'] = ctx.get('clinica') or 'Todas'
 if 'lac_esf' not in st.session_state:
     st.session_state['lac_esf'] = ctx.get('esf') or 'Todas'
 
-aps_disp = ['Todas'] + sorted(df_lac['ap'].dropna().unique().tolist(), key=_ord_ap)
+aps_disp = ['Todas'] + opcoes_fato['areas']
 ap_sel = st.sidebar.selectbox(
     "🗺️ Área Programática", options=aps_disp,
     format_func=lambda x: "Todas" if x == 'Todas' else anonimizar_ap(str(x)),
     key="lac_ap", on_change=_lac_reset_cli_esf,
 )
 
-df_ap_f = df_lac if ap_sel == 'Todas' else df_lac[df_lac['ap'] == ap_sel]
-clis_disp = ['Todas'] + sorted(df_ap_f['clinica'].dropna().unique().tolist())
+# Clínicas da AP selecionada (do TABELA_FATO)
+if ap_sel != 'Todas' and ap_sel in opcoes_fato['clinicas']:
+    clis_disp = ['Todas'] + opcoes_fato['clinicas'][ap_sel]
+else:
+    clis_disp = ['Todas'] + sorted({c for clist in opcoes_fato['clinicas'].values() for c in clist})
 
-# Garantir que o valor em session_state é válido para a AP atual
 if st.session_state.get('lac_cli') not in clis_disp:
     st.session_state['lac_cli'] = 'Todas'
 
@@ -348,10 +380,12 @@ cli_sel = st.sidebar.selectbox(
     key="lac_cli", on_change=_lac_reset_esf,
 )
 
-df_cli_f = df_ap_f if cli_sel == 'Todas' else df_ap_f[df_ap_f['clinica'] == cli_sel]
-esfs_disp = ['Todas'] + sorted(df_cli_f['esf'].dropna().unique().tolist())
+# ESFs da clínica selecionada (do TABELA_FATO)
+if cli_sel != 'Todas' and cli_sel in opcoes_fato['esfs']:
+    esfs_disp = ['Todas'] + opcoes_fato['esfs'][cli_sel]
+else:
+    esfs_disp = ['Todas']
 
-# Garantir que o valor em session_state é válido para a clínica atual
 if st.session_state.get('lac_esf') not in esfs_disp:
     st.session_state['lac_esf'] = 'Todas'
 
