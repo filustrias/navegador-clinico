@@ -412,7 +412,9 @@ with tab1:
                                           charlson_cats=ch_v)
 
     if df_ch.empty or col_v not in df_ch.columns:
-        st.info("Sem dados suficientes para os filtros selecionados.")
+        st.info(f"Sem dados suficientes para os filtros selecionados. "
+                f"(linhas={len(df_ch)}, col={col_v}, "
+                f"ap={ap_v}, cli={cli_v}, esf={esf_v})")
     else:
         # Drill-down progressivo (sempre violin quando possível):
         # Sem filtro       → violin por AP (cada ponto = clínica)
