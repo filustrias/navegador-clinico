@@ -88,6 +88,8 @@ def carregar_violin_charlson(ap=None, clinica=None, esf=None,
         cats = "', '".join(charlson_cats)
         clauses.append(f"charlson_categoria IN ('{cats}')")
     where = "WHERE " + " AND ".join(clauses)
+    # Mínimo de pacientes: relaxa quando filtra por clínica/ESF
+    min_pac = 1 if (clinica or esf) else 5
 
     sql = f"""
     SELECT
@@ -128,7 +130,7 @@ def carregar_violin_charlson(ap=None, clinica=None, esf=None,
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
     GROUP BY ap, clinica, esf, charlson_categoria
-    HAVING COUNT(*) >= 5
+    HAVING COUNT(*) >= {min_pac}
     """
     return run_query(sql)
 
