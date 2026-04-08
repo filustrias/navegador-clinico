@@ -472,6 +472,8 @@ with tab1:
                 .rename(columns={'esf': 'unidade', col_v: 'valor'})
             )
             df_plot['valor'] = df_plot['valor'].round(1)
+            if MODO_ANONIMO:
+                df_plot['unidade'] = df_plot['unidade'].apply(anonimizar_esf)
             fig_v = px.strip(
                 df_plot, x='unidade', y='valor', color='unidade',
                 labels={'valor': '% com lacuna', 'unidade': 'ESF'},
@@ -483,7 +485,7 @@ with tab1:
                 marker=dict(size=14, opacity=0.85, line=dict(width=1, color=T.BORDER)),
                 jitter=0,
             )
-            fig_v.update_xaxes(tickangle=-30, tickfont=dict(size=11), title_text='ESF')
+            fig_v.update_xaxes(tickangle=-35, tickfont=dict(size=10), title_text='ESF')
             nivel_txt = 'ESF'
 
         elif cli_v is not None:
@@ -494,6 +496,8 @@ with tab1:
                 .rename(columns={'esf': 'unidade', col_v: 'valor'})
             )
             df_plot['valor'] = df_plot['valor'].round(1)
+            if MODO_ANONIMO:
+                df_plot['unidade'] = df_plot['unidade'].apply(anonimizar_esf)
             fig_v = px.strip(
                 df_plot, x='unidade', y='valor', color='unidade',
                 labels={'valor': '% com lacuna', 'unidade': 'ESF'},
@@ -505,7 +509,7 @@ with tab1:
                 marker=dict(size=14, opacity=0.85, line=dict(width=1, color=T.BORDER)),
                 jitter=0,
             )
-            fig_v.update_xaxes(tickangle=-30, tickfont=dict(size=11), title_text='ESF')
+            fig_v.update_xaxes(tickangle=-35, tickfont=dict(size=10), title_text='ESF')
             nivel_txt = 'ESF'
 
         elif ap_v is not None:
@@ -517,6 +521,9 @@ with tab1:
                                  col_v: 'valor'})
             )
             df_plot['valor'] = df_plot['valor'].round(1)
+            if MODO_ANONIMO:
+                df_plot['categoria'] = df_plot['categoria'].apply(anonimizar_clinica)
+                df_plot['unidade'] = df_plot['unidade'].apply(anonimizar_esf)
             cli_ord = sorted(df_plot['categoria'].unique().tolist())
             fig_v = px.violin(
                 df_plot, x='categoria', y='valor', color='categoria',
@@ -536,7 +543,7 @@ with tab1:
             )
             fig_v.update_xaxes(
                 type='category', categoryorder='array', categoryarray=cli_ord,
-                tickangle=-30, tickfont=dict(size=11),
+                tickangle=-35, tickfont=dict(size=10),
             )
             nivel_txt = 'ESF'
 
@@ -549,6 +556,9 @@ with tab1:
                                  col_v: 'valor'})
             )
             df_plot['valor'] = df_plot['valor'].round(1)
+            if MODO_ANONIMO:
+                df_plot['categoria'] = df_plot['categoria'].apply(lambda x: anonimizar_ap(str(x)))
+                df_plot['unidade'] = df_plot['unidade'].apply(anonimizar_clinica)
             ap_ord = sorted(df_plot['categoria'].unique().tolist(), key=_ord_ap)
             fig_v = px.violin(
                 df_plot, x='categoria', y='valor', color='categoria',
