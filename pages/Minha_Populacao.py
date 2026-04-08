@@ -1936,8 +1936,8 @@ def _grouped_bar_territorio(df, cols, labels, cores, titulo, eixo_y='% dos pacie
             type='category',
             categoryorder='array',
             categoryarray=terrs,
-            tickfont=dict(color=T.TEXT, size=11 if len(terrs) <= 12 else 9),
-            tickangle=0 if len(terrs) <= 12 else -40,
+            tickfont=dict(color=T.TEXT, size=10),
+            tickangle=-35,
         ),
         yaxis=dict(
             title=eixo_y,
@@ -3770,7 +3770,7 @@ with tab6:
                 'Sem acompanhamento clínico — nenhuma consulta clínica registrada nos últimos 12 meses',
             ],
             cores=cores_reg,
-            titulo='Frequência de acompanhamento por ' + lbl + ' — altura = % da população cadastrada',
+            titulo='Padrões de frequência de acompanhamento de pacientes por ' + lbl,
             legenda_baixo=True,
         )
 
@@ -3796,7 +3796,7 @@ with tab6:
                 'Baixa longitudinalidade — mais de 50% das consultas médicas realizadas fora da unidade de referência nos últimos 12 meses',
             ],
             cores=['#8E44AD','#E74C3C','#C0392B','#E67E22','#F4D03F'],
-            titulo='Indicadores de Acesso e Continuidade por ' + lbl + ' (% da população cadastrada)',
+            titulo='Padrões de acesso e continuidade do cuidado por ' + lbl,
             eixo_y='% da população',
             legenda_baixo=True,
         )
@@ -4304,12 +4304,15 @@ with tab6:
                 "os pacientes mais doentes enfrentam maior barreira de acesso ao médico."
             )
 
-            charlson_opcoes = ['Muito Alto', 'Alto', 'Moderado', 'Baixo', 'Todos os pacientes']
-            sel_charlson = st.selectbox(
-                "Carga de morbidade:",
+            charlson_opcoes = ['Muito Alto', 'Alto', 'Moderado', 'Baixo']
+            sel_charlson_list = st.multiselect(
+                "Carga de morbidade (selecione uma ou mais):",
                 charlson_opcoes,
+                default=['Muito Alto'],
                 key='sel_charlson_barreira'
             )
+            if not sel_charlson_list:
+                sel_charlson_list = charlson_opcoes
 
             @st.cache_data(show_spinner=False, ttl=900)
             def carregar_barreira_acesso(ap=None, clinica=None, esf=None):
@@ -4363,23 +4366,37 @@ with tab6:
             if not df_barreira.empty:
                 import re
 
-                # Filtrar por carga de morbidade selecionada
-                if sel_charlson == 'Todos os pacientes':
-                    df_v = df_barreira.groupby(['grupo_x','ponto'], as_index=False).apply(
-                        lambda g: pd.Series({
-                            'pct_sem_medico_180d': round(
-                                (g['n_total'] * g['pct_sem_medico_180d']).sum()
-                                / g['n_total'].sum(), 1
-                            ) if g['n_total'].sum() > 0 else 0.0,
-                            'n_total': int(g['n_total'].sum()),
-                        })
-                    ).reset_index(drop=True)
+                # Filtrar por cargas de morbidade selecionadas (AND: todas juntas)
+                if set(sel_charlson_list) == set(charlson_opcoes):
+                    df_filtrado = df_barreira
                 else:
-                    df_v = df_barreira[
-                        df_barreira['charlson_categoria'] == sel_charlson
-                    ][['grupo_x','ponto','n_total','pct_sem_medico_180d']].copy()
+                    df_filtrado = df_barreira[
+                        df_barreira['charlson_categoria'].isin(sel_charlson_list)
+                    ]
+                # Agrupar: média ponderada pelo n_total
+                df_v = df_filtrado.groupby(['grupo_x','ponto'], as_index=False).apply(
+                    lambda g: pd.Series({
+                        'pct_sem_medico_180d': round(
+                            (g['n_total'] * g['pct_sem_medico_180d']).sum()
+                            / g['n_total'].sum(), 1
+                        ) if g['n_total'].sum() > 0 else 0.0,
+                        'n_total': int(g['n_total'].sum()),
+                    })
+                ).reset_index(drop=True)
 
-                # Ordenar grupo_x numericamente
+                # Anonimizar eixo X
+                if MODO_ANONIMO:
+                    if territorio['clinica']:
+                        df_v['grupo_x'] = df_v['grupo_x'].apply(anonimizar_esf)
+                        df_v['ponto']   = df_v['ponto'].apply(anonimizar_esf)
+                    elif territorio['ap']:
+                        df_v['grupo_x'] = df_v['grupo_x'].apply(anonimizar_clinica)
+                        df_v['ponto']   = df_v['ponto'].apply(anonimizar_esf)
+                    else:
+                        df_v['grupo_x'] = df_v['grupo_x'].apply(lambda x: anonimizar_ap(str(x)))
+                        df_v['ponto']   = df_v['ponto'].apply(anonimizar_clinica)
+
+                # Ordenar grupo_x
                 def _ord_gx(v):
                     m = re.search(r'(\d+\.?\d*)', str(v))
                     return float(m.group(1)) if m else 999
@@ -4399,10 +4416,9 @@ with tab6:
                     label_ponto = "Clínica da Família"
                     modo_strip  = False  # sem filtro → violino por AP
 
+                sel_charlson_txt = ', '.join(sel_charlson_list)
                 titulo_fig = (
-                    f"Barreira de acesso — {sel_charlson} · "
-                    f"% sem consulta médica há >180 dias · "
-                    f"cada ponto = uma {label_ponto.lower()}"
+                    f"Barreira de Acesso por Carga de Morbidade — {sel_charlson_txt}"
                 )
                 labels_fig = {
                     'pct_sem_medico_180d': '% sem consulta médica há >180 dias',
@@ -4455,8 +4471,8 @@ with tab6:
                     type='category',
                     categoryorder='array',
                     categoryarray=grupos_ord,
-                    tickangle=-40 if len(grupos_ord) > 5 else 0,
-                    tickfont=dict(color=T.TEXT, size=11),
+                    tickangle=-35,
+                    tickfont=dict(color=T.TEXT, size=10),
                     title_font=dict(color=T.TEXT),
                 )
                 fig_bar.update_yaxes(
