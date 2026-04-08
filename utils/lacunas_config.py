@@ -435,3 +435,40 @@ def gerar_countif_sql() -> str:
             f"        1) AS {alias}"
         )
     return ",\n".join(linhas)
+
+
+def gerar_num_den_sql() -> str:
+    """
+    Gera pares de colunas absolutas (numerador + denominador) para cada lacuna.
+
+    Convenção de alias:
+      pct_ICC_sem_IECA_BRA  →  n_num_ICC_sem_IECA_BRA   (COUNTIF da flag booleana)
+                                n_den_ICC_sem_IECA_BRA   (denominador_sql avaliado)
+
+    Usado em conjunto com gerar_countif_sql() nas queries de violin/ESF.
+    O Python usa esses valores absolutos para calcular médias ponderadas
+    por AP ou clínica, evitando distorção causada por unidades com
+    poucos pacientes elegíveis.
+
+    ANTES (errado — média simples das taxas):
+        df.groupby(['ap', 'clinica'])[col_pct].mean()
+        → clínica com 5 ICC e 60% distorce igual à clínica com 500 ICC e 35%
+
+    DEPOIS (correto — soma ponderada via absolutos):
+        n_num / n_den * 100
+        → cada clínica contribui proporcionalmente ao seu denominador
+    """
+    linhas = []
+    for nome, info in LACUNAS.items():
+        col    = info["coluna_fato"]
+        alias  = info["alias_pct"]
+        den    = info["denominador_sql"]
+        sufixo = alias[len("pct_"):]
+
+        linhas.append(
+            f"        COUNTIF({col} = TRUE)          AS n_num_{sufixo}"
+        )
+        linhas.append(
+            f"        NULLIF({den}, 0)               AS n_den_{sufixo}"
+        )
+    return ",\n".join(linhas)

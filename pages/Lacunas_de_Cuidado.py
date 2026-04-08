@@ -18,7 +18,7 @@ from utils.anonimizador import (
 )
 from utils.lacunas_config import (
     LACUNAS, get_mapa_lac_col, get_grupos_ordenados,
-    get_lacunas_por_grupo, gerar_countif_sql
+    get_lacunas_por_grupo, gerar_countif_sql, gerar_num_den_sql
 )
 st.set_page_config(
     page_title="Lacunas de Cuidado · Navegador Clínico",
@@ -48,6 +48,55 @@ def run_query(sql: str) -> pd.DataFrame:
     except Exception as e:
         st.error(f"❌ Erro na query: {e}")
         return pd.DataFrame()
+    
+def _agregar_ponderado(df: pd.DataFrame,
+                       col_pct: str,
+                       group_cols: list,
+                       label_col: str) -> pd.DataFrame:
+    """
+    Agrega numerador e denominador absolutos, recalcula taxa ponderada.
+ 
+    Parâmetros
+    ----------
+    df         : DataFrame vindo de carregar_violin_charlson() ou carregar_violin_esf()
+    col_pct    : alias do percentual, ex: "pct_ICC_sem_IECA_BRA"
+    group_cols : colunas de agrupamento, ex: ["ap", "clinica"]
+    label_col  : coluna que vira eixo X do gráfico, ex: "clinica"
+ 
+    Retorno
+    -------
+    DataFrame com colunas: [*group_cols, "valor"]
+    onde "valor" é a taxa ponderada correta (%).
+ 
+    Por que ponderada?
+    ------------------
+    A versão anterior calculava .mean() das taxas das clínicas por AP.
+    Uma clínica com 5 pacientes ICC e taxa 80% pesava igual à clínica
+    com 2.000 pacientes e taxa 35%, inflando sistematicamente o resultado.
+    A versão ponderada soma numeradores e denominadores absolutos antes
+    de dividir — equivalente a calcular a taxa diretamente na AP inteira.
+    """
+    sufixo  = col_pct[len("pct_"):]       # "ICC_sem_IECA_BRA"
+    col_num = f"n_num_{sufixo}"
+    col_den = f"n_den_{sufixo}"
+ 
+    # Fallback: se as colunas absolutas não existirem, usa média simples
+    if col_num not in df.columns or col_den not in df.columns:
+        agg = (
+            df.groupby(group_cols)[col_pct]
+            .mean().reset_index()
+            .rename(columns={col_pct: "valor"})
+        )
+        agg["valor"] = agg["valor"].round(1)
+        return agg
+ 
+    # Soma absolutas por grupo e recalcula taxa
+    agg = df.groupby(group_cols)[[col_num, col_den]].sum().reset_index()
+    agg["valor"] = (
+        agg[col_num] * 100.0 / agg[col_den].replace(0, pd.NA)
+    ).round(1)
+ 
+    return agg
 
 # ═══════════════════════════════════════════════════════════════
 # QUERIES
@@ -76,14 +125,15 @@ def carregar_lacunas_agregadas() -> pd.DataFrame:
 def carregar_violin_charlson(ap=None, clinica=None, esf=None,
                               charlson_cats=None) -> pd.DataFrame:
     """
-    Agrega por AP × clínica × Charlson:
-    % de pacientes com cada lacuna.
+    Agrega por AP × clínica × Charlson.
+    Retorna percentuais (pct_*) E absolutos (n_num_*, n_den_*) por lacuna.
+    Os absolutos são usados por _agregar_ponderado() para evitar distorção
+    por média simples de proporções.
     """
     clauses = [
         "area_programatica_cadastro IS NOT NULL",
         "nome_clinica_cadastro IS NOT NULL",
     ]
-    # Filtro de charlson só no nível agregado (sem filtro de clínica/ESF)
     if not (clinica or esf):
         clauses.append("charlson_categoria IS NOT NULL")
         clauses.append("charlson_categoria != 'Não Classificado'")
@@ -94,18 +144,19 @@ def carregar_violin_charlson(ap=None, clinica=None, esf=None,
         cats = "', '".join(charlson_cats)
         clauses.append(f"charlson_categoria IN ('{cats}')")
     where = "WHERE " + " AND ".join(clauses)
-
-    # Agrupamento: inclui charlson apenas no nível agregado
+ 
     if clinica or esf:
-        group_by = "ap, clinica, esf"
+        group_by        = "ap, clinica, esf"
         charlson_select = "'N/A' AS charlson_categoria,"
-        min_pac = 1
+        min_pac         = 1
     else:
-        group_by = "ap, clinica, esf, charlson_categoria"
+        group_by        = "ap, clinica, esf, charlson_categoria"
         charlson_select = "charlson_categoria,"
-        min_pac = 5
-
-    countif_sql = gerar_countif_sql()
+        min_pac         = 5
+ 
+    countif_sql = gerar_countif_sql()    # percentuais pct_*
+    num_den_sql = gerar_num_den_sql()    # absolutos n_num_*, n_den_*
+ 
     sql = f"""
     SELECT
         area_programatica_cadastro  AS ap,
@@ -113,8 +164,9 @@ def carregar_violin_charlson(ap=None, clinica=None, esf=None,
         nome_esf_cadastro           AS esf,
         {charlson_select}
         COUNT(*)                    AS n_pacientes,
-{countif_sql}
-
+{countif_sql},
+{num_den_sql}
+ 
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
     GROUP BY {group_by}
@@ -154,7 +206,10 @@ def _opcoes_territorio_fato() -> dict:
 
 @st.cache_data(ttl=900, show_spinner=False)
 def carregar_violin_esf(ap=None, clinica=None, esf=None) -> pd.DataFrame:
-    """Query simples por ESF — sem filtro de charlson. Usada no drill-down clínica→ESF."""
+    """
+    Query por ESF — sem filtro de charlson.
+    Retorna absolutos (n_num_*, n_den_*) por lacuna para ponderação correta.
+    """
     clauses = [
         "nome_esf_cadastro IS NOT NULL",
         "nome_clinica_cadastro IS NOT NULL",
@@ -163,15 +218,18 @@ def carregar_violin_esf(ap=None, clinica=None, esf=None) -> pd.DataFrame:
     if clinica: clauses.append(f"nome_clinica_cadastro = '{clinica}'")
     if esf:     clauses.append(f"nome_esf_cadastro = '{esf}'")
     where = "WHERE " + " AND ".join(clauses)
-
+ 
     countif_sql = gerar_countif_sql()
+    num_den_sql = gerar_num_den_sql()
+ 
     sql = f"""
     SELECT
         nome_clinica_cadastro       AS clinica,
         nome_esf_cadastro           AS esf,
         COUNT(*)                    AS n_pacientes,
-{countif_sql}
-
+{countif_sql},
+{num_den_sql}
+ 
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
     GROUP BY nome_clinica_cadastro, nome_esf_cadastro
@@ -465,18 +523,14 @@ with tab1:
         # ESF filtrada     → strip só a ESF
 
         if esf_v is not None:
-            # Nível ESF — mostra só a equipe (strip)
-            df_plot = (
-                df_ch.groupby(['esf'])[col_v]
-                .mean().reset_index()
-                .rename(columns={'esf': 'unidade', col_v: 'valor'})
-            )
-            df_plot['valor'] = df_plot['valor'].round(1)
+            # Nível ESF — strip com a ESF selecionada
+            agg = _agregar_ponderado(df_ch, col_v, ["clinica", "esf"], "esf")
+            df_plot = agg[["esf", "valor"]].rename(columns={"esf": "unidade"})
             if MODO_ANONIMO:
-                df_plot['unidade'] = df_plot['unidade'].apply(anonimizar_esf)
+                df_plot["unidade"] = df_plot["unidade"].apply(anonimizar_esf)
             fig_v = px.strip(
-                df_plot, x='unidade', y='valor', color='unidade',
-                labels={'valor': '% com lacuna', 'unidade': 'ESF'},
+                df_plot, x="unidade", y="valor", color="unidade",
+                labels={"valor": "% com lacuna", "unidade": "ESF"},
                 title=f"{lac_violin_sel} · ESF selecionada",
                 color_discrete_sequence=px.colors.qualitative.Bold,
                 height=440,
@@ -485,22 +539,18 @@ with tab1:
                 marker=dict(size=14, opacity=0.85, line=dict(width=1, color=T.BORDER)),
                 jitter=0,
             )
-            fig_v.update_xaxes(tickangle=-35, tickfont=dict(size=10), title_text='ESF')
-            nivel_txt = 'ESF'
-
+            fig_v.update_xaxes(tickangle=-35, tickfont=dict(size=10), title_text="ESF")
+            nivel_txt = "ESF"
+ 
         elif cli_v is not None:
-            # Nível Clínica — strip com ESFs (poucas unidades)
-            df_plot = (
-                df_ch.groupby(['clinica', 'esf'])[col_v]
-                .mean().reset_index()
-                .rename(columns={'esf': 'unidade', col_v: 'valor'})
-            )
-            df_plot['valor'] = df_plot['valor'].round(1)
+            # Nível Clínica — strip com ESFs (poucas unidades, ponderado)
+            agg = _agregar_ponderado(df_ch, col_v, ["clinica", "esf"], "esf")
+            df_plot = agg[["esf", "valor"]].rename(columns={"esf": "unidade"})
             if MODO_ANONIMO:
-                df_plot['unidade'] = df_plot['unidade'].apply(anonimizar_esf)
+                df_plot["unidade"] = df_plot["unidade"].apply(anonimizar_esf)
             fig_v = px.strip(
-                df_plot, x='unidade', y='valor', color='unidade',
-                labels={'valor': '% com lacuna', 'unidade': 'ESF'},
+                df_plot, x="unidade", y="valor", color="unidade",
+                labels={"valor": "% com lacuna", "unidade": "ESF"},
                 title=f"{lac_violin_sel} · ESFs da clínica",
                 color_discrete_sequence=px.colors.qualitative.Bold,
                 height=440,
@@ -509,78 +559,78 @@ with tab1:
                 marker=dict(size=14, opacity=0.85, line=dict(width=1, color=T.BORDER)),
                 jitter=0,
             )
-            fig_v.update_xaxes(tickangle=-35, tickfont=dict(size=10), title_text='ESF')
-            nivel_txt = 'ESF'
-
+            fig_v.update_xaxes(tickangle=-35, tickfont=dict(size=10), title_text="ESF")
+            nivel_txt = "ESF"
+ 
         elif ap_v is not None:
-            # Nível AP — violin por clínica (cada ponto = ESF)
-            df_plot = (
-                df_ch.groupby(['clinica', 'esf'])[col_v]
-                .mean().reset_index()
-                .rename(columns={'clinica': 'categoria', 'esf': 'unidade',
-                                 col_v: 'valor'})
-            )
-            df_plot['valor'] = df_plot['valor'].round(1)
+            # Nível AP — violin por clínica (cada ponto = taxa ponderada da ESF)
+            agg = _agregar_ponderado(df_ch, col_v, ["clinica", "esf"], "clinica")
+            df_plot = agg.rename(columns={
+                "clinica": "categoria",
+                "esf":     "unidade",
+                "valor":   "valor",
+            })
             if MODO_ANONIMO:
-                df_plot['categoria'] = df_plot['categoria'].apply(anonimizar_clinica)
-                df_plot['unidade'] = df_plot['unidade'].apply(anonimizar_esf)
-            cli_ord = sorted(df_plot['categoria'].unique().tolist())
+                df_plot["categoria"] = df_plot["categoria"].apply(anonimizar_clinica)
+                df_plot["unidade"]   = df_plot["unidade"].apply(anonimizar_esf)
+            cli_ord = sorted(df_plot["categoria"].unique().tolist())
             fig_v = px.violin(
-                df_plot, x='categoria', y='valor', color='categoria',
-                box=True, points='all',
-                hover_data={'unidade': True, 'valor': True, 'categoria': False},
-                labels={'valor': '% com lacuna', 'categoria': 'Clínica',
-                        'unidade': 'ESF'},
+                df_plot, x="categoria", y="valor", color="categoria",
+                box=True, points="all",
+                hover_data={"unidade": True, "valor": True, "categoria": False},
+                labels={"valor": "% com lacuna", "categoria": "Clínica",
+                        "unidade": "ESF"},
                 title=f"{lac_violin_sel} · % de pacientes com lacuna por Clínica",
-                category_orders={'categoria': cli_ord},
+                category_orders={"categoria": cli_ord},
                 color_discrete_sequence=px.colors.qualitative.Bold,
                 height=540,
             )
             fig_v.update_traces(
                 meanline_visible=True,
                 marker=dict(size=8, opacity=0.65, line=dict(width=0)),
-                spanmode='hard',
+                spanmode="hard",
             )
             fig_v.update_xaxes(
-                type='category', categoryorder='array', categoryarray=cli_ord,
+                type="category", categoryorder="array", categoryarray=cli_ord,
                 tickangle=-35, tickfont=dict(size=10),
             )
-            nivel_txt = 'ESF'
-
+            nivel_txt = "ESF"
+ 
         else:
-            # Sem filtro — violin por AP (cada ponto = clínica)
-            df_plot = (
-                df_ch.groupby(['ap', 'clinica'])[col_v]
-                .mean().reset_index()
-                .rename(columns={'ap': 'categoria', 'clinica': 'unidade',
-                                 col_v: 'valor'})
-            )
-            df_plot['valor'] = df_plot['valor'].round(1)
+            # Sem filtro — violin por AP (cada ponto = taxa ponderada da clínica)
+            agg = _agregar_ponderado(df_ch, col_v, ["ap", "clinica"], "ap")
+            df_plot = agg.rename(columns={
+                "ap":      "categoria",
+                "clinica": "unidade",
+                "valor":   "valor",
+            })
             if MODO_ANONIMO:
-                df_plot['categoria'] = df_plot['categoria'].apply(lambda x: anonimizar_ap(str(x)))
-                df_plot['unidade'] = df_plot['unidade'].apply(anonimizar_clinica)
-            ap_ord = sorted(df_plot['categoria'].unique().tolist(), key=_ord_ap)
+                df_plot["categoria"] = df_plot["categoria"].apply(
+                    lambda x: anonimizar_ap(str(x))
+                )
+                df_plot["unidade"] = df_plot["unidade"].apply(anonimizar_clinica)
+            ap_ord = sorted(df_plot["categoria"].unique().tolist(), key=_ord_ap)
             fig_v = px.violin(
-                df_plot, x='categoria', y='valor', color='categoria',
-                box=True, points='all',
-                hover_data={'unidade': True, 'valor': True, 'categoria': False},
-                labels={'valor': '% com lacuna', 'categoria': 'Área Programática',
-                        'unidade': 'Clínica'},
+                df_plot, x="categoria", y="valor", color="categoria",
+                box=True, points="all",
+                hover_data={"unidade": True, "valor": True, "categoria": False},
+                labels={"valor": "% com lacuna", "categoria": "Área Programática",
+                        "unidade": "Clínica"},
                 title=f"{lac_violin_sel} · % de pacientes com lacuna por Área Programática",
-                category_orders={'categoria': ap_ord},
+                category_orders={"categoria": ap_ord},
                 color_discrete_sequence=px.colors.qualitative.Bold,
                 height=540,
             )
             fig_v.update_traces(
                 meanline_visible=True,
                 marker=dict(size=8, opacity=0.65, line=dict(width=0)),
-                spanmode='hard',
+                spanmode="hard",
             )
             fig_v.update_xaxes(
-                type='category', categoryorder='array', categoryarray=ap_ord,
+                type="category", categoryorder="array", categoryarray=ap_ord,
                 tickangle=-30, tickfont=dict(size=11),
             )
-            nivel_txt = 'clínica da família'
+            nivel_txt = "clínica da família"
 
         fig_v.update_yaxes(ticksuffix='%', gridcolor=T.GRID,
                             rangemode='tozero', tickfont=dict(size=11))
