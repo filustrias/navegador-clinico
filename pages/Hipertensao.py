@@ -507,6 +507,14 @@ with st.spinner("Carregando dados de hipertensão..."):
     sumario  = carregar_sumario_has(ap_sel, cli_sel, esf_sel)
     rpa      = carregar_resumo_pa(ap_sel, cli_sel, esf_sel)
     df_terr  = carregar_territorio_has(ap_sel, cli_sel, esf_sel)
+    # Anonimizar eixo X dos gráficos de território
+    if MODO_ANONIMO and not df_terr.empty and 'territorio' in df_terr.columns:
+        if cli_sel:
+            df_terr['territorio'] = df_terr['territorio'].apply(anonimizar_esf)
+        elif ap_sel:
+            df_terr['territorio'] = df_terr['territorio'].apply(anonimizar_clinica)
+        else:
+            df_terr['territorio'] = df_terr['territorio'].apply(lambda x: anonimizar_ap(str(x)))
 
 if not sumario:
     st.error("❌ Não foi possível carregar os dados.")
@@ -569,8 +577,8 @@ def _stacked_bar(df, cols_pop, labels, cores, titulo):
         paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
         title=dict(text=titulo, font=dict(color=T.TEXT, size=13)),
         xaxis=dict(type='category', categoryorder='array', categoryarray=terrs,
-                   tickfont=dict(color=T.TEXT, size=11 if len(terrs)<=12 else 9),
-                   tickangle=0 if len(terrs)<=12 else -40),
+                   tickfont=dict(color=T.TEXT, size=10),
+                   tickangle=-35),
         yaxis=dict(title='% da população total', tickfont=dict(color=T.TEXT_MUTED, size=10),
                    gridcolor=T.GRID, range=[0, 50]),
         legend=dict(orientation='v', xanchor='left', x=1.01, yanchor='middle', y=0.5,
@@ -704,7 +712,7 @@ with tab2:
         cols_pop=['pct_has_ctrl_pop', 'pct_has_nao_ctrl_pop', 'pct_has_seminfo_pop'],
         labels=['Controlados', 'Não controlados', 'Sem informação'],
         cores=['#2ECC71', '#E74C3C', '#777777'],
-        titulo=f'Controle pressórico por {lbl} — altura = % HAS na população',
+        titulo=f'Prevalência de hipertensão e controle pressórico por {lbl}',
     )
 
     st.markdown("---")
@@ -729,7 +737,7 @@ with tab2:
         cols_pop=['pct_has_mel_pop', 'pct_has_est_pop', 'pct_has_pio_pop'],
         labels=['Melhorando', 'Estável', 'Piorando'],
         cores=['#2ECC71', '#F4D03F', '#E74C3C'],
-        titulo=f'Tendência pressórica por {lbl} — altura = % HAS na população',
+        titulo=f'Tendência de pressão arterial na população hipertensa por {lbl}',
     )
 
     st.markdown("---")

@@ -505,6 +505,14 @@ with st.spinner("Carregando dados de diabetes..."):
     sumario   = carregar_sumario_dm(ap_sel, cli_sel, esf_sel)
     rh        = carregar_resumo_hba1c(ap_sel, cli_sel, esf_sel)
     df_terr   = carregar_territorio_dm(ap_sel, cli_sel, esf_sel)
+    # Anonimizar eixo X dos gráficos de território
+    if MODO_ANONIMO and not df_terr.empty and 'territorio' in df_terr.columns:
+        if cli_sel:
+            df_terr['territorio'] = df_terr['territorio'].apply(anonimizar_esf)
+        elif ap_sel:
+            df_terr['territorio'] = df_terr['territorio'].apply(anonimizar_clinica)
+        else:
+            df_terr['territorio'] = df_terr['territorio'].apply(lambda x: anonimizar_ap(str(x)))
 
 if not sumario:
     st.error("❌ Não foi possível carregar os dados.")
@@ -563,8 +571,8 @@ def _stacked_bar(df, cols_pop, labels, cores, titulo):
         paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
         title=dict(text=titulo, font=dict(color=T.TEXT, size=13)),
         xaxis=dict(type='category', categoryorder='array', categoryarray=terrs,
-                   tickfont=dict(color=T.TEXT, size=11 if len(terrs)<=12 else 9),
-                   tickangle=0 if len(terrs)<=12 else -40),
+                   tickfont=dict(color=T.TEXT, size=10),
+                   tickangle=-35),
         yaxis=dict(title='% da população total', tickfont=dict(color=T.TEXT_MUTED, size=10),
                    gridcolor=T.GRID, range=[0, 40]),
         legend=dict(orientation='v', xanchor='left', x=1.01, yanchor='middle', y=0.5,
@@ -704,7 +712,7 @@ with tab2:
         cols_pop=['pct_dm_hba1c_180d_pop','pct_dm_hba1c_365d_pop','pct_dm_hba1c_ant_pop','pct_dm_hba1c_nunca_pop'],
         labels=['HbA1c ≤180d','HbA1c 181–365d','HbA1c >365d','Nunca realizou'],
         cores=['#2ECC71','#F4D03F','#E67E22','#777777'],
-        titulo=f'Recência da HbA1c por {lbl} — altura = % DM na população',
+        titulo=f'Janelas temporais para o resultado de HbA1c pela prevalência de diabetes na população por {lbl}',
     )
 
     st.markdown("---")
@@ -726,7 +734,7 @@ with tab2:
         cols_pop=['pct_dm_mel_pop','pct_dm_est_pop','pct_dm_pio_pop'],
         labels=['Melhorando','Estável/sem info','Piorando'],
         cores=['#2ECC71','#F4D03F','#E74C3C'],
-        titulo=f'Tendência glicêmica por {lbl} — altura = % DM na população',
+        titulo=f'Tendência de controle glicêmico na população por {lbl}',
     )
 
 
