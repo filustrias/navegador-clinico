@@ -1682,7 +1682,7 @@ def carregar_sumario_por_territorio(ap=None, clinica=None, esf=None) -> pd.DataF
     try:
         client = get_bigquery_client()
         df = client.query(sql).result().to_dataframe(create_bqstorage_client=False)
-        df['label_col'] = '{label_col}'
+        df['label_col'] = label_col
         return df
     except Exception as e:
         st.error(f"❌ Erro ao carregar sumário por território: {{e}}")
