@@ -15,7 +15,8 @@ from utils.data_loader import carregar_opcoes_filtros
 import config
 import math
 from utils.anonimizador import (
-    anonimizar_ap, anonimizar_clinica, anonimizar_esf, mostrar_badge_anonimo, MODO_ANONIMO
+    anonimizar_ap, anonimizar_clinica, anonimizar_esf, anonimizar_nome,
+    mostrar_badge_anonimo, MODO_ANONIMO
 )
 
 
@@ -1195,6 +1196,23 @@ with tab5:
 
             df_exib = df_lista.copy()
 
+            # Anonimizar dados sensíveis
+            if MODO_ANONIMO:
+                if 'nome' in df_exib.columns:
+                    df_exib['nome'] = df_exib.apply(
+                        lambda r: anonimizar_nome(
+                            str(r.get('cpf') or r.get('nome', '')),
+                            r.get('genero', '')
+                        ), axis=1
+                    )
+                if 'nome_esf_cadastro' in df_exib.columns:
+                    df_exib['nome_esf_cadastro'] = df_exib['nome_esf_cadastro'].apply(anonimizar_esf)
+                if 'nome_clinica_cadastro' in df_exib.columns:
+                    df_exib['nome_clinica_cadastro'] = df_exib['nome_clinica_cadastro'].apply(anonimizar_clinica)
+                if 'area_programatica_cadastro' in df_exib.columns:
+                    df_exib['area_programatica_cadastro'] = df_exib['area_programatica_cadastro'].apply(
+                        lambda x: anonimizar_ap(str(x))
+                    )
 
             df_exib['alerta_acb_idoso'] = df_exib['alerta_acb_idoso'].map({True: '🧠 Alerta', False: '—'})
             df_exib['alerta_prescricao_idoso_ativo'] = df_exib['alerta_prescricao_idoso_ativo'].map(
