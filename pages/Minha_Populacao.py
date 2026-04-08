@@ -1747,6 +1747,14 @@ with st.spinner("📊 Carregando dados por território..."):
         clinica=territorio['clinica'],
         esf=territorio['esf']
     )
+    # Anonimizar nomes no eixo X dos gráficos de território
+    if MODO_ANONIMO and not df_terr.empty and 'territorio' in df_terr.columns:
+        if territorio['clinica']:
+            df_terr['territorio'] = df_terr['territorio'].apply(anonimizar_esf)
+        elif territorio['ap']:
+            df_terr['territorio'] = df_terr['territorio'].apply(anonimizar_clinica)
+        else:
+            df_terr['territorio'] = df_terr['territorio'].apply(lambda x: anonimizar_ap(str(x)))
 
 # Diagnóstico
 if tempo_dados > 10:
@@ -1833,8 +1841,8 @@ def _stacked_bar_ap(df, cols_pop, labels, cores, titulo,
         title=dict(text=titulo, font=dict(color=T.TEXT, size=13)),
         xaxis=dict(
             type='category', categoryorder='array', categoryarray=terrs,
-            tickfont=dict(color=T.TEXT, size=11 if len(terrs) <= 12 else 9),
-            tickangle=0 if len(terrs) <= 12 else -40,
+            tickfont=dict(color=T.TEXT, size=10),
+            tickangle=-35,
         ),
         yaxis=dict(
             title=eixo_y,
@@ -2652,7 +2660,7 @@ with tab4:
             cols_pop=['pct_has_ctrl_pop','pct_has_desctrl_pop','pct_has_seminfo_pop'],
             labels=['Controlados','Não controlados','Sem aferição recente'],
             cores=['#2ECC71','#E74C3C','#777777'],
-            titulo='Controle pressórico por ' + lbl + ' — altura = % HAS na população',
+            titulo='Prevalência de hipertensão e controle pressórico por ' + lbl,
         )
         st.markdown("---")
 
@@ -2938,7 +2946,7 @@ with tab4:
             cols_pop=['pct_has_mel_pop','pct_has_est_pop','pct_has_pio_pop'],
             labels=['Melhorando','Estável','Piorando'],
             cores=['#2ECC71','#F4D03F','#E74C3C'],
-            titulo='Tendência da PA por ' + lbl + ' — altura = % HAS na população',
+            titulo='Tendência de pressão arterial na população hipertensa por ' + lbl,
         )
         st.markdown("---")
 
@@ -3248,7 +3256,7 @@ with tab5:
             ],
             labels=['HbA1c ≤180 dias', 'HbA1c 181–365 dias', 'HbA1c >365 dias', 'Nunca realizou'],
             cores=['#2ECC71', '#F4D03F', '#E67E22', '#777777'],
-            titulo='Recência da HbA1c por ' + lbl + ' — altura = % DM na população',
+            titulo='Janelas temporais para o resultado de HbA1c pela prevalência de diabetes na população por ' + lbl,
         )
         st.markdown("---")
 
@@ -3280,7 +3288,7 @@ with tab5:
             cols_pop=['pct_dm_mel_pop','pct_dm_est_pop','pct_dm_pio_pop'],
             labels=['Melhorando','Estável/sem info','Piorando'],
             cores=['#2ECC71','#F4D03F','#E74C3C'],
-            titulo='Tendência glicêmica por ' + lbl + ' — altura = % DM na população',
+            titulo='Tendência de controle glicêmico na população por ' + lbl,
         )
         st.markdown("---")
 
