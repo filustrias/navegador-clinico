@@ -181,7 +181,15 @@ def carregar_sumario_dm(ap, clinica, esf):
         COUNTIF(lacuna_rastreio_DM_45mais = TRUE)                         AS n_lac_rastreio_dm_45,
         COUNTIF(lacuna_DM_sem_exame_pe_365d = TRUE)                       AS n_lac_pe_365d,
         COUNTIF(lacuna_DM_sem_exame_pe_180d = TRUE)                       AS n_lac_pe_180d,
-        COUNTIF(lacuna_DM_nunca_teve_exame_pe = TRUE)                     AS n_lac_pe_nunca
+        COUNTIF(lacuna_DM_nunca_teve_exame_pe = TRUE)                     AS n_lac_pe_nunca,
+        -- Complicações do DM
+        COUNTIF(DM IS NOT NULL AND dm_com_complicacao = TRUE)             AS n_dm_com_complicacao,
+        COUNTIF(DM IS NOT NULL AND dm_retinopatia IS NOT NULL)            AS n_dm_retinopatia,
+        COUNTIF(DM IS NOT NULL AND dm_catarata IS NOT NULL)               AS n_dm_catarata,
+        COUNTIF(DM IS NOT NULL AND dm_nefropatia IS NOT NULL)             AS n_dm_nefropatia,
+        COUNTIF(DM IS NOT NULL AND dm_neuropatia IS NOT NULL)             AS n_dm_neuropatia,
+        COUNTIF(DM IS NOT NULL AND dm_pe_diabetico_cid IS NOT NULL)       AS n_dm_pe_diabetico,
+        COUNTIF(DM IS NOT NULL AND dm_complicacao_cv IS NOT NULL)         AS n_dm_complicacao_cv
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
     """
@@ -591,7 +599,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(NOMES_ABAS)
 # ABA 1 — DIAGNÓSTICO E PREVALÊNCIA
 # ──────────────────────────────────────────────────────────────
 with tab1:
-    st.markdown("### 1️⃣ Prevalência e como foram identificados")
+    st.markdown("### 1️⃣ Prevalência, complicações e como foram identificados")
     n_sem_cid_dm  = int(sumario.get('n_DM_sem_cid', 0) or 0)
     n_pre_dm      = int(sumario.get('n_pre_DM', 0) or 0)
     n_dm1         = int(sumario.get('n_DM1_provavel', 0) or 0)
@@ -654,6 +662,51 @@ with tab1:
             st.metric("Pacientes", f"{sumario.get('n_DM_por_medicamento', 0):,}",
                       f"{_p(sumario.get('n_DM_por_medicamento', 0), n_dm):.1f}% dos diabéticos")
             st.caption("Diagnóstico implícito pelo tratamento — oportunidade de codificação formal.")
+
+    # ── Complicações do diabetes ─────────────────────────────
+    st.markdown("---")
+    st.markdown("##### Complicações do diabetes")
+    st.caption("Pacientes diabéticos com complicações micro e macrovasculares registradas por CID.")
+
+    n_comp_total = int(sumario.get('n_dm_com_complicacao', 0) or 0)
+    n_retino     = int(sumario.get('n_dm_retinopatia', 0) or 0)
+    n_catarata   = int(sumario.get('n_dm_catarata', 0) or 0)
+    n_nefro      = int(sumario.get('n_dm_nefropatia', 0) or 0)
+    n_neuro      = int(sumario.get('n_dm_neuropatia', 0) or 0)
+    n_pe         = int(sumario.get('n_dm_pe_diabetico', 0) or 0)
+    n_cv         = int(sumario.get('n_dm_complicacao_cv', 0) or 0)
+
+    st.metric("🚨 Diabéticos com pelo menos 1 complicação", f"{n_comp_total:,}",
+              f"{_p(n_comp_total, n_dm):.1f}% dos diabéticos")
+
+    cc1, cc2, cc3 = st.columns(3)
+    with cc1:
+        with st.container(border=True):
+            st.markdown("**👁️ Retinopatia**")
+            st.metric("Pacientes", f"{n_retino:,}",
+                      f"{_p(n_retino, n_dm):.1f}% dos diabéticos")
+        with st.container(border=True):
+            st.markdown("**👁️ Catarata**")
+            st.metric("Pacientes", f"{n_catarata:,}",
+                      f"{_p(n_catarata, n_dm):.1f}% dos diabéticos")
+    with cc2:
+        with st.container(border=True):
+            st.markdown("**🫘 Nefropatia**")
+            st.metric("Pacientes", f"{n_nefro:,}",
+                      f"{_p(n_nefro, n_dm):.1f}% dos diabéticos")
+        with st.container(border=True):
+            st.markdown("**🦶 Pé diabético**")
+            st.metric("Pacientes", f"{n_pe:,}",
+                      f"{_p(n_pe, n_dm):.1f}% dos diabéticos")
+    with cc3:
+        with st.container(border=True):
+            st.markdown("**🧠 Neuropatia**")
+            st.metric("Pacientes", f"{n_neuro:,}",
+                      f"{_p(n_neuro, n_dm):.1f}% dos diabéticos")
+        with st.container(border=True):
+            st.markdown("**❤️ Complicação cardiovascular**")
+            st.metric("Pacientes", f"{n_cv:,}",
+                      f"{_p(n_cv, n_dm):.1f}% dos diabéticos")
 
 
 # ──────────────────────────────────────────────────────────────
