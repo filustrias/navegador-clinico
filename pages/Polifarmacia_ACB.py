@@ -342,8 +342,8 @@ def carregar_lista_pacientes(ap=None, clinica=None, esf=None,
     LEFT JOIN `rj-sms-sandbox.sub_pav_us.MM_stopp_start` ss
         ON f.cpf = ss.cpf
     {where}
-    ORDER BY f.acb_score_total DESC, f.charlson_score DESC
-    LIMIT 5000
+    ORDER BY f.charlson_score DESC, f.acb_score_total DESC
+    LIMIT 100
     """
     return run_query(sql)
 
