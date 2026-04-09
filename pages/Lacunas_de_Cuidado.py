@@ -14,7 +14,8 @@ from components.cabecalho import renderizar_cabecalho
 from utils.auth import get_contexto_territorial, get_perfil
 import config
 from utils.anonimizador import (
-    anonimizar_ap, anonimizar_clinica, anonimizar_esf, mostrar_badge_anonimo, MODO_ANONIMO
+    anonimizar_ap, anonimizar_clinica, anonimizar_esf, anonimizar_nome,
+    mostrar_badge_anonimo, MODO_ANONIMO
 )
 from utils.lacunas_config import (
     LACUNAS, get_mapa_lac_col, get_grupos_ordenados,
@@ -809,7 +810,26 @@ with tab3:
             f"média de **{media_lac_pac:.1f} lacunas** por paciente"
         )
 
-        df_exib = df_pac.head(n_exibir).rename(columns={
+        df_exib = df_pac.head(n_exibir).copy()
+
+        # Anonimizar dados sensíveis
+        if MODO_ANONIMO:
+            if 'nome' in df_exib.columns:
+                df_exib['nome'] = df_exib.apply(
+                    lambda r: anonimizar_nome(
+                        str(r.get('cpf') or r.get('nome', '')),
+                        r.get('genero', '')
+                    ) if 'cpf' in r.index else anonimizar_nome(str(r.get('nome', ''))),
+                    axis=1
+                )
+            if 'ap' in df_exib.columns:
+                df_exib['ap'] = df_exib['ap'].apply(lambda x: anonimizar_ap(str(x)))
+            if 'clinica' in df_exib.columns:
+                df_exib['clinica'] = df_exib['clinica'].apply(anonimizar_clinica)
+            if 'esf' in df_exib.columns:
+                df_exib['esf'] = df_exib['esf'].apply(anonimizar_esf)
+
+        df_exib = df_exib.rename(columns={
             'nome':               'Paciente',
             'idade':              'Idade',
             'ap':                 'AP',
