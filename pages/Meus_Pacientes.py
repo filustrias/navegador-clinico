@@ -774,13 +774,12 @@ def buscar_acb_paciente(cpf: str) -> dict:
     """Busca dados ACB detalhados do paciente em MM_mantidos_alterados_ultimas."""
     sql = f"""
     SELECT
-        acb_score_total,
-        acb_score_cronicos,
+        score_acb_total,
         n_meds_acb_positivo,
         n_meds_acb_alto,
-        medicamentos_acb_positivos,
+        medicamentos_acb,
         categoria_acb,
-        medicamentos_completos
+        lista_medicamentos
     FROM `rj-sms-sandbox.sub_pav_us.MM_mantidos_alterados_ultimas`
     WHERE cpf = '{cpf}'
     LIMIT 1
@@ -1477,8 +1476,8 @@ def create_patient_card(patient_data):
             # ════════════════════════════════════════════
             with c_rx:
                 st.markdown("##### 💊 Prescrições crônicas")
-                meds_raw     = dados_acb.get("medicamentos_completos") or patient_data.get("medicamentos_cronicos", "")
-                acb_positivos = str(dados_acb.get("medicamentos_acb_positivos") or "")
+                meds_raw     = dados_acb.get("lista_medicamentos") or patient_data.get("nucleo_cronico_atual", "")
+                acb_positivos = str(dados_acb.get("medicamentos_acb") or "")
                 acb_dict = {}
                 if acb_positivos:
                     for item in acb_positivos.split("|"):
@@ -1646,8 +1645,8 @@ def create_patient_card(patient_data):
             # ════════════════════════════════════════════
             with c_acb:
                 st.markdown("##### 🔴 ACB")
-                acb_total    = dados_acb.get("acb_score_total")
-                acb_cronicos = dados_acb.get("acb_score_cronicos")
+                acb_total    = dados_acb.get("score_acb_total")
+                acb_cronicos = None  # coluna removida da tabela
                 n_acb_pos    = int(dados_acb.get("n_meds_acb_positivo") or 0)
                 n_acb_alto   = int(dados_acb.get("n_meds_acb_alto") or 0)
                 cat_acb      = dados_acb.get("categoria_acb", "—")

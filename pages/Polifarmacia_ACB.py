@@ -333,12 +333,10 @@ def carregar_lista_pacientes(ap=None, clinica=None, esf=None,
         ss.start_snc_002_365d  AS fl_depressao_sem_ad,
         ss.start_snc_003_365d  AS fl_demencia_sem_icolin,
         ss.start_resp_001_365d AS fl_dpoc_sem_bronco,
-        -- Todos os medicamentos prescritos (crônicos + agudos) com posologia
-        med.medicamentos_completos      AS todos_medicamentos,
-        -- Total real (crônicos + agudos) para exibição
-        COALESCE(med.qtd_agudos, 0)     AS qtd_agudos_med,
-        -- Dicionário ACB: usado para enriquecer a lista
-        med.medicamentos_acb_positivos  AS acb_positivos_ref
+        -- Todos os medicamentos da última prescrição
+        med.lista_medicamentos          AS todos_medicamentos,
+        -- Dicionário ACB: medicamentos com score ACB > 0
+        med.medicamentos_acb            AS acb_positivos_ref
     FROM {_fqn(config.TABELA_FATO)} f
     LEFT JOIN `rj-sms-sandbox.sub_pav_us.MM_mantidos_alterados_ultimas` med
         ON f.cpf = med.cpf
@@ -1285,13 +1283,11 @@ with tab5:
             # ── 1. Coluna unificada: meds + flag de polifarmácia ──────────
             def fmt_meds(row):
                 cronicos = row.get('total_medicamentos_cronicos', 0) or 0
-                agudos   = row.get('qtd_agudos_med', 0) or 0
-                total    = cronicos + agudos
                 if cronicos >= 10:
-                    return f"{total} (hiperpolifarmácia)"
+                    return f"{cronicos} (hiperpolifarmácia)"
                 elif cronicos >= 5:
-                    return f"{total} (polifarmácia)"
-                return str(total)
+                    return f"{cronicos} (polifarmácia)"
+                return str(cronicos)
             df_exib['meds_fmt'] = df_exib.apply(fmt_meds, axis=1)
 
             # ── Enriquecer lista completa de meds com scores ACB ──────────
