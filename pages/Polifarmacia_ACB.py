@@ -682,7 +682,7 @@ with tab1:
 # ──────────────────────────────────────────────────────────────
 with tab2:
     st.markdown("""
-    ### 📊 Polifarmácia por Categoria de Carga de Morbidade (Charlson)
+    ### 📊 Polifarmácia por Categoria de Carga de Morbidade
 
     Pacientes com maior carga de morbidade naturalmente tendem a usar mais medicamentos.
     O gráfico abaixo verifica se esse padrão se sustenta na população — e identifica
@@ -821,7 +821,7 @@ with tab3:
                 category_orders={'charlson_categoria': ordem_cat},
                 labels={
                     'acb_score_total': 'ACB Score Total',
-                    'charlson_categoria': 'Categoria Charlson'
+                    'charlson_categoria': 'Carga de Morbidade'
                 },
                 box=True,
                 points=False,
@@ -1396,7 +1396,7 @@ with tab5:
                         help="Lista de condições crônicas ativas do paciente."
                     ),
                     'Morbidade': st.column_config.TextColumn(
-                        help="Categoria de carga de morbidade pelo índice de Charlson modificado: Baixo / Moderado / Alto / Muito Alto."
+                        help="Categoria de carga de morbidade: Baixo / Moderado / Alto / Muito Alto."
                     ),
                     'Meds Crôn.': st.column_config.TextColumn(
                         help=(

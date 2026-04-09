@@ -738,7 +738,7 @@ def criar_piramide_charlson(df):
     ticktext = [f'{abs(v):,}' for v in tickvals]
 
     fig.update_layout(
-        title='Pirâmide Etária — Distribuição por Sexo e Carga de Morbidade (Charlson)',
+        title='Pirâmide Etária — Distribuição por Sexo e Carga de Morbidade',
         barmode='relative',
         bargap=0.0,
         height=700,
@@ -938,12 +938,12 @@ def criar_grafico_charlson(df):
         marker=dict(color=px.colors.qualitative.Prism[4]),
         text=df_charlson['n_pacientes'],
         textposition='outside',
-        hovertemplate='Charlson %{x}<br>Pacientes: %{y:,}<extra></extra>'
+        hovertemplate='Escore %{x}<br>Pacientes: %{y:,}<extra></extra>'
     ))
     
     fig.update_layout(
-        title='Distribuição de Carga de Morbidade (Índice de Charlson)',
-        xaxis_title='Pontuação de Charlson',
+        title='Distribuição de Carga de Morbidade',
+        xaxis_title='Pontuação',
         yaxis_title='Número de Pacientes',
         height=400,
         showlegend=False
@@ -2089,7 +2089,7 @@ O escore integrado combina três componentes:
     if fig_charlson:
         st.plotly_chart(fig_charlson, use_container_width=True, key='piramide_charlson')
     else:
-        st.warning("Dados de Charlson não disponíveis")
+        st.warning("Dados de carga de morbidade não disponíveis")
 
     st.markdown("---")
 
@@ -2116,13 +2116,13 @@ O escore integrado combina três componentes:
 
         indicadores_charl = [
             ('pct_muito_alto',   '🔴 Carga Muito Alta (escore ≥10)', '#C0392B',
-             '% de pacientes com escore de Charlson ≥10 por território'),
+             '% de pacientes com escore ≥10 por território'),
             ('pct_alto',         '🟠 Carga Alta (escore 7–9)',        '#E67E22',
-             '% de pacientes com escore de Charlson 7–9 por território'),
+             '% de pacientes com escore 7–9 por território'),
             ('pct_moderado',     '🟡 Carga Moderada (escore 3–6)',    '#F4D03F',
-             '% de pacientes com escore de Charlson 3–6 por território'),
+             '% de pacientes com escore 3–6 por território'),
             ('pct_baixo',        '🟢 Carga Baixa (escore ≤2)',        '#2ECC71',
-             '% de pacientes com escore de Charlson ≤2 por território'),
+             '% de pacientes com escore ≤2 por território'),
             ('pct_multimorbidos','👥 Multimórbidos (≥2 condições)',   '#3498DB',
              '% de pacientes com 2 ou mais condições crônicas por território'),
         ]
@@ -3699,7 +3699,7 @@ with tab6:
             f"{_p(sumario.get('n_alto_risco_baixo_acesso',0), tot):.1f}%",
             delta_color="inverse",
             help=(
-                "Pacientes com escore de Charlson ≥7 (carga de morbidade muito alta) "
+                "Pacientes com carga de morbidade muito alta (escore ≥7) "
                 "que consultam abaixo do percentil 25 do seu grupo de pares "
                 "(mesma faixa etária, sexo e nível de risco). "
                 "São os que mais precisam de cuidado e menos o acessam."
@@ -3811,7 +3811,7 @@ with tab6:
             <span style='color:{T.TEXT}; font-size:1.6em; font-weight:800;'>{n_arba:,}</span>
             &nbsp;&nbsp;
             <span style='color:{T.TEXT_MUTED}; font-size:0.85em;'>
-            pacientes com Charlson muito alto que consultam abaixo do P25 do seu grupo —
+            pacientes com carga de morbidade muito alta que consultam abaixo do P25 do seu grupo —
             os que <strong>mais precisam</strong> e <strong>menos acessam</strong>.
             </span>
         </div>

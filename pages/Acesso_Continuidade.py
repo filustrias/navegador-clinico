@@ -176,7 +176,7 @@ INDICADORES_VIOLIN = {
     'pct_alto_risco_baixo_acesso': {
         'label': '% alto risco + baixo acesso',
         'descricao': (
-            'Pacientes com Charlson ≥ 7 (muito alta carga de morbidade) que consultam '
+            'Pacientes com carga de morbidade muito alta (escore ≥ 7) que consultam '
             'abaixo do P25 do seu grupo de pares. É o principal indicador de iniquidade '
             'em saúde: quem mais precisa, menos acessa.'
         ),
@@ -969,7 +969,7 @@ with tab1:
 | **% sem médico >180 dias** | Proporção do grupo sem consulta médica há mais de 6 meses. Indica abandono ou barreira de acesso ao cuidado médico. |
 | **% com > de 6 meses com consulta no ano** | Proporção com pelo menos 6 meses distintos com consulta (médico, enfermeiro ou técnico) nos últimos 12 meses. |
 | **% fragmentação do cuidado** | Proporção que realizou mais de 50% das consultas médicas fora da unidade de referência. Indica fragmentação do cuidado e menor vínculo com a equipe. |
-| **% alto risco + baixo acesso** | Proporção com carga de morbidade muito alta (Charlson ≥7) que consulta abaixo do P25 do seu grupo de pares. Principal indicador de **iniquidade no cuidado**. |
+| **% alto risco + baixo acesso** | Proporção com carga de morbidade muito alta (escore ≥7) que consulta abaixo do P25 do seu grupo de pares. Principal indicador de **iniquidade no cuidado**. |
 | **N alto risco + baixo acesso** | Número absoluto de pacientes em situação de alto risco com baixo acesso — útil para dimensionar a magnitude do problema no território. |
         """)
 
@@ -1051,7 +1051,7 @@ with tab2:
 
         # Sufixo descritivo se há filtro de Charlson
         if cats_violin and set(cats_violin) != set(charlson_opts):
-            nivel_txt += f" | Charlson: {', '.join(cats_violin)}"
+            nivel_txt += f" | Carga: {', '.join(cats_violin)}"
 
     if df_viol.empty:
         st.warning("Nenhum dado encontrado para os filtros selecionados.")
