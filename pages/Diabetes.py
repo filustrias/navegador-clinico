@@ -206,7 +206,16 @@ def carregar_sumario_dm(ap, clinica, esf):
         COUNTIF(DM IS NOT NULL AND principio_INSULINA_MISTA IS NOT NULL)          AS n_rx_ins_mista,
         -- Metformina > 2000mg
         COUNTIF(DM IS NOT NULL AND principio_BIGUANIDA IS NOT NULL
-                AND dose_BIGUANIDA_mg_dia > 2000)                                AS n_rx_metformina_alta
+                AND dose_BIGUANIDA_mg_dia > 2000)                                AS n_rx_metformina_alta,
+        -- Sulfonilureia em monoterapia (sem metformina e sem outros orais)
+        COUNTIF(DM IS NOT NULL AND principio_SULFONILUREIA IS NOT NULL
+                AND principio_BIGUANIDA IS NULL
+                AND principio_iSGLT2 IS NULL
+                AND principio_iDPP4 IS NULL
+                AND principio_GLP1 IS NULL
+                AND principio_TIAZOLIDINEDIONA IS NULL
+                AND principio_GLINIDA IS NULL
+                AND principio_ACARBOSE IS NULL)                                   AS n_rx_sulfo_monoterapia
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
     """
@@ -865,6 +874,16 @@ with tab_meds:
                 st.metric("Pacientes", f"{n:,}",
                           f"{_p(n, n_dm):.0f}% dos diabéticos")
 
+    # Destaque sulfonilureia em monoterapia
+    n_sulfo_total = int(sumario.get('n_rx_sulfonilureia', 0) or 0)
+    n_sulfo_mono  = int(sumario.get('n_rx_sulfo_monoterapia', 0) or 0)
+    if n_sulfo_total > 0 and n_sulfo_mono > 0:
+        st.warning(
+            f"⚠️ **Sulfonilureia em monoterapia (sem metformina ou outro oral):** "
+            f"{n_sulfo_mono:,} pacientes ({_p(n_sulfo_mono, n_sulfo_total):.0f}% dos que usam sulfonilureia). "
+            f"Sulfonilureia não é primeira linha — metformina deve ser o tratamento inicial na maioria dos casos."
+        )
+
     # Destaque metformina > 2000mg
     n_metf_alta = int(sumario.get('n_rx_metformina_alta', 0) or 0)
     n_metf_total = int(sumario.get('n_rx_biguanida', 0) or 0)
@@ -919,8 +938,10 @@ with tab_meds:
             mi4.metric(">1,0 UI/kg (resistência)", f"{n_acima_1:,}",
                        f"{_p(n_acima_1, len(df_nph)):.0f}%", delta_color="inverse")
 
+            max_ui = df_nph['ui_kg'].max()
+            n_bins = max(80, int(max_ui / 0.02))  # ~0.02 UI/kg por bin
             fig_nph = px.histogram(
-                df_nph, x='ui_kg', nbins=40,
+                df_nph, x='ui_kg', nbins=n_bins,
                 labels={'ui_kg': 'UI/kg/dia', 'count': 'Pacientes'},
                 title='Distribuição da dose de NPH (UI/kg/dia)',
                 color_discrete_sequence=['#3498DB'],
@@ -930,12 +951,13 @@ with tab_meds:
             fig_nph.add_vline(x=1.0, line_dash="dash", line_color="#E74C3C",
                               annotation_text="1,0 UI/kg (resistência)")
             fig_nph.update_layout(
-                height=380,
+                height=420,
                 paper_bgcolor=T.PAPER_BG,
                 plot_bgcolor=T.PLOT_BG,
                 font=dict(color=T.TEXT),
                 margin=dict(l=60, r=20, t=50, b=60),
             )
+            fig_nph.update_xaxes(range=[0, max_ui * 1.05], title='UI/kg/dia')
             fig_nph.update_yaxes(title='Pacientes', gridcolor=T.GRID)
             st.plotly_chart(fig_nph, use_container_width=True)
 
