@@ -640,13 +640,13 @@ with tab1:
         with st.container(border=True):
             st.markdown("**📋 Por CID registrado (E10–E14)**")
             st.metric("Pacientes", f"{sumario.get('n_DM_por_cid', 0):,}",
-                      f"{_p(sumario.get('n_DM_por_cid', 0), n_dm):.1f}% dos diabéticos")
+                      f"{_p(sumario.get('n_DM_por_cid', 0), n_dm):.0f}% dos diabéticos")
             st.caption("Forma mais robusta. Essencial para listas e indicadores de qualidade.")
     with c2:
         with st.container(border=True):
             st.markdown("**🩸 Por exames laboratoriais**")
             st.metric("Pacientes", f"{sumario.get('n_DM_por_exames', 0):,}",
-                      f"{_p(sumario.get('n_DM_por_exames', 0), n_dm):.1f}% dos diabéticos")
+                      f"{_p(sumario.get('n_DM_por_exames', 0), n_dm):.0f}% dos diabéticos")
             st.caption("Glicemia ≥126 mg/dL ou HbA1c ≥6,5%. Devem ter CID registrado.")
 
     c3, c4 = st.columns(2)
@@ -654,13 +654,13 @@ with tab1:
         with st.container(border=True):
             st.markdown("**📈 Por progressão do pré-DM**")
             st.metric("Pacientes", f"{sumario.get('n_DM_por_progressao', 0):,}",
-                      f"{_p(sumario.get('n_DM_por_progressao', 0), n_dm):.1f}% dos diabéticos")
+                      f"{_p(sumario.get('n_DM_por_progressao', 0), n_dm):.0f}% dos diabéticos")
             st.caption("Pré-DM que atingiu critérios em exame subsequente.")
     with c4:
         with st.container(border=True):
             st.markdown("**💊 Por prescrição de insulina ou similares**")
             st.metric("Pacientes", f"{sumario.get('n_DM_por_medicamento', 0):,}",
-                      f"{_p(sumario.get('n_DM_por_medicamento', 0), n_dm):.1f}% dos diabéticos")
+                      f"{_p(sumario.get('n_DM_por_medicamento', 0), n_dm):.0f}% dos diabéticos")
             st.caption("Diagnóstico implícito pelo tratamento — oportunidade de codificação formal.")
 
     # ── Complicações do diabetes ─────────────────────────────
