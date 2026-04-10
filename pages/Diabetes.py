@@ -207,7 +207,7 @@ def carregar_sumario_dm(ap, clinica, esf):
         -- Metformina > 2000mg
         COUNTIF(DM IS NOT NULL AND principio_BIGUANIDA IS NOT NULL
                 AND dose_BIGUANIDA_mg_dia > 2000)                                AS n_rx_metformina_alta,
-        -- Sulfonilureia em monoterapia (sem metformina e sem outros orais)
+        -- Sulfonilureia como único antidiabético (sem metformina, sem outros orais, sem insulina)
         COUNTIF(DM IS NOT NULL AND principio_SULFONILUREIA IS NOT NULL
                 AND principio_BIGUANIDA IS NULL
                 AND principio_iSGLT2 IS NULL
@@ -215,7 +215,12 @@ def carregar_sumario_dm(ap, clinica, esf):
                 AND principio_GLP1 IS NULL
                 AND principio_TIAZOLIDINEDIONA IS NULL
                 AND principio_GLINIDA IS NULL
-                AND principio_ACARBOSE IS NULL)                                   AS n_rx_sulfo_monoterapia
+                AND principio_ACARBOSE IS NULL
+                AND principio_INSULINA_BASAL_HUMANA IS NULL
+                AND principio_INSULINA_PRANDIAL_HUMANA IS NULL
+                AND principio_INSULINA_BASAL_ANALOGICA IS NULL
+                AND principio_INSULINA_PRANDIAL_ANALOGICA IS NULL
+                AND principio_INSULINA_MISTA IS NULL)                             AS n_rx_sulfo_monoterapia
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
     """
@@ -883,10 +888,10 @@ with tab_meds:
         with st.container(border=True):
             if n_sulfo_total > 0 and n_sulfo_mono > 0:
                 st.warning(
-                    f"⚠️ **Sulfonilureia em monoterapia** (sem metformina ou outro oral): "
+                    f"⚠️ **Sulfonilureia como único antidiabético** (sem metformina, sem outros orais, sem insulina): "
                     f"**{n_sulfo_mono:,}** pacientes "
                     f"({_p(n_sulfo_mono, n_sulfo_total):.0f}% dos que usam sulfonilureia). "
-                    f"Sulfonilureia não é primeira linha — metformina deve ser o tratamento inicial."
+                    f"Sulfonilureia isolada não é primeira linha — metformina deve ser o tratamento inicial na maioria dos casos."
                 )
             else:
                 st.success("✅ Nenhum paciente em monoterapia com sulfonilureia.")
@@ -922,7 +927,8 @@ with tab_meds:
         "Dose diária de NPH dividida pelo peso do paciente. "
         "Referência: 0,1–0,2 UI/kg para início; 0,3–0,5 UI/kg habitual; "
         ">1,0 UI/kg sugere resistência insulínica importante. "
-        "Exclui pacientes sem peso registrado ou dose = 0."
+        "Este gráfico exclui pacientes sem peso registrado ou com doses = 0 "
+        "ou ainda doses acima de 1,5 UI/kg, consideradas erros de digitação."
     )
 
     df_nph = carregar_nph_ui_kg(ap_sel, cli_sel, esf_sel)
@@ -945,12 +951,16 @@ with tab_meds:
             mi4.metric(">1,0 UI/kg (resistência)", f"{n_acima_1:,}",
                        f"{_p(n_acima_1, len(df_nph)):.0f}%", delta_color="inverse")
 
-            n_bins = 75  # bins de ~0.02 UI/kg no range 0–1.5
+            n_bins = 150  # bins de ~0.01 UI/kg no range 0–1.5
             fig_nph = px.histogram(
                 df_nph, x='ui_kg', nbins=n_bins,
                 labels={'ui_kg': 'UI/kg/dia', 'count': 'Pacientes'},
                 title='Distribuição da dose de NPH (UI/kg/dia)',
                 color_discrete_sequence=['#3498DB'],
+            )
+            fig_nph.update_traces(
+                marker_line_color='#1a5276',
+                marker_line_width=0.8,
             )
             fig_nph.add_vline(x=0.5, line_dash="dash", line_color="#2ECC71",
                               annotation_text="0,5 UI/kg (habitual)")
