@@ -1476,7 +1476,7 @@ def create_patient_card(patient_data):
             # ════════════════════════════════════════════
             with c_rx:
                 st.markdown("##### 💊 Prescrições crônicas")
-                meds_raw     = dados_acb.get("lista_medicamentos") or patient_data.get("nucleo_cronico_atual", "")
+                meds_raw     = patient_data.get("medicamentos_cronicos", "") or ""
                 acb_positivos = str(dados_acb.get("medicamentos_acb") or "")
                 acb_dict = {}
                 if acb_positivos:
