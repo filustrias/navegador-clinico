@@ -383,7 +383,7 @@ if conexao_ok:
                 SUM(n_um_e_dois_medicamentos)  AS n_1a2_meds,
                 SUM(n_tres_e_quatro_medicamentos) AS n_3a4_meds,
                 SUM(n_acb_alto)                AS n_acb_alto,
-                SUM(n_acb_alerta_idoso)        AS n_acb_idoso,
+                SUM(n_acb_alto_idoso)          AS n_acb_idoso,
                 SUM(n_sem_consulta_365d)       AS n_sem_consulta,
                 SUM(n_alto_risco_baixo_acesso) AS n_alto_risco_ba,
                 SUM(n_seguimento_regular)      AS n_regular,
