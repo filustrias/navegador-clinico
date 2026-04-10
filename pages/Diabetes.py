@@ -203,7 +203,10 @@ def carregar_sumario_dm(ap, clinica, esf):
         COUNTIF(DM IS NOT NULL AND principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL) AS n_rx_ins_prandial_humana,
         COUNTIF(DM IS NOT NULL AND principio_INSULINA_BASAL_ANALOGICA IS NOT NULL) AS n_rx_ins_basal_analogica,
         COUNTIF(DM IS NOT NULL AND principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL) AS n_rx_ins_prandial_analogica,
-        COUNTIF(DM IS NOT NULL AND principio_INSULINA_MISTA IS NOT NULL)          AS n_rx_ins_mista
+        COUNTIF(DM IS NOT NULL AND principio_INSULINA_MISTA IS NOT NULL)          AS n_rx_ins_mista,
+        -- Metformina > 2000mg
+        COUNTIF(DM IS NOT NULL AND principio_BIGUANIDA IS NOT NULL
+                AND dose_BIGUANIDA_mg_dia > 2000)                                AS n_rx_metformina_alta
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
     """
@@ -274,6 +277,29 @@ def carregar_resumo_hba1c(ap, clinica, esf):
     """
     df = bq(sql)
     return df.iloc[0].to_dict() if not df.empty else {}
+
+@st.cache_data(show_spinner=False, ttl=900)
+def carregar_nph_ui_kg(ap, clinica, esf):
+    """Retorna UI/kg de NPH por paciente (para histograma)."""
+    clauses = [
+        "DM IS NOT NULL",
+        "dose_NPH_ui_dia IS NOT NULL",
+        "dose_NPH_ui_dia > 0",
+        "peso IS NOT NULL",
+        "peso > 20",
+    ]
+    if ap:      clauses.append(f"area_programatica_cadastro = '{ap}'")
+    if clinica: clauses.append(f"nome_clinica_cadastro = '{clinica}'")
+    if esf:     clauses.append(f"nome_esf_cadastro = '{esf}'")
+    where = "WHERE " + " AND ".join(clauses)
+    sql = f"""
+    SELECT
+        ROUND(dose_NPH_ui_dia / peso, 2) AS ui_kg
+    FROM `{_fqn(config.TABELA_FATO)}`
+    {where}
+    """
+    return bq(sql)
+
 
 @st.cache_data(show_spinner=False, ttl=900)
 def carregar_territorio_dm(ap, clinica, esf):
@@ -839,6 +865,19 @@ with tab_meds:
                 st.metric("Pacientes", f"{n:,}",
                           f"{_p(n, n_dm):.0f}% dos diabéticos")
 
+    # Destaque metformina > 2000mg
+    n_metf_alta = int(sumario.get('n_rx_metformina_alta', 0) or 0)
+    n_metf_total = int(sumario.get('n_rx_biguanida', 0) or 0)
+    if n_metf_total > 0:
+        pct_metf_alta = _p(n_metf_alta, n_metf_total)
+        st.warning(
+            f"⚠️ **Metformina > 2.000 mg/dia:** {n_metf_alta:,} pacientes "
+            f"({pct_metf_alta:.0f}% dos que usam metformina). "
+            f"Doses acima de 2.000 mg/dia aumentam efeitos gastrointestinais "
+            f"sem ganho proporcional de eficácia."
+        )
+
+    st.markdown("---")
     st.markdown("**💉 Insulinas**")
     ri1, ri2, ri3 = st.columns(3)
     for i, (label, key) in enumerate(insulinas):
@@ -849,6 +888,56 @@ with tab_meds:
                 st.markdown(f"**{label}**")
                 st.metric("Pacientes", f"{n:,}",
                           f"{_p(n, n_dm):.0f}% dos diabéticos")
+
+    # Histograma de UI/kg de NPH
+    st.markdown("---")
+    st.markdown("**📊 Distribuição da dose de insulina NPH (UI/kg)**")
+    st.caption(
+        "Dose diária de NPH dividida pelo peso do paciente. "
+        "Referência: 0,1–0,2 UI/kg para início; 0,3–0,5 UI/kg habitual; "
+        ">1,0 UI/kg sugere resistência insulínica importante. "
+        "Exclui pacientes sem peso registrado ou dose = 0."
+    )
+
+    df_nph = carregar_nph_ui_kg(ap_sel, cli_sel, esf_sel)
+    if df_nph.empty or 'ui_kg' not in df_nph.columns:
+        st.info("Sem dados de dose NPH + peso para os filtros selecionados.")
+    else:
+        df_nph = df_nph.dropna(subset=['ui_kg'])
+        df_nph = df_nph[df_nph['ui_kg'] > 0]
+        if df_nph.empty:
+            st.info("Sem dados válidos de UI/kg.")
+        else:
+            media_ui = df_nph['ui_kg'].mean()
+            mediana_ui = df_nph['ui_kg'].median()
+            n_acima_1 = (df_nph['ui_kg'] > 1.0).sum()
+
+            mi1, mi2, mi3, mi4 = st.columns(4)
+            mi1.metric("Pacientes com dose calculável", f"{len(df_nph):,}")
+            mi2.metric("Média UI/kg", f"{media_ui:.2f}")
+            mi3.metric("Mediana UI/kg", f"{mediana_ui:.2f}")
+            mi4.metric(">1,0 UI/kg (resistência)", f"{n_acima_1:,}",
+                       f"{_p(n_acima_1, len(df_nph)):.0f}%", delta_color="inverse")
+
+            fig_nph = px.histogram(
+                df_nph, x='ui_kg', nbins=40,
+                labels={'ui_kg': 'UI/kg/dia', 'count': 'Pacientes'},
+                title='Distribuição da dose de NPH (UI/kg/dia)',
+                color_discrete_sequence=['#3498DB'],
+            )
+            fig_nph.add_vline(x=0.5, line_dash="dash", line_color="#2ECC71",
+                              annotation_text="0,5 UI/kg (habitual)")
+            fig_nph.add_vline(x=1.0, line_dash="dash", line_color="#E74C3C",
+                              annotation_text="1,0 UI/kg (resistência)")
+            fig_nph.update_layout(
+                height=380,
+                paper_bgcolor=T.PAPER_BG,
+                plot_bgcolor=T.PLOT_BG,
+                font=dict(color=T.TEXT),
+                margin=dict(l=60, r=20, t=50, b=60),
+            )
+            fig_nph.update_yaxes(title='Pacientes', gridcolor=T.GRID)
+            st.plotly_chart(fig_nph, use_container_width=True)
 
 
 # ──────────────────────────────────────────────────────────────
