@@ -1108,7 +1108,7 @@ with tab5:
         )
 
     # ── Linha 2: Ordenação + filtros locais ──────────────────
-    lf1, lf2, lf3 = st.columns(3)
+    lf1, lf2, lf3, lf4 = st.columns(4)
     with lf1:
         ORDEM_MAP = {
             "⚠️ Carga de morbidade (mais grave primeiro)":   "charlson_desc",
@@ -1140,6 +1140,14 @@ with tab5:
             help="Quem não tem PA registrada é sempre incluído.",
         )
     with lf3:
+        filtro_intensidade = st.multiselect(
+            "Intensidade do tratamento",
+            options=["MONOTERAPIA", "DUPLA_TERAPIA", "TRIPLA_TERAPIA", "QUADRUPLA_TERAPIA"],
+            default=[],
+            placeholder="Todas",
+            key="has_lista_intensidade",
+        )
+    with lf4:
         apenas_nao_ctrl = st.toggle(
             "Apenas não controlados",
             value=False, key="has_lista_nao_ctrl",
@@ -1166,6 +1174,9 @@ with tab5:
         if filtro_tendencia:
             tem = df_pac["tendencia_pa"].notna()
             df_pac = df_pac[~tem | df_pac["tendencia_pa"].isin(filtro_tendencia)]
+
+        if filtro_intensidade:
+            df_pac = df_pac[df_pac["intensidade_tratamento_has"].isin(filtro_intensidade)]
 
         if apenas_nao_ctrl:
             df_pac = df_pac[df_pac["status_controle_pressorio"] == "descontrolado"]
@@ -1228,7 +1239,7 @@ with tab5:
             'medicamentos':            'Medicamentos',
             'meds_has':                'Anti-hipertensivos',
             'n_classes_anti_hipertensivos': 'N° Classes HAS',
-            'intensidade_tratamento_has': 'Intensidade HAS',
+            'intensidade_tratamento_has': 'Intensidade do tratamento',
         }
         cols_show = [c for c in RENAME if c in df_exib.columns]
         df_show = df_exib[cols_show].rename(columns=RENAME)
@@ -1251,7 +1262,7 @@ with tab5:
                 'Anti-hipertensivos': st.column_config.TextColumn('Anti-hipertensivos', width='large'),
                 'Clínica':         st.column_config.TextColumn('Clínica',      width='medium'),
                 'N° Classes HAS':  st.column_config.NumberColumn('N° Classes HAS', width='small'),
-                'Intensidade HAS': st.column_config.TextColumn('Intensidade HAS', width='medium'),
+                'Intensidade do tratamento': st.column_config.TextColumn('Intensidade do tratamento', width='medium'),
             }
         )
 
