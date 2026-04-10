@@ -289,21 +289,19 @@ def carregar_resumo_hba1c(ap, clinica, esf):
 
 @st.cache_data(show_spinner=False, ttl=900)
 def carregar_nph_ui_kg(ap, clinica, esf):
-    """Retorna UI/kg de NPH por paciente (para histograma)."""
+    """Retorna UI/kg de NPH por paciente (para histograma). Exclui doses absurdas."""
     clauses = [
         "DM IS NOT NULL",
-        "dose_NPH_ui_dia IS NOT NULL",
-        "dose_NPH_ui_dia > 0",
-        "peso IS NOT NULL",
-        "peso > 20",
+        "dose_NPH_ui_kg IS NOT NULL",
+        "dose_NPH_ui_kg > 0",
+        "COALESCE(alerta_dose_NPH_absurda, FALSE) = FALSE",
     ]
     if ap:      clauses.append(f"area_programatica_cadastro = '{ap}'")
     if clinica: clauses.append(f"nome_clinica_cadastro = '{clinica}'")
     if esf:     clauses.append(f"nome_esf_cadastro = '{esf}'")
     where = "WHERE " + " AND ".join(clauses)
     sql = f"""
-    SELECT
-        ROUND(dose_NPH_ui_dia / peso, 2) AS ui_kg
+    SELECT dose_NPH_ui_kg AS ui_kg
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
     """
@@ -947,8 +945,7 @@ with tab_meds:
             mi4.metric(">1,0 UI/kg (resistência)", f"{n_acima_1:,}",
                        f"{_p(n_acima_1, len(df_nph)):.0f}%", delta_color="inverse")
 
-            max_ui = df_nph['ui_kg'].max()
-            n_bins = max(80, int(max_ui / 0.02))  # ~0.02 UI/kg por bin
+            n_bins = 75  # bins de ~0.02 UI/kg no range 0–1.5
             fig_nph = px.histogram(
                 df_nph, x='ui_kg', nbins=n_bins,
                 labels={'ui_kg': 'UI/kg/dia', 'count': 'Pacientes'},
@@ -966,7 +963,7 @@ with tab_meds:
                 font=dict(color=T.TEXT),
                 margin=dict(l=60, r=20, t=50, b=60),
             )
-            fig_nph.update_xaxes(range=[0, max_ui * 1.05], title='UI/kg/dia')
+            fig_nph.update_xaxes(range=[0, 1.5], title='UI/kg/dia')
             fig_nph.update_yaxes(title='Pacientes', gridcolor=T.GRID)
             st.plotly_chart(fig_nph, use_container_width=True)
 
