@@ -219,7 +219,12 @@ def carregar_sumario_has(ap, clinica, esf):
         COUNTIF(HAS IS NOT NULL AND principio_SIMPATICOLITICO IS NOT NULL)   AS n_rx_simpaticol,
         COUNTIF(HAS IS NOT NULL AND principio_ALFABLOQUEADOR IS NOT NULL)    AS n_rx_alfabloq,
         COUNTIF(HAS IS NOT NULL AND principio_VASODILATADOR IS NOT NULL)     AS n_rx_vasodilat,
-        COUNTIF(HAS IS NOT NULL AND principio_NITRATO IS NOT NULL)           AS n_rx_nitrato
+        COUNTIF(HAS IS NOT NULL AND principio_NITRATO IS NOT NULL)           AS n_rx_nitrato,
+        -- Combinações e contexto clínico
+        COUNTIF(HAS IS NOT NULL AND principio_IECA IS NOT NULL AND principio_BRA IS NOT NULL) AS n_rx_ieca_bra,
+        COUNTIF(HAS IS NOT NULL AND principio_DIURETICO_ALCA IS NOT NULL AND ICC IS NOT NULL) AS n_rx_diur_alca_icc,
+        COUNTIF(HAS IS NOT NULL AND principio_POUPADOR_K IS NOT NULL AND ICC IS NOT NULL)     AS n_rx_poupador_k_icc,
+        COUNTIF(HAS IS NOT NULL AND principio_NITRATO IS NOT NULL AND CI IS NOT NULL)         AS n_rx_nitrato_ci
 
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
@@ -798,19 +803,25 @@ with tab_meds:
     st.markdown("### 3️⃣ Medicamentos prescritos")
     st.caption("Prevalência de cada classe de anti-hipertensivo entre os pacientes hipertensos. Um paciente pode receber mais de uma classe.")
 
+    # Dados auxiliares
+    n_rx_diur_alca     = int(sumario.get('n_rx_diur_alca', 0) or 0)
+    n_rx_diur_alca_icc = int(sumario.get('n_rx_diur_alca_icc', 0) or 0)
+    n_rx_poupador_k     = int(sumario.get('n_rx_poupador_k', 0) or 0)
+    n_rx_poupador_k_icc = int(sumario.get('n_rx_poupador_k_icc', 0) or 0)
+    n_rx_nitrato        = int(sumario.get('n_rx_nitrato', 0) or 0)
+    n_rx_nitrato_ci     = int(sumario.get('n_rx_nitrato_ci', 0) or 0)
+    n_rx_ieca_bra       = int(sumario.get('n_rx_ieca_bra', 0) or 0)
+
     meds_has = [
         ('IECA (Enalapril, Captopril, Ramipril)',                    'n_rx_ieca'),
         ('BRA (Losartana, Valsartana, Olmesartana)',                  'n_rx_bra'),
         ('BCC di-hidropiridínico (Anlodipino, Nifedipino)',          'n_rx_bcc_dhp'),
         ('BCC não di-hidropiridínico (Verapamil, Diltiazem)',        'n_rx_bcc_nao_dhp'),
         ('Diurético tiazídico (Hidroclorotiazida, Clortalidona, Indapamida)', 'n_rx_tiazidico'),
-        ('Diurético de alça (Furosemida, Bumetanida)',               'n_rx_diur_alca'),
-        ('Diurético poupador de K (Espironolactona, Eplerenona)',    'n_rx_poupador_k'),
         ('Betabloqueador (Atenolol, Carvedilol, Bisoprolol, Metoprolol)', 'n_rx_betabloq'),
-        ('Simpatolítico central (Metildopa, Clonidina, Moxonidina)', 'n_rx_simpaticol'),
+        ('Simpatolítico central (Metildopa, Clonidina)',             'n_rx_simpaticol'),
         ('Alfabloqueador (Doxazosina, Prazosina)',                   'n_rx_alfabloq'),
-        ('Vasodilatador direto (Hidralazina, Minoxidil)',            'n_rx_vasodilat'),
-        ('Nitrato (Isossorbida Mononitrato, Dinitrato)',             'n_rx_nitrato'),
+        ('Vasodilatador direto (Hidralazina)',                       'n_rx_vasodilat'),
     ]
 
     rm1, rm2, rm3 = st.columns(3)
@@ -822,6 +833,35 @@ with tab_meds:
                 st.markdown(f"**{label}**")
                 st.metric("Pacientes", f"{n:,}",
                           f"{_p(n, n_has):.0f}% dos hipertensos")
+
+    # Cards com contexto clínico
+    st.markdown("**💊 Medicamentos com contexto clínico**")
+    rc1, rc2, rc3 = st.columns(3)
+    with rc1:
+        with st.container(border=True):
+            st.markdown(f"**Diurético de alça (Furosemida)** — {n_rx_diur_alca_icc:,} com ICC")
+            st.metric("Pacientes", f"{n_rx_diur_alca:,}",
+                      f"{_p(n_rx_diur_alca, n_has):.0f}% dos hipertensos")
+    with rc2:
+        with st.container(border=True):
+            st.markdown(f"**Diurético poupador de K (Espironolactona)** — {n_rx_poupador_k_icc:,} com ICC")
+            st.metric("Pacientes", f"{n_rx_poupador_k:,}",
+                      f"{_p(n_rx_poupador_k, n_has):.0f}% dos hipertensos")
+    with rc3:
+        with st.container(border=True):
+            st.markdown(f"**Nitrato (Isossorbida Mononitrato, Dinitrato)** — {n_rx_nitrato_ci:,} com CI")
+            st.metric("Pacientes", f"{n_rx_nitrato:,}",
+                      f"{_p(n_rx_nitrato, n_has):.0f}% dos hipertensos")
+
+    # Alerta IECA + BRA
+    if n_rx_ieca_bra > 0:
+        st.error(
+            f"🚨 **Combinação inapropriada: IECA + BRA simultâneos — {n_rx_ieca_bra:,} pacientes** "
+            f"({_p(n_rx_ieca_bra, n_has):.1f}% dos hipertensos). "
+            f"Duplo bloqueio do SRAA é contraindicado pela maioria das diretrizes."
+        )
+    else:
+        st.success("✅ Nenhum paciente hipertenso com combinação IECA + BRA simultâneos.")
 
 
 # ──────────────────────────────────────────────────────────────
