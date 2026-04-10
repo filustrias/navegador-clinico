@@ -427,7 +427,26 @@ def carregar_pacientes_has(ap, clinica, esf, limite=500,
          + IF(lacuna_IMC_HAS_DM = TRUE, 1, 0)) AS n_lacunas,
 
         total_medicamentos_cronicos,
-        COALESCE(nucleo_cronico_atual, '—') AS medicamentos
+        COALESCE(nucleo_cronico_atual, '—') AS medicamentos,
+
+        -- Medicamentos HAS
+        ARRAY_TO_STRING(ARRAY(SELECT m FROM UNNEST([
+            IF(principio_IECA IS NOT NULL,              principio_IECA, NULL),
+            IF(principio_BRA IS NOT NULL,               principio_BRA, NULL),
+            IF(principio_BCC_DHP IS NOT NULL,           principio_BCC_DHP, NULL),
+            IF(principio_BCC_NAO_DHP IS NOT NULL,       principio_BCC_NAO_DHP, NULL),
+            IF(principio_TIAZIDICO IS NOT NULL,         principio_TIAZIDICO, NULL),
+            IF(principio_DIURETICO_ALCA IS NOT NULL,    principio_DIURETICO_ALCA, NULL),
+            IF(principio_POUPADOR_K IS NOT NULL,        principio_POUPADOR_K, NULL),
+            IF(principio_BETABLOQUEADOR IS NOT NULL,    principio_BETABLOQUEADOR, NULL),
+            IF(principio_SIMPATICOLITICO IS NOT NULL,   principio_SIMPATICOLITICO, NULL),
+            IF(principio_ALFABLOQUEADOR IS NOT NULL,    principio_ALFABLOQUEADOR, NULL),
+            IF(principio_VASODILATADOR IS NOT NULL,     principio_VASODILATADOR, NULL),
+            IF(principio_NITRATO IS NOT NULL,           principio_NITRATO, NULL)
+        ]) AS m WHERE m IS NOT NULL), ' · ') AS meds_has,
+
+        n_classes_anti_hipertensivos,
+        intensidade_tratamento_has
 
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
@@ -1207,6 +1226,9 @@ with tab5:
             'lacunas_ativas':          'Lacunas',
             'total_medicamentos_cronicos': 'N° Medicamentos',
             'medicamentos':            'Medicamentos',
+            'meds_has':                'Anti-hipertensivos',
+            'n_classes_anti_hipertensivos': 'N° Classes HAS',
+            'intensidade_tratamento_has': 'Intensidade HAS',
         }
         cols_show = [c for c in RENAME if c in df_exib.columns]
         df_show = df_exib[cols_show].rename(columns=RENAME)
@@ -1226,7 +1248,10 @@ with tab5:
                 'Morbidades':      st.column_config.TextColumn('Morbidades',   width='large'),
                 'Lacunas':         st.column_config.TextColumn('Lacunas',      width='large'),
                 'Medicamentos':    st.column_config.TextColumn('Medicamentos', width='large'),
+                'Anti-hipertensivos': st.column_config.TextColumn('Anti-hipertensivos', width='large'),
                 'Clínica':         st.column_config.TextColumn('Clínica',      width='medium'),
+                'N° Classes HAS':  st.column_config.NumberColumn('N° Classes HAS', width='small'),
+                'Intensidade HAS': st.column_config.TextColumn('Intensidade HAS', width='medium'),
             }
         )
 

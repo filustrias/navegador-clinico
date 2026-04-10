@@ -461,7 +461,29 @@ def carregar_pacientes_dm(ap, clinica, esf, limite=500,
          + IF(lacuna_DM_complicado_sem_SGLT2 = TRUE, 1, 0)) AS n_lacunas,
 
         total_medicamentos_cronicos,
-        COALESCE(nucleo_cronico_atual, '—') AS medicamentos
+        COALESCE(nucleo_cronico_atual, '—') AS medicamentos,
+
+        -- Medicamentos DM
+        ARRAY_TO_STRING(ARRAY(SELECT m FROM UNNEST([
+            IF(principio_BIGUANIDA IS NOT NULL,                principio_BIGUANIDA, NULL),
+            IF(principio_SULFONILUREIA IS NOT NULL,            principio_SULFONILUREIA, NULL),
+            IF(principio_iSGLT2 IS NOT NULL,                  principio_iSGLT2, NULL),
+            IF(principio_iDPP4 IS NOT NULL,                   principio_iDPP4, NULL),
+            IF(principio_GLP1 IS NOT NULL,                    principio_GLP1, NULL),
+            IF(principio_TIAZOLIDINEDIONA IS NOT NULL,        principio_TIAZOLIDINEDIONA, NULL),
+            IF(principio_GLINIDA IS NOT NULL,                 principio_GLINIDA, NULL),
+            IF(principio_ACARBOSE IS NOT NULL,                principio_ACARBOSE, NULL),
+            IF(principio_INSULINA_BASAL_HUMANA IS NOT NULL,   'NPH', NULL),
+            IF(principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL,'Regular', NULL),
+            IF(principio_INSULINA_BASAL_ANALOGICA IS NOT NULL, principio_INSULINA_BASAL_ANALOGICA, NULL),
+            IF(principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL, principio_INSULINA_PRANDIAL_ANALOGICA, NULL),
+            IF(principio_INSULINA_MISTA IS NOT NULL,          principio_INSULINA_MISTA, NULL)
+        ]) AS m WHERE m IS NOT NULL), ' · ') AS meds_dm,
+
+        dose_BIGUANIDA_mg_dia,
+        dose_NPH_ui_kg,
+        n_classes_antidiabeticos,
+        intensidade_tratamento_dm
 
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
@@ -1340,6 +1362,12 @@ with tab5:
         df_exib['dias_desde_ultima_medica'] = df_exib['dias_desde_ultima_medica'].apply(
             lambda v: f"{int(v)}d" if pd.notna(v) else "—"
         )
+        df_exib['dose_NPH_ui_kg'] = df_exib['dose_NPH_ui_kg'].apply(
+            lambda v: f"{v:.2f}" if pd.notna(v) and v > 0 else "—"
+        )
+        df_exib['dose_BIGUANIDA_mg_dia'] = df_exib['dose_BIGUANIDA_mg_dia'].apply(
+            lambda v: f"{int(v)}" if pd.notna(v) and v > 0 else "—"
+        )
 
         RENAME = {
             'nome':                      'Paciente',
@@ -1363,6 +1391,11 @@ with tab5:
             'lacunas_ativas':            'Lacunas',
             'total_medicamentos_cronicos': 'N° Medicamentos',
             'medicamentos':              'Medicamentos',
+            'meds_dm':                   'Antidiabéticos',
+            'dose_BIGUANIDA_mg_dia':     'Metformina (mg)',
+            'dose_NPH_ui_kg':           'NPH (UI/kg)',
+            'n_classes_antidiabeticos':  'N° Classes DM',
+            'intensidade_tratamento_dm': 'Intensidade DM',
         }
         cols_show = [c for c in RENAME if c in df_exib.columns]
         df_show = df_exib[cols_show].rename(columns=RENAME)
@@ -1383,7 +1416,12 @@ with tab5:
                 'Morbidades':          st.column_config.TextColumn('Morbidades',    width='large'),
                 'Lacunas':             st.column_config.TextColumn('Lacunas',       width='large'),
                 'Medicamentos':        st.column_config.TextColumn('Medicamentos',  width='large'),
+                'Antidiabéticos':      st.column_config.TextColumn('Antidiabéticos', width='large'),
                 'Clínica':             st.column_config.TextColumn('Clínica',       width='medium'),
+                'Metformina (mg)':     st.column_config.TextColumn('Metformina (mg)', width='small'),
+                'NPH (UI/kg)':         st.column_config.TextColumn('NPH (UI/kg)',  width='small'),
+                'N° Classes DM':       st.column_config.NumberColumn('N° Classes DM', width='small'),
+                'Intensidade DM':      st.column_config.TextColumn('Intensidade DM', width='medium'),
             }
         )
 
