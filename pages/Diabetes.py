@@ -506,8 +506,9 @@ st.sidebar.markdown("### 📑 Navegar para")
 NOMES_ABAS = [
     "1️⃣ Diagnóstico e Prevalência",
     "2️⃣ Controle Glicêmico",
-    "3️⃣ Comorbidades",
-    "4️⃣ Lacunas de Cuidado",
+    "3️⃣ Medicamentos Prescritos",
+    "4️⃣ Comorbidades",
+    "5️⃣ Lacunas de Cuidado",
     "👤 Lista de Pacientes",
 ]
 if 'dm_aba' not in st.session_state:
@@ -596,7 +597,7 @@ def _stacked_bar(df, cols_pop, labels, cores, titulo):
                    tickfont=dict(color=T.TEXT, size=10),
                    tickangle=-35),
         yaxis=dict(title='% da população total', tickfont=dict(color=T.TEXT_MUTED, size=10),
-                   gridcolor=T.GRID, range=[0, 40]),
+                   gridcolor=T.GRID, range=[0, 25]),
         legend=dict(orientation='v', xanchor='left', x=1.01, yanchor='middle', y=0.5,
                     font=dict(color=T.TEXT, size=11),
                     bgcolor=T.LEGEND_BG, bordercolor=T.LEGEND_BORDER, borderwidth=1),
@@ -606,7 +607,7 @@ def _stacked_bar(df, cols_pop, labels, cores, titulo):
 # ═══════════════════════════════════════════════════════════════
 # ABAS
 # ═══════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4, tab5 = st.tabs(NOMES_ABAS)
+tab1, tab2, tab_meds, tab3, tab4, tab5 = st.tabs(NOMES_ABAS)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -801,28 +802,30 @@ with tab2:
     )
 
 
-    # ── Prescrições de antidiabéticos ────────────────────────
-    st.markdown("---")
-    st.markdown("#### Prescrições de antidiabéticos")
+# ──────────────────────────────────────────────────────────────
+# ABA 3 — MEDICAMENTOS PRESCRITOS
+# ──────────────────────────────────────────────────────────────
+with tab_meds:
+    st.markdown("### 3️⃣ Medicamentos prescritos")
     st.caption("Prevalência de cada classe farmacológica entre os pacientes diabéticos. Um paciente pode receber mais de uma classe.")
 
     # Antidiabéticos orais
     orais = [
-        ('Biguanida (Metformina)',   'n_rx_biguanida'),
-        ('Sulfonilureia',            'n_rx_sulfonilureia'),
-        ('iSGLT2 (Gliflozina)',     'n_rx_isglt2'),
-        ('iDPP4 (Gliptina)',        'n_rx_idpp4'),
-        ('Agonista GLP-1',          'n_rx_glp1'),
-        ('Tiazolidinediona',        'n_rx_tiazolidinediona'),
-        ('Glinida',                 'n_rx_glinida'),
-        ('Acarbose',                'n_rx_acarbose'),
+        ('Biguanida (Metformina)',            'n_rx_biguanida'),
+        ('Sulfonilureia',                     'n_rx_sulfonilureia'),
+        ('iSGLT2 (Gliflozina)',              'n_rx_isglt2'),
+        ('iDPP4 (Gliptina)',                 'n_rx_idpp4'),
+        ('Agonista GLP-1',                   'n_rx_glp1'),
+        ('Tiazolidinediona (glitazonas)',     'n_rx_tiazolidinediona'),
+        ('Glinidas',                          'n_rx_glinida'),
+        ('Acarbose',                          'n_rx_acarbose'),
     ]
     insulinas = [
-        ('Insulina basal humana (NPH)',    'n_rx_ins_basal_humana'),
-        ('Insulina prandial humana (Regular)', 'n_rx_ins_prandial_humana'),
-        ('Insulina basal analógica',       'n_rx_ins_basal_analogica'),
-        ('Insulina prandial analógica',    'n_rx_ins_prandial_analogica'),
-        ('Insulina pré-misturada',         'n_rx_ins_mista'),
+        ('Insulina basal humana (NPH)',                                           'n_rx_ins_basal_humana'),
+        ('Insulina prandial humana (Regular)',                                     'n_rx_ins_prandial_humana'),
+        ('Insulina basal analógica (Glargina, Detemir, Degludeca)',               'n_rx_ins_basal_analogica'),
+        ('Insulina prandial analógica (Lispro, Asparte, Glulisina, Fiasp)',       'n_rx_ins_prandial_analogica'),
+        ('Insulina pré-misturada',                                                'n_rx_ins_mista'),
     ]
 
     st.markdown("**💊 Antidiabéticos orais**")
@@ -849,10 +852,10 @@ with tab2:
 
 
 # ──────────────────────────────────────────────────────────────
-# ABA 3 — COMORBIDADES
+# ABA 4 — COMORBIDADES
 # ──────────────────────────────────────────────────────────────
 with tab3:
-    st.markdown("### 3️⃣ Comorbidades associadas ao DM")
+    st.markdown("### 4️⃣ Comorbidades associadas ao DM")
     st.caption("Sobreposição entre diabetes e comorbidades cardiovasculares e renais.")
 
     n_dm_has = int(rh.get('n_dm_has', 0) or 0)
