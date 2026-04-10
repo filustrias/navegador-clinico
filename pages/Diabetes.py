@@ -665,7 +665,7 @@ with tab1:
 
     # ── Complicações do diabetes ─────────────────────────────
     st.markdown("---")
-    st.markdown("##### Complicações do diabetes")
+    st.markdown("##### CIDs codificados de complicações do diabetes")
     st.caption("Pacientes diabéticos com complicações micro e macrovasculares registradas por CID.")
 
     n_comp_total = int(sumario.get('n_dm_com_complicacao', 0) or 0)
@@ -674,7 +674,7 @@ with tab1:
     n_nefro      = int(sumario.get('n_dm_nefropatia', 0) or 0)
     n_neuro      = int(sumario.get('n_dm_neuropatia', 0) or 0)
     n_pe         = int(sumario.get('n_dm_pe_diabetico', 0) or 0)
-    n_cv         = int(sumario.get('n_dm_complicacao_cv', 0) or 0)
+    n_irc        = int(sumario.get('n_dm_com_irc', 0) or 0)
 
     st.metric("🚨 Diabéticos com pelo menos 1 complicação", f"{n_comp_total:,}",
               f"{_p(n_comp_total, n_dm):.1f}% dos diabéticos")
@@ -691,7 +691,7 @@ with tab1:
                       f"{_p(n_catarata, n_dm):.1f}% dos diabéticos")
     with cc2:
         with st.container(border=True):
-            st.markdown("**🫘 Nefropatia**")
+            st.markdown(f"**🫘 Nefropatia** ({n_irc:,} com IRC)")
             st.metric("Pacientes", f"{n_nefro:,}",
                       f"{_p(n_nefro, n_dm):.1f}% dos diabéticos")
         with st.container(border=True):
@@ -703,10 +703,6 @@ with tab1:
             st.markdown("**🧠 Neuropatia**")
             st.metric("Pacientes", f"{n_neuro:,}",
                       f"{_p(n_neuro, n_dm):.1f}% dos diabéticos")
-        with st.container(border=True):
-            st.markdown("**❤️ Complicação cardiovascular**")
-            st.metric("Pacientes", f"{n_cv:,}",
-                      f"{_p(n_cv, n_dm):.1f}% dos diabéticos")
 
 
 # ──────────────────────────────────────────────────────────────
