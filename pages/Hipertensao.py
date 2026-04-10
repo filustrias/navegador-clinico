@@ -206,7 +206,20 @@ def carregar_sumario_has(ap, clinica, esf):
         COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'MUITO ALTO') AS n_risco_muito_alto,
         COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'ALTO')       AS n_risco_alto,
         COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'INTERMEDIÁRIO') AS n_risco_intermediario,
-        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'BAIXO')      AS n_risco_baixo
+        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'BAIXO')      AS n_risco_baixo,
+        -- Prescrições de anti-hipertensivos
+        COUNTIF(HAS IS NOT NULL AND principio_IECA IS NOT NULL)              AS n_rx_ieca,
+        COUNTIF(HAS IS NOT NULL AND principio_BRA IS NOT NULL)               AS n_rx_bra,
+        COUNTIF(HAS IS NOT NULL AND principio_BCC_DHP IS NOT NULL)           AS n_rx_bcc_dhp,
+        COUNTIF(HAS IS NOT NULL AND principio_BCC_NAO_DHP IS NOT NULL)       AS n_rx_bcc_nao_dhp,
+        COUNTIF(HAS IS NOT NULL AND principio_TIAZIDICO IS NOT NULL)         AS n_rx_tiazidico,
+        COUNTIF(HAS IS NOT NULL AND principio_DIURETICO_ALCA IS NOT NULL)    AS n_rx_diur_alca,
+        COUNTIF(HAS IS NOT NULL AND principio_POUPADOR_K IS NOT NULL)        AS n_rx_poupador_k,
+        COUNTIF(HAS IS NOT NULL AND principio_BETABLOQUEADOR IS NOT NULL)    AS n_rx_betabloq,
+        COUNTIF(HAS IS NOT NULL AND principio_SIMPATICOLITICO IS NOT NULL)   AS n_rx_simpaticol,
+        COUNTIF(HAS IS NOT NULL AND principio_ALFABLOQUEADOR IS NOT NULL)    AS n_rx_alfabloq,
+        COUNTIF(HAS IS NOT NULL AND principio_VASODILATADOR IS NOT NULL)     AS n_rx_vasodilat,
+        COUNTIF(HAS IS NOT NULL AND principio_NITRATO IS NOT NULL)           AS n_rx_nitrato
 
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
@@ -486,8 +499,9 @@ st.sidebar.markdown("### 📑 Navegar para")
 NOMES_ABAS = [
     "1️⃣ Diagnóstico e Prevalência",
     "2️⃣ Controle Pressórico",
-    "3️⃣ Comorbidades",
-    "4️⃣ Lacunas de Cuidado",
+    "3️⃣ Medicamentos Prescritos",
+    "4️⃣ Comorbidades",
+    "5️⃣ Lacunas de Cuidado",
     "👤 Lista de Pacientes",
 ]
 if 'has_aba' not in st.session_state:
@@ -590,7 +604,7 @@ def _stacked_bar(df, cols_pop, labels, cores, titulo):
 # ═══════════════════════════════════════════════════════════════
 # ABAS
 # ═══════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4, tab5 = st.tabs(NOMES_ABAS)
+tab1, tab2, tab_meds, tab3, tab4, tab5 = st.tabs(NOMES_ABAS)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -778,7 +792,40 @@ with tab2:
 
 
 # ──────────────────────────────────────────────────────────────
-# ABA 3 — COMORBIDADES
+# ABA 3 — MEDICAMENTOS PRESCRITOS
+# ──────────────────────────────────────────────────────────────
+with tab_meds:
+    st.markdown("### 3️⃣ Medicamentos prescritos")
+    st.caption("Prevalência de cada classe de anti-hipertensivo entre os pacientes hipertensos. Um paciente pode receber mais de uma classe.")
+
+    meds_has = [
+        ('IECA (Enalapril, Captopril, Ramipril)',                    'n_rx_ieca'),
+        ('BRA (Losartana, Valsartana, Olmesartana)',                  'n_rx_bra'),
+        ('BCC di-hidropiridínico (Anlodipino, Nifedipino)',          'n_rx_bcc_dhp'),
+        ('BCC não di-hidropiridínico (Verapamil, Diltiazem)',        'n_rx_bcc_nao_dhp'),
+        ('Diurético tiazídico (Hidroclorotiazida, Clortalidona, Indapamida)', 'n_rx_tiazidico'),
+        ('Diurético de alça (Furosemida, Bumetanida)',               'n_rx_diur_alca'),
+        ('Diurético poupador de K (Espironolactona, Eplerenona)',    'n_rx_poupador_k'),
+        ('Betabloqueador (Atenolol, Carvedilol, Bisoprolol, Metoprolol)', 'n_rx_betabloq'),
+        ('Simpatolítico central (Metildopa, Clonidina, Moxonidina)', 'n_rx_simpaticol'),
+        ('Alfabloqueador (Doxazosina, Prazosina)',                   'n_rx_alfabloq'),
+        ('Vasodilatador direto (Hidralazina, Minoxidil)',            'n_rx_vasodilat'),
+        ('Nitrato (Isossorbida Mononitrato, Dinitrato)',             'n_rx_nitrato'),
+    ]
+
+    rm1, rm2, rm3 = st.columns(3)
+    for i, (label, key) in enumerate(meds_has):
+        n = int(sumario.get(key, 0) or 0)
+        col = [rm1, rm2, rm3][i % 3]
+        with col:
+            with st.container(border=True):
+                st.markdown(f"**{label}**")
+                st.metric("Pacientes", f"{n:,}",
+                          f"{_p(n, n_has):.0f}% dos hipertensos")
+
+
+# ──────────────────────────────────────────────────────────────
+# ABA 4 — COMORBIDADES
 # ──────────────────────────────────────────────────────────────
 with tab3:
     st.markdown("### 3️⃣ Comorbidades associadas à HAS")
