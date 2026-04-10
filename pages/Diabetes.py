@@ -189,7 +189,21 @@ def carregar_sumario_dm(ap, clinica, esf):
         COUNTIF(DM IS NOT NULL AND dm_nefropatia IS NOT NULL)             AS n_dm_nefropatia,
         COUNTIF(DM IS NOT NULL AND dm_neuropatia IS NOT NULL)             AS n_dm_neuropatia,
         COUNTIF(DM IS NOT NULL AND dm_pe_diabetico_cid IS NOT NULL)       AS n_dm_pe_diabetico,
-        COUNTIF(DM IS NOT NULL AND dm_complicacao_cv IS NOT NULL)         AS n_dm_complicacao_cv
+        COUNTIF(DM IS NOT NULL AND dm_complicacao_cv IS NOT NULL)         AS n_dm_complicacao_cv,
+        -- Prescrições de antidiabéticos
+        COUNTIF(DM IS NOT NULL AND principio_BIGUANIDA IS NOT NULL)               AS n_rx_biguanida,
+        COUNTIF(DM IS NOT NULL AND principio_SULFONILUREIA IS NOT NULL)            AS n_rx_sulfonilureia,
+        COUNTIF(DM IS NOT NULL AND principio_iSGLT2 IS NOT NULL)                  AS n_rx_isglt2,
+        COUNTIF(DM IS NOT NULL AND principio_iDPP4 IS NOT NULL)                   AS n_rx_idpp4,
+        COUNTIF(DM IS NOT NULL AND principio_GLP1 IS NOT NULL)                    AS n_rx_glp1,
+        COUNTIF(DM IS NOT NULL AND principio_TIAZOLIDINEDIONA IS NOT NULL)        AS n_rx_tiazolidinediona,
+        COUNTIF(DM IS NOT NULL AND principio_GLINIDA IS NOT NULL)                 AS n_rx_glinida,
+        COUNTIF(DM IS NOT NULL AND principio_ACARBOSE IS NOT NULL)                AS n_rx_acarbose,
+        COUNTIF(DM IS NOT NULL AND principio_INSULINA_BASAL_HUMANA IS NOT NULL)   AS n_rx_ins_basal_humana,
+        COUNTIF(DM IS NOT NULL AND principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL) AS n_rx_ins_prandial_humana,
+        COUNTIF(DM IS NOT NULL AND principio_INSULINA_BASAL_ANALOGICA IS NOT NULL) AS n_rx_ins_basal_analogica,
+        COUNTIF(DM IS NOT NULL AND principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL) AS n_rx_ins_prandial_analogica,
+        COUNTIF(DM IS NOT NULL AND principio_INSULINA_MISTA IS NOT NULL)          AS n_rx_ins_mista
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
     """
@@ -785,6 +799,53 @@ with tab2:
         cores=['#2ECC71','#F4D03F','#E74C3C'],
         titulo=f'Tendência de controle glicêmico na população por {lbl}',
     )
+
+
+    # ── Prescrições de antidiabéticos ────────────────────────
+    st.markdown("---")
+    st.markdown("#### Prescrições de antidiabéticos")
+    st.caption("Prevalência de cada classe farmacológica entre os pacientes diabéticos. Um paciente pode receber mais de uma classe.")
+
+    # Antidiabéticos orais
+    orais = [
+        ('Biguanida (Metformina)',   'n_rx_biguanida'),
+        ('Sulfonilureia',            'n_rx_sulfonilureia'),
+        ('iSGLT2 (Gliflozina)',     'n_rx_isglt2'),
+        ('iDPP4 (Gliptina)',        'n_rx_idpp4'),
+        ('Agonista GLP-1',          'n_rx_glp1'),
+        ('Tiazolidinediona',        'n_rx_tiazolidinediona'),
+        ('Glinida',                 'n_rx_glinida'),
+        ('Acarbose',                'n_rx_acarbose'),
+    ]
+    insulinas = [
+        ('Insulina basal humana (NPH)',    'n_rx_ins_basal_humana'),
+        ('Insulina prandial humana (Regular)', 'n_rx_ins_prandial_humana'),
+        ('Insulina basal analógica',       'n_rx_ins_basal_analogica'),
+        ('Insulina prandial analógica',    'n_rx_ins_prandial_analogica'),
+        ('Insulina pré-misturada',         'n_rx_ins_mista'),
+    ]
+
+    st.markdown("**💊 Antidiabéticos orais**")
+    ro1, ro2, ro3, ro4 = st.columns(4)
+    for i, (label, key) in enumerate(orais):
+        n = int(sumario.get(key, 0) or 0)
+        col = [ro1, ro2, ro3, ro4][i % 4]
+        with col:
+            with st.container(border=True):
+                st.markdown(f"**{label}**")
+                st.metric("Pacientes", f"{n:,}",
+                          f"{_p(n, n_dm):.0f}% dos diabéticos")
+
+    st.markdown("**💉 Insulinas**")
+    ri1, ri2, ri3 = st.columns(3)
+    for i, (label, key) in enumerate(insulinas):
+        n = int(sumario.get(key, 0) or 0)
+        col = [ri1, ri2, ri3][i % 3]
+        with col:
+            with st.container(border=True):
+                st.markdown(f"**{label}**")
+                st.metric("Pacientes", f"{n:,}",
+                          f"{_p(n, n_dm):.0f}% dos diabéticos")
 
 
 # ──────────────────────────────────────────────────────────────
