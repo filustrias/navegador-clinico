@@ -148,7 +148,7 @@ def carregar_dados_farmaco_territorio(ap=None, clinica=None, esf=None):
             NULLIF(SUM(n_multimorbidos), 0)) * 100                     AS pct_hiperpoli_mm,
         SAFE_DIVIDE(SUM(n_acb_alto_mm),
             NULLIF(SUM(n_multimorbidos), 0)) * 100                     AS pct_acb_alto_mm,
-        SAFE_DIVIDE(SUM(n_acb_alerta_idoso_mm),
+        SAFE_DIVIDE(SUM(n_acb_alto_idoso_mm),
             NULLIF(SUM(n_multimorbidos), 0)) * 100                     AS pct_acb_idoso_mm,
         SAFE_DIVIDE(SUM(n_com_stopp_ativo_mm),
             NULLIF(SUM(n_multimorbidos), 0)) * 100                     AS pct_stopp_mm,
@@ -161,7 +161,7 @@ def carregar_dados_farmaco_territorio(ap=None, clinica=None, esf=None):
         SUM(n_polifarmacia)          AS n_poli,
         SUM(n_hiperpolifarmacia)     AS n_hiperpoli,
         SUM(n_acb_alto)              AS n_acb_alto,
-        SUM(n_acb_alerta_idoso)      AS n_acb_idoso,
+        SUM(n_acb_alto_idoso)        AS n_acb_idoso,
         SUM(n_com_stopp_ativo)       AS n_stopp,
         SUM(n_com_omissao_start)     AS n_start,
         SUM(n_com_beers_ativo)       AS n_beers,
@@ -218,11 +218,12 @@ def carregar_dados_piramides(ap=None, clinica=None, esf=None):
         SUM(n_polifarmacia) AS n_polifarmacia,
         SUM(n_hiperpolifarmacia) AS n_hiperpolifarmacia,
         -- ACB
-        SUM(n_acb_zero)          AS n_acb_zero,
-        SUM(n_acb_baixo)         AS n_acb_baixo,
-        SUM(n_acb_moderado)      AS n_acb_moderado,
-        SUM(n_acb_alto)          AS n_acb_alto,
-        SUM(n_acb_alerta_idoso)  AS n_acb_alerta_idoso,
+        SUM(n_acb_zero)              AS n_acb_zero,
+        SUM(n_acb_baixo)             AS n_acb_baixo,
+        SUM(n_acb_moderado)          AS n_acb_moderado,
+        SUM(n_acb_alto)              AS n_acb_alto,
+        SUM(n_acb_muito_alto)        AS n_acb_muito_alto,
+        SUM(n_acb_alto_idoso)        AS n_acb_alto_idoso,
         -- STOPP/START/Beers
         SUM(n_com_stopp_ativo)         AS n_com_stopp_ativo,
         SUM(n_com_omissao_start)       AS n_com_omissao_start,
@@ -2258,8 +2259,9 @@ with tab3:
     tot_mm        = int(df_dados['n_multimorbidos'].sum())     if 'n_multimorbidos'     in df_dados.columns else 0
     tot_poli      = int(df_dados['n_polifarmacia'].sum())      if 'n_polifarmacia'      in df_dados.columns else 0
     tot_hiperpoli = int(df_dados['n_hiperpolifarmacia'].sum()) if 'n_hiperpolifarmacia' in df_dados.columns else 0
-    tot_acb_alto  = int(df_dados['n_acb_alto'].sum())          if 'n_acb_alto'          in df_dados.columns else 0
-    tot_acb_idoso = int(df_dados['n_acb_alerta_idoso'].sum())  if 'n_acb_alerta_idoso'  in df_dados.columns else 0
+    tot_acb_alto      = int(df_dados['n_acb_alto'].sum())       if 'n_acb_alto'       in df_dados.columns else 0
+    tot_acb_muito_alto = int(df_dados['n_acb_muito_alto'].sum()) if 'n_acb_muito_alto' in df_dados.columns else 0
+    tot_acb_idoso     = int(df_dados['n_acb_alto_idoso'].sum())  if 'n_acb_alto_idoso' in df_dados.columns else 0
     tot_stopp     = int(df_dados['n_com_stopp_ativo'].sum())   if 'n_com_stopp_ativo'   in df_dados.columns else 0
     tot_start     = int(df_dados['n_com_omissao_start'].sum()) if 'n_com_omissao_start' in df_dados.columns else 0
     tot_beers     = int(df_dados['n_com_beers_ativo'].sum())   if 'n_com_beers_ativo'   in df_dados.columns else 0
@@ -2289,36 +2291,43 @@ with tab3:
     c4, c5, c6 = st.columns(3)
     with c4:
         with st.container(border=True):
-            st.metric("🧠 ACB alto (≥3)", f"{tot_acb_alto:,}",
+            st.metric("🟠 ACB alto (≥3)", f"{tot_acb_alto:,}",
                       f"{_pp(tot_acb_alto, tot_mm):.1f}% dos multimórbidos",
                       delta_color="inverse",
-                      help="ACB ≥3 — risco de declínio cognitivo, quedas e delirium.")
+                      help="Multimórbidos com carga anticolinérgica de risco (ACB ≥ 3). Risco de declínio cognitivo, quedas e delirium.")
     with c5:
         with st.container(border=True):
             st.metric("👴 ACB alto em idosos (≥65a)", f"{tot_acb_idoso:,}",
                       f"{_pp(tot_acb_idoso, tot_mm):.1f}% dos multimórbidos",
-                      delta_color="inverse")
+                      delta_color="inverse",
+                      help="Idosos ≥65 anos com ACB ≥ 3 — risco cognitivo e de queda especialmente relevante nesta faixa etária.")
     with c6:
+        with st.container(border=True):
+            st.metric("🔴 ACB muito alto (≥6)", f"{tot_acb_muito_alto:,}",
+                      f"{_pp(tot_acb_muito_alto, tot_mm):.1f}% dos multimórbidos",
+                      delta_color="inverse",
+                      help="Multimórbidos com carga anticolinérgica severa (ACB ≥ 6). Prioridade de revisão farmacológica.")
+
+    c7, c8, c9, c10 = st.columns(4)
+    with c7:
         with st.container(border=True):
             st.metric("🚨 Risco de queda por medicamentos", f"{tot_queda:,}",
                       f"{_pp(tot_queda, tot_mm):.1f}% dos multimórbidos",
                       delta_color="inverse",
                       help="BZD, hipnóticos, antipsicóticos ou opioides prescritos.")
-
-    c7, c8, c9 = st.columns(3)
-    with c7:
+    with c8:
         with st.container(border=True):
             st.metric("🔴 STOPP ativo", f"{tot_stopp:,}",
                       f"{_pp(tot_stopp, tot_mm):.1f}% dos multimórbidos",
                       delta_color="inverse",
                       help="≥1 critério STOPP v3 — prescrição potencialmente inapropriada.")
-    with c8:
+    with c9:
         with st.container(border=True):
             st.metric("🟡 Omissão START", f"{tot_start:,}",
                       f"{_pp(tot_start, tot_mm):.1f}% dos multimórbidos",
                       delta_color="inverse",
                       help="≥1 critério START v3 — medicamento indicado não prescrito.")
-    with c9:
+    with c10:
         with st.container(border=True):
             st.metric("🟠 Beers ativo", f"{tot_beers:,}",
                       f"{_pp(tot_beers, tot_mm):.1f}% dos multimórbidos",
