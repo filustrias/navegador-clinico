@@ -874,27 +874,36 @@ with tab_meds:
                 st.metric("Pacientes", f"{n:,}",
                           f"{_p(n, n_dm):.0f}% dos diabéticos")
 
-    # Destaque sulfonilureia em monoterapia
+    # Alertas em caixinhas
     n_sulfo_total = int(sumario.get('n_rx_sulfonilureia', 0) or 0)
     n_sulfo_mono  = int(sumario.get('n_rx_sulfo_monoterapia', 0) or 0)
-    if n_sulfo_total > 0 and n_sulfo_mono > 0:
-        st.warning(
-            f"⚠️ **Sulfonilureia em monoterapia (sem metformina ou outro oral):** "
-            f"{n_sulfo_mono:,} pacientes ({_p(n_sulfo_mono, n_sulfo_total):.0f}% dos que usam sulfonilureia). "
-            f"Sulfonilureia não é primeira linha — metformina deve ser o tratamento inicial na maioria dos casos."
-        )
+    n_metf_alta   = int(sumario.get('n_rx_metformina_alta', 0) or 0)
+    n_metf_total  = int(sumario.get('n_rx_biguanida', 0) or 0)
 
-    # Destaque metformina > 2000mg
-    n_metf_alta = int(sumario.get('n_rx_metformina_alta', 0) or 0)
-    n_metf_total = int(sumario.get('n_rx_biguanida', 0) or 0)
-    if n_metf_total > 0:
-        pct_metf_alta = _p(n_metf_alta, n_metf_total)
-        st.warning(
-            f"⚠️ **Metformina > 2.000 mg/dia:** {n_metf_alta:,} pacientes "
-            f"({pct_metf_alta:.0f}% dos que usam metformina). "
-            f"Doses acima de 2.000 mg/dia aumentam efeitos gastrointestinais "
-            f"sem ganho proporcional de eficácia."
-        )
+    al1, al2 = st.columns(2)
+    with al1:
+        with st.container(border=True):
+            if n_sulfo_total > 0 and n_sulfo_mono > 0:
+                st.warning(
+                    f"⚠️ **Sulfonilureia em monoterapia** (sem metformina ou outro oral): "
+                    f"**{n_sulfo_mono:,}** pacientes "
+                    f"({_p(n_sulfo_mono, n_sulfo_total):.0f}% dos que usam sulfonilureia). "
+                    f"Sulfonilureia não é primeira linha — metformina deve ser o tratamento inicial."
+                )
+            else:
+                st.success("✅ Nenhum paciente em monoterapia com sulfonilureia.")
+    with al2:
+        with st.container(border=True):
+            if n_metf_total > 0 and n_metf_alta > 0:
+                st.warning(
+                    f"⚠️ **Metformina > 2.000 mg/dia:** "
+                    f"**{n_metf_alta:,}** pacientes "
+                    f"({_p(n_metf_alta, n_metf_total):.0f}% dos que usam metformina). "
+                    f"Doses acima de 2.000 mg/dia aumentam efeitos gastrointestinais "
+                    f"sem ganho proporcional de eficácia."
+                )
+            else:
+                st.success("✅ Nenhum paciente com metformina acima de 2.000 mg/dia.")
 
     st.markdown("---")
     st.markdown("**💉 Insulinas**")
