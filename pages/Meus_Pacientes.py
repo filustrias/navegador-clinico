@@ -1347,41 +1347,7 @@ def create_patient_card(patient_data):
 
             st.markdown("---")
 
-            # ── BLOCO 3: Alertas ─────────────────────────────────
-            st.markdown("#### 🎯 Alertas de Equidade no Cuidado")
-
-            subatendimento      = patient_data.get('alto_risco_baixo_acesso')
-            sobreutilizacao     = patient_data.get('baixo_risco_alto_acesso')
-            risco_descompensacao= patient_data.get('alto_risco_intervalo_longo')
-            tempo_acomp         = patient_data.get('dias_em_acompanhamento')
-
-            tem_alerta = False
-
-            if subatendimento in [True, 1, '1', 'True']:
-                st.error(
-                    "🔴 **Subatendimento de Caso Grave** — Paciente com alta carga de morbidade "
-                    "e frequência de consultas abaixo do percentil 25 do seu grupo de pares. "
-                    "Requer atenção prioritária da equipe."
-                )
-                tem_alerta = True
-
-            if risco_descompensacao in [True, 1, '1', 'True']:
-                st.warning(
-                    "🟠 **Risco de Descompensação** — Intervalos longos entre consultas "
-                    "para um paciente de alta complexidade. Avaliar reagendamento."
-                )
-                tem_alerta = True
-
-            if sobreutilizacao in [True, 1, '1', 'True']:
-                st.info(
-                    "🟡 **Possível Sobreutilização** — Baixa carga de morbidade com "
-                    "alta frequência de consultas. Avaliar se há outra necessidade não registrada."
-                )
-                tem_alerta = True
-
-            if not tem_alerta:
-                st.success("✅ Nenhum alerta de equidade identificado para este paciente.")
-
+            tempo_acomp = patient_data.get('dias_em_acompanhamento')
             if pd.notna(tempo_acomp):
                 st.caption(f"Tempo em acompanhamento na unidade: **{format_tempo_acompanhamento(tempo_acomp)}**")
         
