@@ -469,13 +469,14 @@ with tab1:
 
     # Filtros inline — grupo + lacuna
     TODAS_GRUPO = "📊 Todas as lacunas do grupo (média)"
+    TODAS_GERAL = "📊 Lacunas geral (média)"
     vf1, vf2 = st.columns(2)
     with vf1:
         grupos_disp = ['Todos os grupos'] + get_grupos_ordenados()
         grupo_sel = st.selectbox("📋 Grupo", options=grupos_disp, key="vio_grupo")
     with vf2:
         if grupo_sel == 'Todos os grupos':
-            lacs_disp = sorted(MAPA_LAC_COL.keys())
+            lacs_disp = [TODAS_GERAL] + sorted(MAPA_LAC_COL.keys())
         else:
             lacs_do_grupo = get_lacunas_por_grupo(grupo_sel)
             lacs_disp = [TODAS_GRUPO] + lacs_do_grupo
@@ -483,17 +484,23 @@ with tab1:
             "🏷️ Lacuna", options=lacs_disp, key="lac_violin_sel",
         )
 
-    # Modo "todas do grupo": calcular média das lacunas
+    # Modo "todas": calcular média das lacunas
+    modo_todas_geral = (lac_violin_sel == TODAS_GERAL)
     modo_todas_grupo = (lac_violin_sel == TODAS_GRUPO and grupo_sel != 'Todos os grupos')
 
-    if modo_todas_grupo:
-        cols_grupo = [MAPA_LAC_COL[l] for l in lacs_do_grupo]
-        col_v = cols_grupo[0]  # placeholder, será recalculado abaixo
+    if modo_todas_geral:
+        cols_media = list(MAPA_LAC_COL.values())
+        col_v = cols_media[0]  # placeholder, será recalculado abaixo
+        st.info("**Lacunas geral** — Média de todas as 39 lacunas de cuidado.")
+    elif modo_todas_grupo:
+        cols_media = [MAPA_LAC_COL[l] for l in lacs_do_grupo]
+        col_v = cols_media[0]  # placeholder, será recalculado abaixo
         st.info(
             f"**{grupo_sel}** — Média de todas as lacunas deste grupo. "
             f"Lacunas incluídas: {', '.join(lacs_do_grupo)}."
         )
     else:
+        cols_media = None
         col_v = MAPA_LAC_COL[lac_violin_sel]
         info_lac = LACUNAS[lac_violin_sel]
         st.info(
@@ -524,9 +531,9 @@ with tab1:
             df_ch = carregar_violin_charlson(ap=ap_v, clinica=cli_v, esf=esf_v,
                                               charlson_cats=ch_v)
 
-    # Se modo "todas do grupo", calcular média das lacunas do grupo
-    if modo_todas_grupo and not df_ch.empty:
-        cols_existentes = [c for c in cols_grupo if c in df_ch.columns]
+    # Se modo "todas", calcular média das lacunas
+    if (modo_todas_grupo or modo_todas_geral) and not df_ch.empty:
+        cols_existentes = [c for c in cols_media if c in df_ch.columns]
         if cols_existentes:
             col_v = '_media_grupo'
             df_ch[col_v] = df_ch[cols_existentes].mean(axis=1).round(1)
@@ -671,6 +678,19 @@ with tab1:
             f"Carga de morbidade: **{ch_txt}** · "
             f"Cada ponto = uma {nivel_txt}."
         )
+
+        with st.expander("Como interpretar este gráfico"):
+            st.markdown("""
+**Gráficos em violino** mostram a distribuição e a densidade dos dados entre diferentes grupos.
+
+- **Largura do violino (densidade):** As partes mais largas indicam onde se concentra a maioria dos eventos de interesse. Quanto mais largo o trecho, maior a concentração de unidades com aquele percentual específico daquela lacuna analisada.
+
+- **Distribuição vertical:** O comprimento do violino mostra a variação dos dados. Violinos mais "espichados" indicam maior desigualdade interna naquela região, com algumas unidades apresentando alta prevalência da lacuna e outras com muito baixa prevalência.
+
+- **Marcações internas:** A linha central representa a mediana, permitindo comparar o desempenho central entre as áreas.
+
+- **Comparação entre pontos:** Cada ponto individual representa uma unidade de saúde (ou uma ESF). Pontos isolados fora do corpo do violino são outliers (casos atípicos) que estão muito acima ou muito abaixo da média, exigindo análise específica da gestão.
+            """)
 
 
 # ──────────────────────────────────────────────────────────────

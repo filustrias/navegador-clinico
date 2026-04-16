@@ -18,7 +18,8 @@ GRUPOS_LACUNAS = {
     "Fibrilação Atrial (FA)":            4,
     "Diabetes Mellitus (DM)":            5,
     "Hipertensão (HAS)":                 6,
-    "Rastreio":                          7,
+    "Prescrições Inapropriadas":         7,
+    "Rastreio":                          8,
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -97,7 +98,7 @@ LACUNAS = {
         "regra": "ICC ativa + sem sacubitril/valsartana nos últimos 365 dias.",
     },
     "IECA + BRA simultâneos": {
-        "grupo": "Insuficiência Cardíaca (ICC)",
+        "grupo": "Prescrições Inapropriadas",
         "coluna_fato": "lacuna_IECA_BRA_concomitante",
         "alias_pct": "pct_IECA_BRA_concomitante",
         "denominador_sql": "COUNT(*)",
@@ -106,7 +107,7 @@ LACUNAS = {
         "regra": "IECA e BRA ambos prescritos nos últimos 180 dias.",
     },
     "Diurético de alça sem ICC": {
-        "grupo": "Insuficiência Cardíaca (ICC)",
+        "grupo": "Prescrições Inapropriadas",
         "coluna_fato": "lacuna_diur_alca_sem_ICC",
         "alias_pct": "pct_diur_alca_sem_ICC",
         "denominador_sql": "COUNT(*)",
