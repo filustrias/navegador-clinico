@@ -149,13 +149,15 @@ def carregar_sumario_rcv(ap, clinica, esf):
         COUNTIF(idade >= 30 AND idade <= 74) AS n_elegivel_framingham,
         COUNTIF(idade >= 40 AND idade <= 80) AS n_elegivel_who,
 
-        -- Framingham+SBC calculado (exclui NÃO CLASSIFICADO)
-        COUNTIF(categoria_risco_final IS NOT NULL
-                AND categoria_risco_final != 'NÃO CLASSIFICADO') AS n_fram_calculado,
+        -- Framingham+SBC calculado (toda a população com categoria válida)
+        COUNTIF(categoria_risco_final IN ('BAIXO','INTERMEDIÁRIO','ALTO','MUITO ALTO')) AS n_fram_calculado,
         COUNTIF(categoria_risco_final = 'MUITO ALTO') AS n_fram_muito_alto,
         COUNTIF(categoria_risco_final = 'ALTO') AS n_fram_alto,
         COUNTIF(categoria_risco_final = 'INTERMEDIÁRIO') AS n_fram_intermediario,
         COUNTIF(categoria_risco_final = 'BAIXO') AS n_fram_baixo,
+        -- Framingham por tipo de estratificação
+        COUNTIF(tipo_estratificacao = 'framingham_calculado') AS n_fram_por_score,
+        COUNTIF(tipo_estratificacao = 'reclassificacao_direta') AS n_fram_por_reclassificacao,
 
         -- WHO calculado (exclui 'não calculável')
         COUNTIF(who_categoria_risco IS NOT NULL
@@ -217,9 +219,13 @@ def carregar_piramide_rcv(ap, clinica, esf):
             WHEN idade BETWEEN 75 AND 79 THEN '75-79'
             ELSE '80+'
         END AS faixa_etaria,
-        genero,
-        categoria_risco_final AS cat_fram,
-        who_categoria_risco AS cat_who,
+        CASE WHEN genero IN ('Masculino', 'M', 'MASCULINO') THEN 'Masculino'
+             WHEN genero IN ('Feminino', 'F', 'FEMININO') THEN 'Feminino'
+             ELSE genero END AS genero,
+        CASE WHEN categoria_risco_final IN ('BAIXO','INTERMEDIÁRIO','ALTO','MUITO ALTO')
+             THEN categoria_risco_final END AS cat_fram,
+        CASE WHEN who_categoria_risco != 'não calculável'
+             THEN who_categoria_risco END AS cat_who,
         COUNT(*) AS n
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
@@ -378,24 +384,30 @@ with c3:
         st.metric("🌍 Elegíveis WHO/HEARTS (40-80a)", f"{n_eleg_who:,}",
                   f"{_p(n_eleg_who, tot):.0f}% da população")
 
-c4, c5, c6 = st.columns(3)
+n_fram_score  = int(sumario.get('n_fram_por_score', 0) or 0)
+n_fram_reclass = int(sumario.get('n_fram_por_reclassificacao', 0) or 0)
+n_who_lab      = int(sumario.get('n_who_lab', 0) or 0)
+n_who_nonlab   = int(sumario.get('n_who_nonlab', 0) or 0)
+
+c4, c5 = st.columns(2)
 with c4:
     with st.container(border=True):
-        st.metric("📊 Framingham calculado", f"{n_fram_calc:,}",
-                  f"{_p(n_fram_calc, n_eleg_fram):.0f}% dos elegíveis",
-                  help="Pacientes 30-74a com variáveis suficientes + reclassificação SBC.")
+        st.metric("📊 Framingham+SBC classificados", f"{n_fram_calc:,}",
+                  f"{_p(n_fram_calc, tot):.0f}% da população",
+                  help="Inclui cálculo por score (30-74a) + reclassificação direta (CI, AVC, IRC).")
+        st.caption(
+            f"Por score: {n_fram_score:,} · "
+            f"Reclassificação direta: {n_fram_reclass:,}"
+        )
 with c5:
     with st.container(border=True):
-        st.metric("🌍 WHO calculado", f"{n_who_calc:,}",
-                  f"{_p(n_who_calc, n_eleg_who):.0f}% dos elegíveis",
-                  help="WHO lab-based ou non-lab-based calculado para pacientes 40-80a.")
-with c6:
-    with st.container(border=True):
-        n_who_lab    = int(sumario.get('n_who_lab', 0) or 0)
-        n_who_nonlab = int(sumario.get('n_who_nonlab', 0) or 0)
-        st.metric("🔬 WHO lab / non-lab",
-                  f"{n_who_lab:,} / {n_who_nonlab:,}",
-                  help="Lab-based usa colesterol; non-lab usa IMC como fallback.")
+        st.metric("🌍 WHO/HEARTS calculado", f"{n_who_calc:,}",
+                  f"{_p(n_who_calc, n_eleg_who):.0f}% dos elegíveis (40-80a)",
+                  help="WHO lab-based (com colesterol) ou non-lab (com IMC).")
+        st.caption(
+            f"Lab-based: {n_who_lab:,} · "
+            f"Non-lab: {n_who_nonlab:,}"
+        )
 
 # Variáveis mais ausentes
 st.markdown("##### Disponibilidade de variáveis clínicas")
@@ -442,12 +454,12 @@ col_f, col_w = st.columns(2)
 
 # Framingham+SBC
 with col_f:
-    st.markdown("**Framingham + SBC**")
+    st.markdown(f"**Framingham + SBC** (n={n_fram_calc:,})")
     cats_fram = [
-        ("MUITO ALTO", int(sumario.get('n_fram_muito_alto', 0) or 0), "#C0392B"),
-        ("ALTO",       int(sumario.get('n_fram_alto', 0) or 0),       "#E74C3C"),
-        ("INTERMEDIÁRIO", int(sumario.get('n_fram_intermediario', 0) or 0), "#F39C12"),
-        ("BAIXO",      int(sumario.get('n_fram_baixo', 0) or 0),      "#2ECC71"),
+        ("MUITO ALTO (>20%)", int(sumario.get('n_fram_muito_alto', 0) or 0), "#C0392B"),
+        ("ALTO (10-20%)",     int(sumario.get('n_fram_alto', 0) or 0),       "#E74C3C"),
+        ("INTERMEDIÁRIO (5-10%)", int(sumario.get('n_fram_intermediario', 0) or 0), "#F39C12"),
+        ("BAIXO (<5%)",       int(sumario.get('n_fram_baixo', 0) or 0),      "#2ECC71"),
     ]
     for label, n, cor in cats_fram:
         pct = _p(n, n_fram_calc) if n_fram_calc else 0
