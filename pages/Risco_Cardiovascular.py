@@ -157,6 +157,18 @@ def carregar_sumario_rcv(ap, clinica, esf):
         COUNTIF(idade BETWEEN 30 AND 74 AND categoria_risco_final = 'INTERMEDIÁRIO') AS n_fram_intermediario,
         COUNTIF(idade BETWEEN 30 AND 74 AND categoria_risco_final = 'BAIXO') AS n_fram_baixo,
 
+        -- Framingham MUITO ALTO: por doença estabelecida vs por fatores de risco
+        COUNTIF(idade BETWEEN 30 AND 74 AND categoria_risco_final = 'MUITO ALTO'
+                AND (CI IS NOT NULL OR stroke IS NOT NULL OR vascular_periferica IS NOT NULL)) AS n_fram_ma_dcv,
+        COUNTIF(idade BETWEEN 30 AND 74 AND categoria_risco_final = 'MUITO ALTO'
+                AND CI IS NULL AND stroke IS NULL AND vascular_periferica IS NULL) AS n_fram_ma_fator,
+
+        -- DCV estabelecida (toda a população)
+        COUNTIF(CI IS NOT NULL) AS n_com_ci,
+        COUNTIF(stroke IS NOT NULL) AS n_com_avc,
+        COUNTIF(vascular_periferica IS NOT NULL) AS n_com_dap,
+        COUNTIF(CI IS NOT NULL OR stroke IS NOT NULL OR vascular_periferica IS NOT NULL) AS n_dcv_estabelecida,
+
         -- WHO calculado (exclui 'não calculável')
         COUNTIF(who_categoria_risco IS NOT NULL
                 AND who_categoria_risco != 'não calculável') AS n_who_calculado,
@@ -165,6 +177,11 @@ def carregar_sumario_rcv(ap, clinica, esf):
         COUNTIF(who_categoria_risco = '10-20%') AS n_who_10_20,
         COUNTIF(who_categoria_risco = '5-10%') AS n_who_5_10,
         COUNTIF(who_categoria_risco = '<5%') AS n_who_lt5,
+        -- WHO >=30%: por doença estabelecida vs por fatores
+        COUNTIF(who_categoria_risco = '>=30%'
+                AND (CI IS NOT NULL OR stroke IS NOT NULL OR vascular_periferica IS NOT NULL)) AS n_who_gte30_dcv,
+        COUNTIF(who_categoria_risco = '>=30%'
+                AND CI IS NULL AND stroke IS NULL AND vascular_periferica IS NULL) AS n_who_gte30_fator,
 
         -- Variáveis disponíveis (para cards de cobertura)
         COUNTIF(pressao_sistolica IS NOT NULL AND dias_desde_ultima_pa <= 365) AS n_com_pa_recente,
@@ -398,7 +415,39 @@ st.markdown("---")
 # ═══════════════════════════════════════════════════════════════
 # BLOCO 2 — DISTRIBUIÇÃO POR CATEGORIA DE RISCO
 # ═══════════════════════════════════════════════════════════════
-st.markdown("#### 2️⃣ Distribuição por categoria de risco")
+st.markdown("#### 2️⃣ Doença cardiovascular estabelecida")
+st.caption("Pacientes com IAM prévio (CI), AVC prévio ou doença arterial periférica são classificados diretamente como muito alto risco, sem necessidade de cálculo de escore (recomendação OMS e SBC).")
+
+n_dcv     = int(sumario.get('n_dcv_estabelecida', 0) or 0)
+n_ci      = int(sumario.get('n_com_ci', 0) or 0)
+n_avc     = int(sumario.get('n_com_avc', 0) or 0)
+n_dap     = int(sumario.get('n_com_dap', 0) or 0)
+
+dc1, dc2, dc3, dc4 = st.columns(4)
+with dc1:
+    with st.container(border=True):
+        st.metric("🚨 DCV estabelecida", f"{n_dcv:,}",
+                  f"{_p(n_dcv, tot):.1f}% da população")
+with dc2:
+    with st.container(border=True):
+        st.metric("💔 Cardiopatia isquêmica", f"{n_ci:,}")
+with dc3:
+    with st.container(border=True):
+        st.metric("🧠 AVC prévio", f"{n_avc:,}")
+with dc4:
+    with st.container(border=True):
+        st.metric("🦵 Doença arterial periférica", f"{n_dap:,}")
+
+st.markdown("---")
+
+st.markdown("#### 3️⃣ Distribuição por categoria de risco")
+
+n_fram_ma      = int(sumario.get('n_fram_muito_alto', 0) or 0)
+n_fram_ma_dcv  = int(sumario.get('n_fram_ma_dcv', 0) or 0)
+n_fram_ma_fat  = int(sumario.get('n_fram_ma_fator', 0) or 0)
+n_who_gte30    = int(sumario.get('n_who_gte30', 0) or 0)
+n_who_gte30_dcv = int(sumario.get('n_who_gte30_dcv', 0) or 0)
+n_who_gte30_fat = int(sumario.get('n_who_gte30_fator', 0) or 0)
 
 col_f, col_w = st.columns(2)
 
@@ -406,17 +455,19 @@ col_f, col_w = st.columns(2)
 with col_f:
     st.markdown(f"**Framingham + SBC** (n={n_fram_calc:,})")
     cats_fram = [
-        ("MUITO ALTO (>20%)", int(sumario.get('n_fram_muito_alto', 0) or 0), "#C0392B"),
-        ("ALTO (10-20%)",     int(sumario.get('n_fram_alto', 0) or 0),       "#E74C3C"),
-        ("INTERMEDIÁRIO (5-10%)", int(sumario.get('n_fram_intermediario', 0) or 0), "#F39C12"),
-        ("BAIXO (<5%)",       int(sumario.get('n_fram_baixo', 0) or 0),      "#2ECC71"),
+        ("MUITO ALTO (>20%)", n_fram_ma, "#C0392B",
+         f"DCV estabelecida: {n_fram_ma_dcv:,} · Por fatores: {n_fram_ma_fat:,}"),
+        ("ALTO (10-20%)",     int(sumario.get('n_fram_alto', 0) or 0), "#E74C3C", None),
+        ("INTERMEDIÁRIO (5-10%)", int(sumario.get('n_fram_intermediario', 0) or 0), "#F39C12", None),
+        ("BAIXO (<5%)",       int(sumario.get('n_fram_baixo', 0) or 0), "#2ECC71", None),
     ]
-    for label, n, cor in cats_fram:
+    for label, n, cor, detalhe in cats_fram:
         pct = _p(n, n_fram_calc) if n_fram_calc else 0
+        det_html = f"<br><span style='font-size:0.85em; color:#666;'>{detalhe}</span>" if detalhe else ""
         st.markdown(
             f"<div style='background:{cor}20; border-left:4px solid {cor}; "
             f"padding:8px 12px; margin:4px 0; border-radius:4px;'>"
-            f"<strong>{label}</strong>: {n:,} ({pct:.0f}%)</div>",
+            f"<strong>{label}</strong>: {n:,} ({pct:.0f}%){det_html}</div>",
             unsafe_allow_html=True
         )
 
@@ -424,18 +475,20 @@ with col_f:
 with col_w:
     st.markdown(f"**WHO 2019 / HEARTS** (n={n_who_calc:,})")
     cats_who = [
-        ("≥30%",    int(sumario.get('n_who_gte30', 0) or 0),  "#8E44AD"),
-        ("20-30%",  int(sumario.get('n_who_20_30', 0) or 0),  "#C0392B"),
-        ("10-20%",  int(sumario.get('n_who_10_20', 0) or 0),  "#E74C3C"),
-        ("5-10%",   int(sumario.get('n_who_5_10', 0) or 0),   "#F39C12"),
-        ("<5%",     int(sumario.get('n_who_lt5', 0) or 0),     "#2ECC71"),
+        ("≥30%", n_who_gte30, "#8E44AD",
+         f"DCV estabelecida: {n_who_gte30_dcv:,} · Por fatores: {n_who_gte30_fat:,}"),
+        ("20-30%",  int(sumario.get('n_who_20_30', 0) or 0),  "#C0392B", None),
+        ("10-20%",  int(sumario.get('n_who_10_20', 0) or 0),  "#E74C3C", None),
+        ("5-10%",   int(sumario.get('n_who_5_10', 0) or 0),   "#F39C12", None),
+        ("<5%",     int(sumario.get('n_who_lt5', 0) or 0),     "#2ECC71", None),
     ]
-    for label, n, cor in cats_who:
+    for label, n, cor, detalhe in cats_who:
         pct = _p(n, n_who_calc) if n_who_calc else 0
+        det_html = f"<br><span style='font-size:0.85em; color:#666;'>{detalhe}</span>" if detalhe else ""
         st.markdown(
             f"<div style='background:{cor}20; border-left:4px solid {cor}; "
             f"padding:8px 12px; margin:4px 0; border-radius:4px;'>"
-            f"<strong>{label}</strong>: {n:,} ({pct:.0f}%)</div>",
+            f"<strong>{label}</strong>: {n:,} ({pct:.0f}%){det_html}</div>",
             unsafe_allow_html=True
         )
 
@@ -445,7 +498,7 @@ st.markdown("---")
 # ═══════════════════════════════════════════════════════════════
 # BLOCO 4 — DISTRIBUIÇÃO POR TERRITÓRIO
 # ═══════════════════════════════════════════════════════════════
-st.markdown("#### 3️⃣ Risco cardiovascular por território")
+st.markdown("#### 4️⃣ Risco cardiovascular por território")
 
 if df_terr.empty:
     st.info("Sem dados por território.")
