@@ -201,7 +201,24 @@ def carregar_sumario_rcv(ap, clinica, esf):
 
         -- WHO modelo utilizado
         COUNTIF(who_modelo_utilizado = 'lab') AS n_who_lab,
-        COUNTIF(who_modelo_utilizado = 'nonlab') AS n_who_nonlab
+        COUNTIF(who_modelo_utilizado = 'nonlab') AS n_who_nonlab,
+
+        -- Calculabilidade detalhada
+        COUNTIF(idade BETWEEN 30 AND 74 AND framingham_calculavel = TRUE) AS n_fram_calculavel,
+        COUNTIF(idade BETWEEN 30 AND 74 AND framingham_calculavel = FALSE) AS n_fram_nao_calculavel,
+        COUNTIF(idade BETWEEN 40 AND 80 AND who_lab_calculavel = TRUE) AS n_who_lab_calculavel,
+        COUNTIF(idade BETWEEN 40 AND 80 AND who_lab_calculavel = FALSE) AS n_who_lab_nao_calculavel,
+        COUNTIF(idade BETWEEN 40 AND 80 AND who_nonlab_calculavel = TRUE) AS n_who_nonlab_calculavel,
+        COUNTIF(idade BETWEEN 40 AND 80 AND who_nonlab_calculavel = FALSE) AS n_who_nonlab_nao_calculavel,
+
+        -- Variáveis ausentes em elegíveis WHO (40-80)
+        COUNTIF(idade BETWEEN 40 AND 80 AND colesterol_total IS NULL) AS n_who_sem_colesterol,
+        COUNTIF(idade BETWEEN 40 AND 80 AND (pressao_sistolica IS NULL OR dias_desde_ultima_pa > 365)) AS n_who_sem_pa,
+        COUNTIF(idade BETWEEN 40 AND 80 AND IMC IS NULL) AS n_who_sem_imc,
+
+        -- Concordância entre modelos (quando ambos calculáveis)
+        COUNTIF(categoria_risco_final = 'MUITO ALTO' AND who_categoria_risco = '>=30%') AS n_concordancia_muito_alto,
+        COUNTIF(categoria_risco_final = 'BAIXO' AND who_categoria_risco = '<5%') AS n_concordancia_baixo
 
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
@@ -397,18 +414,67 @@ for i, (label, n) in enumerate(vars_disp):
             st.markdown(f"{cor} **{label}**")
             st.metric("Disponível", f"{n:,}", f"{pct:.0f}%")
 
-# Ranking de ausentes em elegíveis Framingham
+# Calculabilidade detalhada
+st.markdown("##### Calculabilidade dos modelos")
+
+n_fram_calculavel     = int(sumario.get('n_fram_calculavel', 0) or 0)
+n_fram_nao_calculavel = int(sumario.get('n_fram_nao_calculavel', 0) or 0)
+n_who_lab_calc        = int(sumario.get('n_who_lab_calculavel', 0) or 0)
+n_who_lab_nao         = int(sumario.get('n_who_lab_nao_calculavel', 0) or 0)
+n_who_nonlab_calc     = int(sumario.get('n_who_nonlab_calculavel', 0) or 0)
+n_who_nonlab_nao      = int(sumario.get('n_who_nonlab_nao_calculavel', 0) or 0)
+
+cc1, cc2, cc3 = st.columns(3)
+with cc1:
+    with st.container(border=True):
+        st.markdown("**Framingham (30-74a)**")
+        st.metric("Calculável", f"{n_fram_calculavel:,}",
+                  f"{_p(n_fram_calculavel, n_eleg_fram):.0f}% dos elegíveis")
+        st.caption(f"Não calculável: {n_fram_nao_calculavel:,}")
+with cc2:
+    with st.container(border=True):
+        st.markdown("**WHO lab-based (40-80a)**")
+        st.metric("Calculável", f"{n_who_lab_calc:,}",
+                  f"{_p(n_who_lab_calc, n_eleg_who):.0f}% dos elegíveis")
+        st.caption(f"Não calculável: {n_who_lab_nao:,}")
+with cc3:
+    with st.container(border=True):
+        st.markdown("**WHO non-lab (40-80a)**")
+        st.metric("Calculável", f"{n_who_nonlab_calc:,}",
+                  f"{_p(n_who_nonlab_calc, n_eleg_who):.0f}% dos elegíveis")
+        st.caption(f"Não calculável: {n_who_nonlab_nao:,}")
+
+# Variáveis ausentes — ranking
+st.markdown("##### Variáveis ausentes nos elegíveis")
+
 n_fram_sem_col = int(sumario.get('n_fram_sem_colesterol', 0) or 0)
 n_fram_sem_hdl = int(sumario.get('n_fram_sem_hdl', 0) or 0)
 n_fram_sem_pa  = int(sumario.get('n_fram_sem_pa', 0) or 0)
-n_fram_nao_calc = int(sumario.get('n_fram_nao_calculado', 0) or 0)
+n_who_sem_col  = int(sumario.get('n_who_sem_colesterol', 0) or 0)
+n_who_sem_pa   = int(sumario.get('n_who_sem_pa', 0) or 0)
+n_who_sem_imc  = int(sumario.get('n_who_sem_imc', 0) or 0)
 
-if n_fram_nao_calc > 0:
-    st.warning(
-        f"⚠️ **{n_fram_nao_calc:,} pacientes elegíveis (30-74a) sem Framingham calculado.** "
-        f"Motivos: sem colesterol ({n_fram_sem_col:,}), sem HDL ({n_fram_sem_hdl:,}), "
-        f"sem PA recente ({n_fram_sem_pa:,})."
-    )
+va1, va2 = st.columns(2)
+with va1:
+    with st.container(border=True):
+        st.markdown("**Framingham (30-74a) — o que falta**")
+        ausentes_fram = [
+            (f"Colesterol total", n_fram_sem_col, _p(n_fram_sem_col, n_eleg_fram)),
+            (f"HDL", n_fram_sem_hdl, _p(n_fram_sem_hdl, n_eleg_fram)),
+            (f"PA recente (≤365d)", n_fram_sem_pa, _p(n_fram_sem_pa, n_eleg_fram)),
+        ]
+        for label, n, pct in sorted(ausentes_fram, key=lambda x: -x[1]):
+            st.markdown(f"🔴 **{label}**: {n:,} ({pct:.0f}% dos elegíveis)")
+with va2:
+    with st.container(border=True):
+        st.markdown("**WHO (40-80a) — o que falta para lab-based**")
+        ausentes_who = [
+            (f"Colesterol total", n_who_sem_col, _p(n_who_sem_col, n_eleg_who)),
+            (f"PA recente (≤365d)", n_who_sem_pa, _p(n_who_sem_pa, n_eleg_who)),
+            (f"IMC (fallback non-lab)", n_who_sem_imc, _p(n_who_sem_imc, n_eleg_who)),
+        ]
+        for label, n, pct in sorted(ausentes_who, key=lambda x: -x[1]):
+            st.markdown(f"🔴 **{label}**: {n:,} ({pct:.0f}% dos elegíveis)")
 
 st.markdown("---")
 
