@@ -88,11 +88,12 @@ ROTAS = {
     "Polifarmácia":  "pages/Polifarmacia_ACB.py",
     "Diabetes":      "pages/Diabetes.py",
     "Hipertensão":   "pages/Hipertensao.py",
+    "Risco CV":      "pages/Risco_Cardiovascular.py",
 }
 ICONES = [
     "house-fill", "people-fill", "person-lines-fill",
     "exclamation-triangle-fill", "arrow-repeat", "capsule",
-    "droplet-fill", "heart-pulse-fill",
+    "droplet-fill", "heart-pulse-fill", "heart-fill",
 ]
 selected = option_menu(
     menu_title=None,
