@@ -150,14 +150,12 @@ def carregar_sumario_rcv(ap, clinica, esf):
         COUNTIF(idade >= 40 AND idade <= 80) AS n_elegivel_who,
 
         -- Framingham+SBC calculado (toda a população com categoria válida)
-        COUNTIF(categoria_risco_final IN ('BAIXO','INTERMEDIÁRIO','ALTO','MUITO ALTO')) AS n_fram_calculado,
-        COUNTIF(categoria_risco_final = 'MUITO ALTO') AS n_fram_muito_alto,
-        COUNTIF(categoria_risco_final = 'ALTO') AS n_fram_alto,
-        COUNTIF(categoria_risco_final = 'INTERMEDIÁRIO') AS n_fram_intermediario,
-        COUNTIF(categoria_risco_final = 'BAIXO') AS n_fram_baixo,
-        -- Framingham por tipo de estratificação
-        COUNTIF(tipo_estratificacao = 'framingham_calculado') AS n_fram_por_score,
-        COUNTIF(tipo_estratificacao = 'reclassificacao_direta') AS n_fram_por_reclassificacao,
+        -- Framingham+SBC restrito a elegíveis 30-74a
+        COUNTIF(idade BETWEEN 30 AND 74 AND categoria_risco_final IN ('BAIXO','INTERMEDIÁRIO','ALTO','MUITO ALTO')) AS n_fram_calculado,
+        COUNTIF(idade BETWEEN 30 AND 74 AND categoria_risco_final = 'MUITO ALTO') AS n_fram_muito_alto,
+        COUNTIF(idade BETWEEN 30 AND 74 AND categoria_risco_final = 'ALTO') AS n_fram_alto,
+        COUNTIF(idade BETWEEN 30 AND 74 AND categoria_risco_final = 'INTERMEDIÁRIO') AS n_fram_intermediario,
+        COUNTIF(idade BETWEEN 30 AND 74 AND categoria_risco_final = 'BAIXO') AS n_fram_baixo,
 
         -- WHO calculado (exclui 'não calculável')
         COUNTIF(who_categoria_risco IS NOT NULL
@@ -193,45 +191,6 @@ def carregar_sumario_rcv(ap, clinica, esf):
     """
     df = bq(sql)
     return df.iloc[0].to_dict() if not df.empty else {}
-
-
-@st.cache_data(show_spinner=False, ttl=900)
-def carregar_piramide_rcv(ap, clinica, esf):
-    """Dados para pirâmide etária por categoria de risco."""
-    clauses = []
-    if ap:      clauses.append(f"area_programatica_cadastro = '{ap}'")
-    if clinica: clauses.append(f"nome_clinica_cadastro = '{clinica}'")
-    if esf:     clauses.append(f"nome_esf_cadastro = '{esf}'")
-    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-    sql = f"""
-    SELECT
-        CASE
-            WHEN idade < 30 THEN '< 30'
-            WHEN idade BETWEEN 30 AND 34 THEN '30-34'
-            WHEN idade BETWEEN 35 AND 39 THEN '35-39'
-            WHEN idade BETWEEN 40 AND 44 THEN '40-44'
-            WHEN idade BETWEEN 45 AND 49 THEN '45-49'
-            WHEN idade BETWEEN 50 AND 54 THEN '50-54'
-            WHEN idade BETWEEN 55 AND 59 THEN '55-59'
-            WHEN idade BETWEEN 60 AND 64 THEN '60-64'
-            WHEN idade BETWEEN 65 AND 69 THEN '65-69'
-            WHEN idade BETWEEN 70 AND 74 THEN '70-74'
-            WHEN idade BETWEEN 75 AND 79 THEN '75-79'
-            ELSE '80+'
-        END AS faixa_etaria,
-        CASE WHEN genero IN ('Masculino', 'M', 'MASCULINO') THEN 'Masculino'
-             WHEN genero IN ('Feminino', 'F', 'FEMININO') THEN 'Feminino'
-             ELSE genero END AS genero,
-        CASE WHEN categoria_risco_final IN ('BAIXO','INTERMEDIÁRIO','ALTO','MUITO ALTO')
-             THEN categoria_risco_final END AS cat_fram,
-        CASE WHEN who_categoria_risco != 'não calculável'
-             THEN who_categoria_risco END AS cat_who,
-        COUNT(*) AS n
-    FROM `{_fqn(config.TABELA_FATO)}`
-    {where}
-    GROUP BY faixa_etaria, genero, cat_fram, cat_who
-    """
-    return bq(sql)
 
 
 @st.cache_data(show_spinner=False, ttl=900)
@@ -343,7 +302,6 @@ st.markdown("---")
 
 with st.spinner("Carregando dados de risco cardiovascular..."):
     sumario = carregar_sumario_rcv(ap_sel, cli_sel, esf_sel)
-    df_pir  = carregar_piramide_rcv(ap_sel, cli_sel, esf_sel)
     df_terr = carregar_territorio_rcv(ap_sel, cli_sel, esf_sel)
 
 if not sumario:
@@ -384,26 +342,18 @@ with c3:
         st.metric("🌍 Elegíveis WHO/HEARTS (40-80a)", f"{n_eleg_who:,}",
                   f"{_p(n_eleg_who, tot):.0f}% da população")
 
-n_fram_score  = int(sumario.get('n_fram_por_score', 0) or 0)
-n_fram_reclass = int(sumario.get('n_fram_por_reclassificacao', 0) or 0)
 n_who_lab      = int(sumario.get('n_who_lab', 0) or 0)
 n_who_nonlab   = int(sumario.get('n_who_nonlab', 0) or 0)
 
 c4, c5 = st.columns(2)
 with c4:
     with st.container(border=True):
-        st.metric("📊 Framingham+SBC classificados", f"{n_fram_calc:,}",
-                  f"{_p(n_fram_calc, tot):.0f}% da população",
-                  help="Inclui cálculo por score (30-74a) + reclassificação direta (CI, AVC, IRC).")
-        st.caption(
-            f"Por score: {n_fram_score:,} · "
-            f"Reclassificação direta: {n_fram_reclass:,}"
-        )
+        st.metric("📊 Framingham+SBC calculado", f"{n_fram_calc:,}",
+                  f"{_p(n_fram_calc, n_eleg_fram):.0f}% dos elegíveis (30-74a)")
 with c5:
     with st.container(border=True):
         st.metric("🌍 WHO/HEARTS calculado", f"{n_who_calc:,}",
-                  f"{_p(n_who_calc, n_eleg_who):.0f}% dos elegíveis (40-80a)",
-                  help="WHO lab-based (com colesterol) ou non-lab (com IMC).")
+                  f"{_p(n_who_calc, n_eleg_who):.0f}% dos elegíveis (40-80a)")
         st.caption(
             f"Lab-based: {n_who_lab:,} · "
             f"Non-lab: {n_who_nonlab:,}"
@@ -489,96 +439,13 @@ with col_w:
             unsafe_allow_html=True
         )
 
-st.markdown("---")
-
-# ═══════════════════════════════════════════════════════════════
-# BLOCO 3 — PIRÂMIDES ETÁRIAS
-# ═══════════════════════════════════════════════════════════════
-st.markdown("#### 3️⃣ Pirâmide etária por risco cardiovascular")
-st.caption("Distribuição por sexo e faixa etária. Esquerda = homens, direita = mulheres.")
-
-FAIXAS_ORD = ['< 30', '30-34', '35-39', '40-44', '45-49', '50-54',
-              '55-59', '60-64', '65-69', '70-74', '75-79', '80+']
-
-def criar_piramide_risco(df, col_cat, titulo, categorias, cores):
-    """Cria pirâmide etária colorida por categoria de risco."""
-    if df.empty or col_cat not in df.columns:
-        st.info(f"Sem dados para {titulo}.")
-        return
-
-    df_p = df.dropna(subset=[col_cat]).copy()
-    if df_p.empty:
-        st.info(f"Sem dados calculados para {titulo}.")
-        return
-
-    fig = go.Figure()
-    for cat, cor in zip(categorias, cores):
-        for sexo, sinal, nome_sexo in [('Masculino', -1, 'H'), ('Feminino', 1, 'F')]:
-            df_fs = df_p[(df_p['genero'] == sexo) & (df_p[col_cat] == cat)]
-            agg = df_fs.groupby('faixa_etaria')['n'].sum().reindex(FAIXAS_ORD, fill_value=0)
-            fig.add_trace(go.Bar(
-                y=FAIXAS_ORD,
-                x=[v * sinal for v in agg.values],
-                name=f"{cat} ({nome_sexo})",
-                orientation='h',
-                marker_color=cor,
-                legendgroup=cat,
-                showlegend=(sexo == 'Masculino'),
-                hovertemplate=f"{cat} · {nome_sexo}<br>%{{y}}: %{{customdata:,}}<extra></extra>",
-                customdata=agg.values,
-            ))
-
-    fig.update_layout(
-        barmode='relative',
-        height=480,
-        title=dict(text=titulo, font=dict(color=T.TEXT, size=14)),
-        paper_bgcolor=T.PAPER_BG,
-        plot_bgcolor=T.PLOT_BG,
-        font=dict(color=T.TEXT),
-        margin=dict(l=60, r=20, t=50, b=40),
-        xaxis=dict(
-            title='Pacientes',
-            tickfont=dict(color=T.TEXT_MUTED),
-            gridcolor=T.GRID,
-        ),
-        yaxis=dict(
-            title='Faixa etária',
-            categoryorder='array',
-            categoryarray=FAIXAS_ORD,
-            tickfont=dict(color=T.TEXT),
-        ),
-        legend=dict(
-            orientation='h', xanchor='center', x=0.5,
-            yanchor='top', y=-0.12,
-            font=dict(size=10, color=T.TEXT),
-            bgcolor=T.LEGEND_BG,
-        ),
-        bargap=0.08,
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-pir1, pir2 = st.columns(2)
-with pir1:
-    criar_piramide_risco(
-        df_pir, 'cat_fram',
-        'Framingham + SBC',
-        ['MUITO ALTO', 'ALTO', 'INTERMEDIÁRIO', 'BAIXO'],
-        ['#C0392B', '#E74C3C', '#F39C12', '#2ECC71'],
-    )
-with pir2:
-    criar_piramide_risco(
-        df_pir, 'cat_who',
-        'WHO 2019 / HEARTS',
-        ['>=30%', '20-30%', '10-20%', '5-10%', '<5%'],
-        ['#8E44AD', '#C0392B', '#E74C3C', '#F39C12', '#2ECC71'],
-    )
 
 st.markdown("---")
 
 # ═══════════════════════════════════════════════════════════════
 # BLOCO 4 — DISTRIBUIÇÃO POR TERRITÓRIO
 # ═══════════════════════════════════════════════════════════════
-st.markdown("#### 4️⃣ Risco cardiovascular por território")
+st.markdown("#### 3️⃣ Risco cardiovascular por território")
 
 if df_terr.empty:
     st.info("Sem dados por território.")
