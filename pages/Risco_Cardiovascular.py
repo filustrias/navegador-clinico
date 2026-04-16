@@ -149,20 +149,22 @@ def carregar_sumario_rcv(ap, clinica, esf):
         COUNTIF(idade >= 30 AND idade <= 74) AS n_elegivel_framingham,
         COUNTIF(idade >= 40 AND idade <= 80) AS n_elegivel_who,
 
-        -- Framingham+SBC calculado
-        COUNTIF(categoria_risco_final IS NOT NULL) AS n_fram_calculado,
+        -- Framingham+SBC calculado (exclui NÃO CLASSIFICADO)
+        COUNTIF(categoria_risco_final IS NOT NULL
+                AND categoria_risco_final != 'NÃO CLASSIFICADO') AS n_fram_calculado,
         COUNTIF(categoria_risco_final = 'MUITO ALTO') AS n_fram_muito_alto,
         COUNTIF(categoria_risco_final = 'ALTO') AS n_fram_alto,
         COUNTIF(categoria_risco_final = 'INTERMEDIÁRIO') AS n_fram_intermediario,
         COUNTIF(categoria_risco_final = 'BAIXO') AS n_fram_baixo,
 
-        -- WHO calculado
-        COUNTIF(who_categoria_risco IS NOT NULL) AS n_who_calculado,
-        COUNTIF(who_categoria_risco = 'Crítico') AS n_who_critico,
-        COUNTIF(who_categoria_risco = 'Muito Alto') AS n_who_muito_alto,
-        COUNTIF(who_categoria_risco = 'Alto') AS n_who_alto,
-        COUNTIF(who_categoria_risco = 'Moderado') AS n_who_moderado,
-        COUNTIF(who_categoria_risco = 'Baixo') AS n_who_baixo,
+        -- WHO calculado (exclui 'não calculável')
+        COUNTIF(who_categoria_risco IS NOT NULL
+                AND who_categoria_risco != 'não calculável') AS n_who_calculado,
+        COUNTIF(who_categoria_risco = '>=30%') AS n_who_gte30,
+        COUNTIF(who_categoria_risco = '20-30%') AS n_who_20_30,
+        COUNTIF(who_categoria_risco = '10-20%') AS n_who_10_20,
+        COUNTIF(who_categoria_risco = '5-10%') AS n_who_5_10,
+        COUNTIF(who_categoria_risco = '<5%') AS n_who_lt5,
 
         -- Variáveis disponíveis (para cards de cobertura)
         COUNTIF(pressao_sistolica IS NOT NULL AND dias_desde_ultima_pa <= 365) AS n_com_pa_recente,
@@ -246,16 +248,26 @@ def carregar_territorio_rcv(ap, clinica, esf):
     SELECT
         {grupo_col} AS territorio,
         COUNT(*) AS total_pop,
-        -- Framingham+SBC como % da população
-        ROUND(COUNTIF(categoria_risco_final = 'MUITO ALTO') * 100.0 / COUNT(*), 1) AS pct_fram_muito_alto,
-        ROUND(COUNTIF(categoria_risco_final = 'ALTO') * 100.0 / COUNT(*), 1) AS pct_fram_alto,
-        ROUND(COUNTIF(categoria_risco_final = 'INTERMEDIÁRIO') * 100.0 / COUNT(*), 1) AS pct_fram_intermediario,
-        ROUND(COUNTIF(categoria_risco_final = 'BAIXO') * 100.0 / COUNT(*), 1) AS pct_fram_baixo,
-        -- WHO como % da população
-        ROUND(COUNTIF(who_categoria_risco IN ('Crítico', 'Muito Alto')) * 100.0 / COUNT(*), 1) AS pct_who_muito_alto,
-        ROUND(COUNTIF(who_categoria_risco = 'Alto') * 100.0 / COUNT(*), 1) AS pct_who_alto,
-        ROUND(COUNTIF(who_categoria_risco = 'Moderado') * 100.0 / COUNT(*), 1) AS pct_who_moderado,
-        ROUND(COUNTIF(who_categoria_risco = 'Baixo') * 100.0 / COUNT(*), 1) AS pct_who_baixo,
+        -- Framingham+SBC como % dos elegíveis (30-74a) do território
+        ROUND(COUNTIF(categoria_risco_final = 'MUITO ALTO') * 100.0
+              / NULLIF(COUNTIF(idade BETWEEN 30 AND 74), 0), 1) AS pct_fram_muito_alto,
+        ROUND(COUNTIF(categoria_risco_final = 'ALTO') * 100.0
+              / NULLIF(COUNTIF(idade BETWEEN 30 AND 74), 0), 1) AS pct_fram_alto,
+        ROUND(COUNTIF(categoria_risco_final = 'INTERMEDIÁRIO') * 100.0
+              / NULLIF(COUNTIF(idade BETWEEN 30 AND 74), 0), 1) AS pct_fram_intermediario,
+        ROUND(COUNTIF(categoria_risco_final = 'BAIXO') * 100.0
+              / NULLIF(COUNTIF(idade BETWEEN 30 AND 74), 0), 1) AS pct_fram_baixo,
+        -- WHO como % dos elegíveis (40-80a) do território
+        ROUND(COUNTIF(who_categoria_risco = '>=30%') * 100.0
+              / NULLIF(COUNTIF(idade BETWEEN 40 AND 80), 0), 1) AS pct_who_gte30,
+        ROUND(COUNTIF(who_categoria_risco = '20-30%') * 100.0
+              / NULLIF(COUNTIF(idade BETWEEN 40 AND 80), 0), 1) AS pct_who_20_30,
+        ROUND(COUNTIF(who_categoria_risco = '10-20%') * 100.0
+              / NULLIF(COUNTIF(idade BETWEEN 40 AND 80), 0), 1) AS pct_who_10_20,
+        ROUND(COUNTIF(who_categoria_risco = '5-10%') * 100.0
+              / NULLIF(COUNTIF(idade BETWEEN 40 AND 80), 0), 1) AS pct_who_5_10,
+        ROUND(COUNTIF(who_categoria_risco = '<5%') * 100.0
+              / NULLIF(COUNTIF(idade BETWEEN 40 AND 80), 0), 1) AS pct_who_lt5,
         '{label_col}' AS label_col
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
@@ -353,21 +365,31 @@ n_eleg_who  = int(sumario.get('n_elegivel_who', 0) or 0)
 n_fram_calc = int(sumario.get('n_fram_calculado', 0) or 0)
 n_who_calc  = int(sumario.get('n_who_calculado', 0) or 0)
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3 = st.columns(3)
 with c1:
     with st.container(border=True):
         st.metric("👥 População total", f"{tot:,}")
 with c2:
     with st.container(border=True):
-        st.metric("📊 Framingham calculado", f"{n_fram_calc:,}",
-                  f"{_p(n_fram_calc, n_eleg_fram):.0f}% dos elegíveis (30-74a)",
-                  help="Pacientes com todas as variáveis necessárias para o cálculo.")
+        st.metric("📊 Elegíveis Framingham (30-74a)", f"{n_eleg_fram:,}",
+                  f"{_p(n_eleg_fram, tot):.0f}% da população")
 with c3:
     with st.container(border=True):
-        st.metric("🌍 WHO calculado", f"{n_who_calc:,}",
-                  f"{_p(n_who_calc, n_eleg_who):.0f}% dos elegíveis (40-80a)",
-                  help="WHO lab-based ou non-lab-based calculado.")
+        st.metric("🌍 Elegíveis WHO/HEARTS (40-80a)", f"{n_eleg_who:,}",
+                  f"{_p(n_eleg_who, tot):.0f}% da população")
+
+c4, c5, c6 = st.columns(3)
 with c4:
+    with st.container(border=True):
+        st.metric("📊 Framingham calculado", f"{n_fram_calc:,}",
+                  f"{_p(n_fram_calc, n_eleg_fram):.0f}% dos elegíveis",
+                  help="Pacientes 30-74a com variáveis suficientes + reclassificação SBC.")
+with c5:
+    with st.container(border=True):
+        st.metric("🌍 WHO calculado", f"{n_who_calc:,}",
+                  f"{_p(n_who_calc, n_eleg_who):.0f}% dos elegíveis",
+                  help="WHO lab-based ou non-lab-based calculado para pacientes 40-80a.")
+with c6:
     with st.container(border=True):
         n_who_lab    = int(sumario.get('n_who_lab', 0) or 0)
         n_who_nonlab = int(sumario.get('n_who_nonlab', 0) or 0)
@@ -438,13 +460,13 @@ with col_f:
 
 # WHO
 with col_w:
-    st.markdown("**WHO 2019 / HEARTS**")
+    st.markdown(f"**WHO 2019 / HEARTS** (n={n_who_calc:,})")
     cats_who = [
-        ("Crítico",    int(sumario.get('n_who_critico', 0) or 0),    "#8E44AD"),
-        ("Muito Alto", int(sumario.get('n_who_muito_alto', 0) or 0), "#C0392B"),
-        ("Alto",       int(sumario.get('n_who_alto', 0) or 0),       "#E74C3C"),
-        ("Moderado",   int(sumario.get('n_who_moderado', 0) or 0),   "#F39C12"),
-        ("Baixo",      int(sumario.get('n_who_baixo', 0) or 0),      "#2ECC71"),
+        ("≥30%",    int(sumario.get('n_who_gte30', 0) or 0),  "#8E44AD"),
+        ("20-30%",  int(sumario.get('n_who_20_30', 0) or 0),  "#C0392B"),
+        ("10-20%",  int(sumario.get('n_who_10_20', 0) or 0),  "#E74C3C"),
+        ("5-10%",   int(sumario.get('n_who_5_10', 0) or 0),   "#F39C12"),
+        ("<5%",     int(sumario.get('n_who_lt5', 0) or 0),     "#2ECC71"),
     ]
     for label, n, cor in cats_who:
         pct = _p(n, n_who_calc) if n_who_calc else 0
@@ -535,7 +557,7 @@ with pir2:
     criar_piramide_risco(
         df_pir, 'cat_who',
         'WHO 2019 / HEARTS',
-        ['Crítico', 'Muito Alto', 'Alto', 'Moderado', 'Baixo'],
+        ['>=30%', '20-30%', '10-20%', '5-10%', '<5%'],
         ['#8E44AD', '#C0392B', '#E74C3C', '#F39C12', '#2ECC71'],
     )
 
@@ -598,9 +620,9 @@ else:
     with t2:
         _stacked_bar_rcv(
             df_terr,
-            ['pct_who_muito_alto', 'pct_who_alto', 'pct_who_moderado', 'pct_who_baixo'],
-            ['Muito Alto/Crítico', 'Alto', 'Moderado', 'Baixo'],
-            ['#C0392B', '#E74C3C', '#F39C12', '#2ECC71'],
+            ['pct_who_gte30', 'pct_who_20_30', 'pct_who_10_20', 'pct_who_5_10', 'pct_who_lt5'],
+            ['≥30%', '20-30%', '10-20%', '5-10%', '<5%'],
+            ['#8E44AD', '#C0392B', '#E74C3C', '#F39C12', '#2ECC71'],
             f'WHO 2019 / HEARTS por {lbl}',
         )
 
