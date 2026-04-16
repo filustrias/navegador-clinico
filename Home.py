@@ -320,7 +320,7 @@ def _build_carrossel_uso(casos):
   }}
   function resetTimer(){{
     if(timer) clearInterval(timer);
-    timer=setInterval(function(){{show((cur+1)%n);}},6000);
+    timer=setInterval(function(){{show((cur+1)%n);}},10000);
   }}
   window.uNext=function(){{show((cur+1)%n);resetTimer();}};
   window.uPrev=function(){{show((cur-1+n)%n);resetTimer();}};
@@ -334,7 +334,7 @@ def _build_carrossel_uso(casos):
 _uso_html = _build_carrossel_uso(CASOS_USO_HTML)
 
 st.markdown("#### 🧭 O que você pode fazer aqui")
-st.caption("Casos de uso por perfil · auto-avança a cada 6 segundos · clique nas bolinhas para navegar")
+st.caption("Casos de uso por perfil · auto-avança a cada 10 segundos · clique nas bolinhas para navegar")
 st.components.v1.html(_uso_html, height=310, scrolling=False)
 st.markdown("---")
 
@@ -710,7 +710,7 @@ if conexao_ok:
 
   function resetTimer(){{
     if(timer) clearInterval(timer);
-    timer=setInterval(function(){{show((cur+1)%n);}},6000);
+    timer=setInterval(function(){{show((cur+1)%n);}},10000);
   }}
 
   window.pNext=function(){{show((cur+1)%n);resetTimer();}};
@@ -723,7 +723,7 @@ if conexao_ok:
 """
 
     st.markdown("#### Painel de Situação — dados do seu território")
-    st.caption("Auto-avança a cada 6 segundos · clique nas bolinhas para navegar")
+    st.caption("Auto-avança a cada 10 segundos · clique nas bolinhas para navegar")
     st.components.v1.html(_painel_html, height=400, scrolling=False)
     st.markdown("---")
 
