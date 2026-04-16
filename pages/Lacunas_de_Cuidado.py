@@ -683,13 +683,15 @@ with tab1:
             st.markdown("""
 **Gráficos em violino** mostram a distribuição e a densidade dos dados entre diferentes grupos.
 
-- **Largura do violino (densidade):** As partes mais largas indicam onde se concentra a maioria dos eventos de interesse. Quanto mais largo o trecho, maior a concentração de unidades com aquele percentual específico daquela lacuna analisada.
+- **Largura do violino (densidade):** As partes mais largas indicam onde se concentra a maioria dos eventos de interesse. Quanto mais largo o trecho, maior a concentração de unidades (ou ESF) com aquele percentual específico daquela lacuna analisada.
 
-- **Distribuição vertical:** O comprimento do violino mostra a variação dos dados. Violinos mais "espichados" indicam maior desigualdade interna naquela região, com algumas unidades apresentando alta prevalência da lacuna e outras com muito baixa prevalência.
+- **Distribuição vertical:** O comprimento do violino mostra a variação dos dados. Violinos mais "espichados" indicam maior desigualdade interna naquela região.
 
-- **Marcações internas:** A linha central representa a mediana, permitindo comparar o desempenho central entre as áreas.
+- **Marcações internas e caixa:** As linhas centrais representam a média (tracejada) e a mediana (contínua), permitindo comparar o desempenho central entre as áreas. A caixa contém todas as observações entre os percentis 25 e 75. Portanto, metade das observações se concentram dentro da caixa.
 
 - **Comparação entre pontos:** Cada ponto individual representa uma unidade de saúde (ou uma ESF). Pontos isolados fora do corpo do violino são outliers (casos atípicos) que estão muito acima ou muito abaixo da média, exigindo análise específica da gestão.
+
+Violinos mais "curtos" e achatados na base do gráfico indicam maior equidade dentro da área e melhor desempenho do indicador de saúde analisado.
             """)
 
 
