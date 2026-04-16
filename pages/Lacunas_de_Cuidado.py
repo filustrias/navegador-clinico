@@ -468,6 +468,7 @@ with tab1:
     MAPA_LAC_COL = get_mapa_lac_col()
 
     # Filtros inline — grupo + lacuna
+    TODAS_GRUPO = "📊 Todas as lacunas do grupo (média)"
     vf1, vf2 = st.columns(2)
     with vf1:
         grupos_disp = ['Todos os grupos'] + get_grupos_ordenados()
@@ -476,18 +477,29 @@ with tab1:
         if grupo_sel == 'Todos os grupos':
             lacs_disp = sorted(MAPA_LAC_COL.keys())
         else:
-            lacs_disp = get_lacunas_por_grupo(grupo_sel)
+            lacs_do_grupo = get_lacunas_por_grupo(grupo_sel)
+            lacs_disp = [TODAS_GRUPO] + lacs_do_grupo
         lac_violin_sel = st.selectbox(
             "🏷️ Lacuna", options=lacs_disp, key="lac_violin_sel",
         )
-    col_v = MAPA_LAC_COL[lac_violin_sel]
 
-    # Texto explicativo da lacuna selecionada
-    info_lac = LACUNAS[lac_violin_sel]
-    st.info(
-        f"**{lac_violin_sel}** — {info_lac['descricao']}\n\n"
-        f"**Regra:** {info_lac['regra']}"
-    )
+    # Modo "todas do grupo": calcular média das lacunas
+    modo_todas_grupo = (lac_violin_sel == TODAS_GRUPO and grupo_sel != 'Todos os grupos')
+
+    if modo_todas_grupo:
+        cols_grupo = [MAPA_LAC_COL[l] for l in lacs_do_grupo]
+        col_v = cols_grupo[0]  # placeholder, será recalculado abaixo
+        st.info(
+            f"**{grupo_sel}** — Média de todas as lacunas deste grupo. "
+            f"Lacunas incluídas: {', '.join(lacs_do_grupo)}."
+        )
+    else:
+        col_v = MAPA_LAC_COL[lac_violin_sel]
+        info_lac = LACUNAS[lac_violin_sel]
+        st.info(
+            f"**{lac_violin_sel}** — {info_lac['descricao']}\n\n"
+            f"**Regra:** {info_lac['regra']}"
+        )
 
     charlson_opts = ['Muito Alto', 'Alto', 'Moderado', 'Baixo']
     charlson_sel = st.multiselect(
@@ -512,11 +524,19 @@ with tab1:
             df_ch = carregar_violin_charlson(ap=ap_v, clinica=cli_v, esf=esf_v,
                                               charlson_cats=ch_v)
 
+    # Se modo "todas do grupo", calcular média das lacunas do grupo
+    if modo_todas_grupo and not df_ch.empty:
+        cols_existentes = [c for c in cols_grupo if c in df_ch.columns]
+        if cols_existentes:
+            col_v = '_media_grupo'
+            df_ch[col_v] = df_ch[cols_existentes].mean(axis=1).round(1)
+
     if df_ch.empty or col_v not in df_ch.columns:
         st.info(f"Sem dados suficientes para os filtros selecionados. "
                 f"(linhas={len(df_ch)}, col={col_v}, "
                 f"ap={ap_v}, cli={cli_v}, esf={esf_v})")
     else:
+        titulo_lac = f"Média — {grupo_sel}" if modo_todas_grupo else lac_violin_sel
         # Drill-down progressivo (sempre violin quando possível):
         # Sem filtro       → violin por AP (cada ponto = clínica)
         # AP filtrada      → violin por clínica (cada ponto = ESF)
@@ -532,7 +552,7 @@ with tab1:
             fig_v = px.strip(
                 df_plot, x="unidade", y="valor", color="unidade",
                 labels={"valor": "% com lacuna", "unidade": "ESF"},
-                title=f"{lac_violin_sel} · ESF selecionada",
+                title=f"{titulo_lac} · ESF selecionada",
                 color_discrete_sequence=px.colors.qualitative.Bold,
                 height=440,
             )
@@ -552,7 +572,7 @@ with tab1:
             fig_v = px.strip(
                 df_plot, x="unidade", y="valor", color="unidade",
                 labels={"valor": "% com lacuna", "unidade": "ESF"},
-                title=f"{lac_violin_sel} · ESFs da clínica",
+                title=f"{titulo_lac} · ESFs da clínica",
                 color_discrete_sequence=px.colors.qualitative.Bold,
                 height=440,
             )
@@ -581,7 +601,7 @@ with tab1:
                 hover_data={"unidade": True, "valor": True, "categoria": False},
                 labels={"valor": "% com lacuna", "categoria": "Clínica",
                         "unidade": "ESF"},
-                title=f"{lac_violin_sel} · % de pacientes com lacuna por Clínica",
+                title=f"{titulo_lac} · % de pacientes com lacuna por Clínica",
                 category_orders={"categoria": cli_ord},
                 color_discrete_sequence=px.colors.qualitative.Bold,
                 height=540,
@@ -617,7 +637,7 @@ with tab1:
                 hover_data={"unidade": True, "valor": True, "categoria": False},
                 labels={"valor": "% com lacuna", "categoria": "Área Programática",
                         "unidade": "Clínica"},
-                title=f"{lac_violin_sel} · % de pacientes com lacuna por Área Programática",
+                title=f"{titulo_lac} · % de pacientes com lacuna por Área Programática",
                 category_orders={"categoria": ap_ord},
                 color_discrete_sequence=px.colors.qualitative.Bold,
                 height=540,
@@ -647,7 +667,7 @@ with tab1:
 
         ch_txt = ', '.join(charlson_sel) if charlson_sel else 'todas as categorias'
         st.caption(
-            f"Lacuna: **{lac_violin_sel}** · "
+            f"Lacuna: **{titulo_lac}** · "
             f"Carga de morbidade: **{ch_txt}** · "
             f"Cada ponto = uma {nivel_txt}."
         )

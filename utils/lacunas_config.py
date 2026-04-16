@@ -17,10 +17,8 @@ GRUPOS_LACUNAS = {
     "Doença Renal Crônica (IRC)":        3,
     "Fibrilação Atrial (FA)":            4,
     "Diabetes Mellitus (DM)":            5,
-    "Exames Laboratoriais":              6,
-    "Antropometria":                     7,
-    "Hipertensão (HAS)":                 8,
-    "Rastreio":                          9,
+    "Hipertensão (HAS)":                 6,
+    "Rastreio":                          7,
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -270,10 +268,10 @@ LACUNAS = {
         "regra": "DM ativa + sem solicitação de microalbuminúria nos últimos 365 dias.",
     },
 
-    # ── Grupo 6 — Exames Laboratoriais ───────────────────────
+    # ── Lacunas compartilhadas HAS/DM (pertencem a ambos os grupos) ──
 
     "HAS/DM sem creatinina": {
-        "grupo": "Exames Laboratoriais",
+        "grupo": ["Diabetes Mellitus (DM)", "Hipertensão (HAS)"],
         "coluna_fato": "lacuna_creatinina_HAS_DM",
         "alias_pct": "pct_sem_creatinina",
         "denominador_sql": "COUNTIF(HAS IS NOT NULL OR DM IS NOT NULL)",
@@ -281,7 +279,7 @@ LACUNAS = {
         "regra": "HAS ou DM ativa + sem creatinina solicitada nos últimos 365 dias.",
     },
     "HAS/DM sem perfil lipídico": {
-        "grupo": "Exames Laboratoriais",
+        "grupo": ["Diabetes Mellitus (DM)", "Hipertensão (HAS)"],
         "coluna_fato": "lacuna_colesterol_HAS_DM",
         "alias_pct": "pct_sem_colesterol",
         "denominador_sql": "COUNTIF(HAS IS NOT NULL OR DM IS NOT NULL)",
@@ -289,7 +287,7 @@ LACUNAS = {
         "regra": "HAS ou DM ativa + sem colesterol/HDL/LDL/TG solicitados nos últimos 365 dias.",
     },
     "HAS/DM sem EAS (urina)": {
-        "grupo": "Exames Laboratoriais",
+        "grupo": ["Diabetes Mellitus (DM)", "Hipertensão (HAS)"],
         "coluna_fato": "lacuna_eas_HAS_DM",
         "alias_pct": "pct_sem_eas",
         "denominador_sql": "COUNTIF(HAS IS NOT NULL OR DM IS NOT NULL)",
@@ -297,18 +295,15 @@ LACUNAS = {
         "regra": "HAS ou DM ativa + sem exame de urina solicitado nos últimos 365 dias.",
     },
     "HAS/DM sem ECG": {
-        "grupo": "Exames Laboratoriais",
+        "grupo": ["Diabetes Mellitus (DM)", "Hipertensão (HAS)"],
         "coluna_fato": "lacuna_ecg_HAS_DM",
         "alias_pct": "pct_sem_ecg",
         "denominador_sql": "COUNTIF(HAS IS NOT NULL OR DM IS NOT NULL)",
         "descricao": "Prevalência de pacientes hipertensos ou diabéticos para os quais não foi solicitado eletrocardiograma nos últimos 365 dias.",
         "regra": "HAS ou DM ativa + sem ECG solicitado nos últimos 365 dias.",
     },
-
-    # ── Grupo 7 — Antropometria ──────────────────────────────
-
     "HAS/DM sem IMC calculável": {
-        "grupo": "Antropometria",
+        "grupo": ["Diabetes Mellitus (DM)", "Hipertensão (HAS)"],
         "coluna_fato": "lacuna_IMC_HAS_DM",
         "alias_pct": "pct_sem_IMC",
         "denominador_sql": "COUNTIF(HAS IS NOT NULL OR DM IS NOT NULL)",
@@ -316,7 +311,7 @@ LACUNAS = {
         "regra": "HAS ou DM ativa + altura ou peso ausentes no cadastro.",
     },
 
-    # ── Grupo 8 — Hipertensão (HAS) ────────────────────────────
+    # ── Grupo 6 — Hipertensão (HAS) ────────────────────────────
 
     "HAS sem PA em 180 dias": {
         "grupo": "Hipertensão (HAS)",
@@ -395,8 +390,17 @@ def get_grupos_ordenados() -> list:
 
 
 def get_lacunas_por_grupo(grupo: str) -> list:
-    """Retorna nomes das lacunas de um grupo específico."""
-    return [nome for nome, info in LACUNAS.items() if info["grupo"] == grupo]
+    """Retorna nomes das lacunas de um grupo específico.
+    Suporta grupo como string ou lista de strings."""
+    result = []
+    for nome, info in LACUNAS.items():
+        g = info["grupo"]
+        if isinstance(g, list):
+            if grupo in g:
+                result.append(nome)
+        elif g == grupo:
+            result.append(nome)
+    return result
 
 
 def gerar_countif_sql() -> str:
