@@ -390,7 +390,7 @@ def carregar_pacientes_has(ap, clinica, esf, limite=500,
             IF(dislipidemia IS NOT NULL,     'Dislipidemia',        NULL),
             IF(tabaco IS NOT NULL,           'Tabagismo',           NULL),
             IF(alcool IS NOT NULL,           'Álcool',              NULL),
-            IF(tireoide IS NOT NULL,         'Tireoide',            NULL),
+            -- IF(tireoide IS NOT NULL,         'Tireoide',            NULL),
             IF(reumato IS NOT NULL,          'Reumatológica',       NULL),
             IF(metastasis IS NOT NULL,       'Metástase',           NULL),
             IF(neoplasia_mama IS NOT NULL

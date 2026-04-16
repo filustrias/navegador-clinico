@@ -295,7 +295,7 @@ MORBIDADES_MAP = {
     'Pré-diabetes': 'pre_DM',
     'Dislipidemia': 'dislipidemia',
     'Obesidade': 'obesidade_consolidada',
-    'Doença da Tireoide': 'tireoide',
+    # 'Doença da Tireoide': 'tireoide',  # coluna removida temporariamente
     
     # === RENAIS (1) ===
     'Insuficiência Renal Crônica': 'IRC',
