@@ -19,8 +19,8 @@ GRUPOS_LACUNAS = {
     "Diabetes Mellitus (DM)":            5,
     "Exames Laboratoriais":              6,
     "Antropometria":                     7,
-    "Controle de PA":                    8,
-    "Rastreio de DM":                    9,
+    "Hipertensão (HAS)":                 8,
+    "Rastreio":                          9,
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -316,18 +316,10 @@ LACUNAS = {
         "regra": "HAS ou DM ativa + altura ou peso ausentes no cadastro.",
     },
 
-    # ── Grupo 8 — Controle de PA ─────────────────────────────
+    # ── Grupo 8 — Hipertensão (HAS) ────────────────────────────
 
-    "Adulto sem rastreio de PA": {
-        "grupo": "Controle de PA",
-        "coluna_fato": "lacuna_rastreio_PA_adulto",
-        "alias_pct": "pct_rastreio_PA_adulto",
-        "denominador_sql": "COUNTIF(idade >= 18 AND HAS IS NULL)",
-        "descricao": "Prevalência de adultos (≥18 anos) sem hipertensão que não tiveram pressão arterial aferida nos últimos 365 dias.",
-        "regra": "Idade ≥18 anos + sem HAS + última PA há >365 dias (ou ausente).",
-    },
     "HAS sem PA em 180 dias": {
-        "grupo": "Controle de PA",
+        "grupo": "Hipertensão (HAS)",
         "coluna_fato": "lacuna_PA_hipertenso_180d",
         "alias_pct": "pct_HAS_sem_PA_180d",
         "denominador_sql": "COUNTIF(HAS IS NOT NULL)",
@@ -335,7 +327,7 @@ LACUNAS = {
         "regra": "HAS ativa + última PA há >180 dias.",
     },
     "HAS descontrolada (<80 anos)": {
-        "grupo": "Controle de PA",
+        "grupo": "Hipertensão (HAS)",
         "coluna_fato": "lacuna_HAS_descontrolado_menor80",
         "alias_pct": "pct_HAS_desc_menor80",
         "denominador_sql": "COUNTIF(HAS IS NOT NULL AND idade < 80 AND dias_desde_ultima_pa <= 180)",
@@ -343,7 +335,7 @@ LACUNAS = {
         "regra": "HAS ativa + idade <80 anos + PA recente (≤180 dias) com PAS ≥140 ou PAD ≥90 mmHg.",
     },
     "HAS descontrolada (≥80 anos)": {
-        "grupo": "Controle de PA",
+        "grupo": "Hipertensão (HAS)",
         "coluna_fato": "lacuna_HAS_descontrolado_80mais",
         "alias_pct": "pct_HAS_desc_80mais",
         "denominador_sql": "COUNTIF(HAS IS NOT NULL AND idade >= 80 AND dias_desde_ultima_pa <= 180)",
@@ -351,7 +343,7 @@ LACUNAS = {
         "regra": "HAS ativa + idade ≥80 anos + PA recente (≤180 dias) com PAS ≥150 ou PAD ≥90 mmHg.",
     },
     "DM + HAS com PA acima da meta": {
-        "grupo": "Controle de PA",
+        "grupo": "Hipertensão (HAS)",
         "coluna_fato": "lacuna_DM_HAS_PA_descontrolada",
         "alias_pct": "pct_DM_HAS_PA_desc",
         "denominador_sql": "COUNTIF(DM IS NOT NULL AND HAS IS NOT NULL AND dias_desde_ultima_pa <= 180)",
@@ -359,10 +351,18 @@ LACUNAS = {
         "regra": "DM e HAS ativas + PA recente (≤180 dias) com PAS >135 ou PAD >80 mmHg.",
     },
 
-    # ── Grupo 9 — Rastreio de DM ─────────────────────────────
+    # ── Grupo 9 — Rastreio ───────────────────────────────────
 
+    "Adulto sem rastreio de PA": {
+        "grupo": "Rastreio",
+        "coluna_fato": "lacuna_rastreio_PA_adulto",
+        "alias_pct": "pct_rastreio_PA_adulto",
+        "denominador_sql": "COUNTIF(idade >= 18 AND HAS IS NULL)",
+        "descricao": "Prevalência de adultos (≥18 anos) sem hipertensão que não tiveram pressão arterial aferida nos últimos 365 dias.",
+        "regra": "Idade ≥18 anos + sem HAS + última PA há >365 dias (ou ausente).",
+    },
     "Hipertenso sem rastreio de DM": {
-        "grupo": "Rastreio de DM",
+        "grupo": "Rastreio",
         "coluna_fato": "lacuna_rastreio_DM_hipertenso",
         "alias_pct": "pct_rastreio_DM_hipertenso",
         "denominador_sql": "COUNTIF(HAS IS NOT NULL AND DM IS NULL)",
@@ -370,7 +370,7 @@ LACUNAS = {
         "regra": "HAS ativa + sem DM + glicemia ou HbA1c ausentes ou há >365 dias.",
     },
     "Adulto ≥45a sem rastreio de DM": {
-        "grupo": "Rastreio de DM",
+        "grupo": "Rastreio",
         "coluna_fato": "lacuna_rastreio_DM_45mais",
         "alias_pct": "pct_rastreio_DM_45mais",
         "denominador_sql": "COUNTIF(idade >= 45 AND DM IS NULL)",
