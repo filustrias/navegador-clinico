@@ -193,6 +193,11 @@ def carregar_sumario_dm(ap, clinica, esf):
         COUNTIF(DM IS NOT NULL AND dm_complicacao_cv IS NOT NULL)         AS n_dm_complicacao_cv,
         -- Prescrições de antidiabéticos
         COUNTIF(DM IS NOT NULL AND principio_BIGUANIDA IS NOT NULL)               AS n_rx_biguanida,
+        COUNTIF(DM IS NOT NULL AND principio_BIGUANIDA_XR IS NOT NULL)            AS n_rx_biguanida_xr,
+        -- Qualquer metformina (regular OR XR)
+        COUNTIF(DM IS NOT NULL
+                AND (principio_BIGUANIDA IS NOT NULL
+                     OR principio_BIGUANIDA_XR IS NOT NULL))                      AS n_rx_biguanida_qualquer,
         COUNTIF(DM IS NOT NULL AND principio_SULFONILUREIA IS NOT NULL)            AS n_rx_sulfonilureia,
         COUNTIF(DM IS NOT NULL AND principio_iSGLT2 IS NOT NULL)                  AS n_rx_isglt2,
         COUNTIF(DM IS NOT NULL AND principio_iDPP4 IS NOT NULL)                   AS n_rx_idpp4,
@@ -205,12 +210,14 @@ def carregar_sumario_dm(ap, clinica, esf):
         COUNTIF(DM IS NOT NULL AND principio_INSULINA_BASAL_ANALOGICA IS NOT NULL) AS n_rx_ins_basal_analogica,
         COUNTIF(DM IS NOT NULL AND principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL) AS n_rx_ins_prandial_analogica,
         COUNTIF(DM IS NOT NULL AND principio_INSULINA_MISTA IS NOT NULL)          AS n_rx_ins_mista,
-        -- Metformina > 2000mg
-        COUNTIF(DM IS NOT NULL AND principio_BIGUANIDA IS NOT NULL
-                AND dose_BIGUANIDA_mg_dia > 2000)                                AS n_rx_metformina_alta,
+        -- Metformina acima da dose máxima (totaliza regular + XR >2550 mg/dia)
+        COUNTIF(DM IS NOT NULL AND alerta_dose_maxima_biguanida = TRUE)           AS n_rx_metformina_total_alta,
+        -- Metformina XR acima da dose máxima (XR >2000 mg/dia)
+        COUNTIF(DM IS NOT NULL AND alerta_dose_maxima_biguanida_xr = TRUE)        AS n_rx_metformina_xr_alta,
         -- Sulfonilureia como único antidiabético (sem metformina, sem outros orais, sem insulina)
         COUNTIF(DM IS NOT NULL AND principio_SULFONILUREIA IS NOT NULL
                 AND principio_BIGUANIDA IS NULL
+                AND principio_BIGUANIDA_XR IS NULL
                 AND principio_iSGLT2 IS NULL
                 AND principio_iDPP4 IS NULL
                 AND principio_GLP1 IS NULL
@@ -467,6 +474,7 @@ def carregar_pacientes_dm(ap, clinica, esf, limite=500,
         -- Medicamentos DM
         ARRAY_TO_STRING(ARRAY(SELECT m FROM UNNEST([
             IF(principio_BIGUANIDA IS NOT NULL,                principio_BIGUANIDA, NULL),
+            IF(principio_BIGUANIDA_XR IS NOT NULL,             CONCAT(principio_BIGUANIDA_XR, ' XR'), NULL),
             IF(principio_SULFONILUREIA IS NOT NULL,            principio_SULFONILUREIA, NULL),
             IF(principio_iSGLT2 IS NOT NULL,                  principio_iSGLT2, NULL),
             IF(principio_iDPP4 IS NOT NULL,                   principio_iDPP4, NULL),
@@ -482,6 +490,10 @@ def carregar_pacientes_dm(ap, clinica, esf, limite=500,
         ]) AS m WHERE m IS NOT NULL), ' · ') AS meds_dm,
 
         dose_BIGUANIDA_mg_dia,
+        dose_BIGUANIDA_XR_mg_dia,
+        dose_BIGUANIDA_total_mg_dia,
+        alerta_dose_maxima_biguanida,
+        alerta_dose_maxima_biguanida_xr,
         dose_NPH_ui_kg,
         n_classes_antidiabeticos,
         intensidade_tratamento_dm
@@ -872,7 +884,8 @@ with tab_meds:
 
     # Antidiabéticos orais
     orais = [
-        ('Biguanida (Metformina)',            'n_rx_biguanida'),
+        ('Biguanida (Metformina regular)',    'n_rx_biguanida'),
+        ('Biguanida XR (Metformina XR)',      'n_rx_biguanida_xr'),
         ('Sulfonilureia',                     'n_rx_sulfonilureia'),
         ('iSGLT2 (Gliflozina)',              'n_rx_isglt2'),
         ('iDPP4 (Gliptina)',                 'n_rx_idpp4'),
@@ -901,10 +914,12 @@ with tab_meds:
                           f"{_p(n, n_dm):.0f}% dos diabéticos")
 
     # Alertas em caixinhas
-    n_sulfo_total = int(sumario.get('n_rx_sulfonilureia', 0) or 0)
-    n_sulfo_mono  = int(sumario.get('n_rx_sulfo_monoterapia', 0) or 0)
-    n_metf_alta   = int(sumario.get('n_rx_metformina_alta', 0) or 0)
-    n_metf_total  = int(sumario.get('n_rx_biguanida', 0) or 0)
+    n_sulfo_total       = int(sumario.get('n_rx_sulfonilureia', 0) or 0)
+    n_sulfo_mono        = int(sumario.get('n_rx_sulfo_monoterapia', 0) or 0)
+    n_metf_total_alta   = int(sumario.get('n_rx_metformina_total_alta', 0) or 0)
+    n_metf_xr_alta      = int(sumario.get('n_rx_metformina_xr_alta', 0) or 0)
+    n_metf_qualquer     = int(sumario.get('n_rx_biguanida_qualquer', 0) or 0)
+    n_metf_xr_total     = int(sumario.get('n_rx_biguanida_xr', 0) or 0)
 
     al1, al2 = st.columns(2)
     with al1:
@@ -920,16 +935,33 @@ with tab_meds:
                 st.success("✅ Nenhum paciente em monoterapia com sulfonilureia.")
     with al2:
         with st.container(border=True):
-            if n_metf_total > 0 and n_metf_alta > 0:
-                st.warning(
-                    f"⚠️ **Metformina > 2.000 mg/dia:** "
-                    f"**{n_metf_alta:,}** pacientes "
-                    f"({_p(n_metf_alta, n_metf_total):.0f}% dos que usam metformina). "
-                    f"Doses acima de 2.000 mg/dia aumentam efeitos gastrointestinais "
-                    f"sem ganho proporcional de eficácia."
+            if n_metf_total_alta > 0 or n_metf_xr_alta > 0:
+                linhas = []
+                if n_metf_total_alta > 0 and n_metf_qualquer > 0:
+                    pct = _p(n_metf_total_alta, n_metf_qualquer)
+                    linhas.append(
+                        f"⚠️ **Metformina (total) > 2.550 mg/dia:** "
+                        f"**{n_metf_total_alta:,}** pacientes "
+                        f"({pct:.0f}% dos que usam metformina)."
+                    )
+                if n_metf_xr_alta > 0 and n_metf_xr_total > 0:
+                    pct_xr = _p(n_metf_xr_alta, n_metf_xr_total)
+                    linhas.append(
+                        f"⚠️ **Metformina XR > 2.000 mg/dia:** "
+                        f"**{n_metf_xr_alta:,}** pacientes "
+                        f"({pct_xr:.0f}% dos que usam metformina XR)."
+                    )
+                linhas.append(
+                    "Doses acima dos limites aumentam efeitos gastrointestinais "
+                    "sem ganho proporcional de eficácia. "
+                    "Limite XR = 2.000 mg/dia; limite regular + XR = 2.550 mg/dia."
                 )
+                st.warning("\n\n".join(linhas))
             else:
-                st.success("✅ Nenhum paciente com metformina acima de 2.000 mg/dia.")
+                st.success(
+                    "✅ Nenhum paciente com metformina acima do limite "
+                    "(regular+XR >2.550 mg/dia ou XR >2.000 mg/dia)."
+                )
 
     st.markdown("---")
     st.markdown("**💉 Insulinas**")
@@ -1369,6 +1401,20 @@ with tab5:
         df_exib['dose_BIGUANIDA_mg_dia'] = df_exib['dose_BIGUANIDA_mg_dia'].apply(
             lambda v: f"{int(v)}" if pd.notna(v) and v > 0 else "—"
         )
+        if 'dose_BIGUANIDA_XR_mg_dia' in df_exib.columns:
+            df_exib['dose_BIGUANIDA_XR_mg_dia'] = df_exib['dose_BIGUANIDA_XR_mg_dia'].apply(
+                lambda v: f"{int(v)}" if pd.notna(v) and v > 0 else "—"
+            )
+        if 'dose_BIGUANIDA_total_mg_dia' in df_exib.columns:
+            def _fmt_total(row):
+                v = row.get('dose_BIGUANIDA_total_mg_dia')
+                if pd.isna(v) or v <= 0:
+                    return "—"
+                txt = f"{int(v)}"
+                if row.get('alerta_dose_maxima_biguanida') in [True, 1, '1', 'True']:
+                    txt = f"⚠️ {txt}"
+                return txt
+            df_exib['dose_BIGUANIDA_total_mg_dia'] = df_exib.apply(_fmt_total, axis=1)
 
         RENAME = {
             'nome':                      'Paciente',
@@ -1393,7 +1439,9 @@ with tab5:
             'total_medicamentos_cronicos': 'N° Medicamentos',
             'medicamentos':              'Medicamentos',
             'meds_dm':                   'Antidiabéticos',
-            'dose_BIGUANIDA_mg_dia':     'Metformina (mg)',
+            'dose_BIGUANIDA_mg_dia':     'Metformina regular (mg)',
+            'dose_BIGUANIDA_XR_mg_dia':  'Metformina XR (mg)',
+            'dose_BIGUANIDA_total_mg_dia': 'Metformina total (mg)',
             'dose_NPH_ui_kg':           'NPH (UI/kg)',
             'n_classes_antidiabeticos':  'N° Classes DM',
             'intensidade_tratamento_dm': 'Intensidade DM',
@@ -1419,7 +1467,9 @@ with tab5:
                 'Medicamentos':        st.column_config.TextColumn('Medicamentos',  width='large'),
                 'Antidiabéticos':      st.column_config.TextColumn('Antidiabéticos', width='large'),
                 'Clínica':             st.column_config.TextColumn('Clínica',       width='medium'),
-                'Metformina (mg)':     st.column_config.TextColumn('Metformina (mg)', width='small'),
+                'Metformina regular (mg)': st.column_config.TextColumn('Metf. regular (mg)', width='small'),
+                'Metformina XR (mg)':      st.column_config.TextColumn('Metf. XR (mg)',      width='small'),
+                'Metformina total (mg)':   st.column_config.TextColumn('Metf. total (mg)',   width='small'),
                 'NPH (UI/kg)':         st.column_config.TextColumn('NPH (UI/kg)',  width='small'),
                 'N° Classes DM':       st.column_config.NumberColumn('N° Classes DM', width='small'),
                 'Intensidade DM':      st.column_config.TextColumn('Intensidade DM', width='medium'),
