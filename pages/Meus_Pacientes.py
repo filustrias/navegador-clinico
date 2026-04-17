@@ -1379,15 +1379,19 @@ def create_patient_card(patient_data):
                         if falta_imc:
                             st.markdown("**Peso e altura:**")
                             ic1, ic2 = st.columns(2)
+                            peso_default = float(pac_peso) if pd.notna(pac_peso) and pac_peso > 0 else 70.0
+                            peso_clamp = max(30.0, min(300.0, peso_default))
+                            alt_raw = int(float(pac_altura)*100) if pd.notna(pac_altura) and pac_altura > 0 else 165
+                            alt_clamp = max(100, min(230, alt_raw))
                             with ic1:
                                 input_peso = st.number_input(
-                                    "Peso (kg)", min_value=30.0, max_value=200.0,
-                                    value=float(pac_peso) if pd.notna(pac_peso) else 70.0,
+                                    "Peso (kg)", min_value=30.0, max_value=300.0,
+                                    value=peso_clamp,
                                     step=0.1, format="%.1f", key=f"rcv_peso_{cpk}")
                             with ic2:
                                 input_altura = st.number_input(
-                                    "Altura (cm)", min_value=100, max_value=220,
-                                    value=int(float(pac_altura)*100) if pd.notna(pac_altura) and pac_altura > 0 else 165,
+                                    "Altura (cm)", min_value=100, max_value=230,
+                                    value=alt_clamp,
                                     step=1, key=f"rcv_alt_{cpk}")
                             input_imc = round(input_peso / ((input_altura/100)**2), 1)
                             st.caption(f"IMC calculado: **{input_imc:.1f} kg/m²**")
