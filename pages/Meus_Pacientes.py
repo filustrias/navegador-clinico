@@ -956,12 +956,9 @@ def create_patient_card(patient_data):
     nome = patient_data.get('nome', 'Nome não informado')
     idade = patient_data.get('idade', 'N/A')
 
-    # Contar morbidades da lista (string separada por vírgula)
-    morbidades_lista_raw = str(patient_data.get('morbidades_lista', '') or '')
-    if morbidades_lista_raw.strip():
-        n_morbidades = len([m.strip() for m in morbidades_lista_raw.split(',') if m.strip()])
-    else:
-        n_morbidades = 0
+    # Contar morbidades das colunas booleanas (mesma lógica de extrair_morbidades_paciente)
+    lista_morb = extrair_morbidades_paciente(patient_data)
+    n_morbidades = len(lista_morb)
 
     # Contar medicamentos da lista (string separada por ;)
     meds_lista_raw = str(patient_data.get('medicamentos_cronicos', '') or '')
@@ -1041,7 +1038,7 @@ def create_patient_card(patient_data):
         # COLUNA DIREITA - Morbidades e Medicamentos
         with col_direita:
             st.markdown("### 🦠 Morbidades")
-            n_morb = int(n_morbidades) if not pd.isna(n_morbidades) else 0
+            n_morb = n_morbidades
             if n_morb == 0:
                 st.write("**Nenhuma morbidade registrada**")
             else:
@@ -1159,19 +1156,8 @@ def create_patient_card(patient_data):
                     componentes.append(f"polifarmácia ({int(p_poli)} pts)")
 
                 # Listar morbidades do paciente
-                morbidades_str = patient_data.get('morbidades_lista', '') or ''
-                if not morbidades_str:
-                    # fallback: montar a partir dos campos individuais
-                    morbs = []
-                    for campo, nome_m in [('HAS','HAS'),('DM','DM'),('CI','CI'),('ICC','ICC'),
-                                          ('IRC','IRC'),('stroke','AVC'),('COPD','DPOC'),
-                                          ('arritmia','Arritmia'),('dementia','Demência'),
-                                          ('depre_ansiedade','Depressão/Ans.'),('psicoses','Psicose'),
-                                          ('obesidade_consolidada','Obesidade'),('HIV','HIV')]:
-                        v = patient_data.get(campo)
-                        if pd.notna(v) and v:
-                            morbs.append(nome_m)
-                    morbidades_str = ', '.join(morbs)
+                morbs_pac = extrair_morbidades_paciente(patient_data)
+                morbidades_str = ', '.join(morbs_pac) if morbs_pac else ''
 
                 st.markdown("---")
                 st.markdown("**Informações que geraram a pontuação:**")
