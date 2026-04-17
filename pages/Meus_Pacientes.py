@@ -615,9 +615,19 @@ def load_patient_data_paginated(
         where_clauses.append(f"({' OR '.join(lac_conditions)})")
 
     # Filtro de risco cardiovascular (WHO simplificada — padrão PAHO/HEARTS)
+    # "Não calculado" = elegível (40-80a) mas sem categoria (dados insuficientes)
     if rcv_filtro and len(rcv_filtro) > 0:
-        cats = ", ".join(f"'{c}'" for c in rcv_filtro)
-        where_clauses.append(f"who_categoria_risco_simplificada IN ({cats})")
+        rcv_conds = []
+        cats_validas = [c for c in rcv_filtro if c != "Não calculado"]
+        if cats_validas:
+            cats_sql = ", ".join(f"'{c}'" for c in cats_validas)
+            rcv_conds.append(f"who_categoria_risco_simplificada IN ({cats_sql})")
+        if "Não calculado" in rcv_filtro:
+            rcv_conds.append(
+                "(who_categoria_risco_simplificada IS NULL "
+                "AND idade BETWEEN 40 AND 80)"
+            )
+        where_clauses.append(f"({' OR '.join(rcv_conds)})")
 
     where_sql = " AND ".join(where_clauses)
     order_dir = "DESC" if ordem == "desc" else "ASC"
@@ -889,9 +899,19 @@ def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idad
         where_clauses.append(f"({' OR '.join(lac_conditions)})")
 
     # Filtro de risco cardiovascular (WHO simplificada — padrão PAHO/HEARTS)
+    # "Não calculado" = elegível (40-80a) mas sem categoria (dados insuficientes)
     if rcv_filtro and len(rcv_filtro) > 0:
-        cats = ", ".join(f"'{c}'" for c in rcv_filtro)
-        where_clauses.append(f"who_categoria_risco_simplificada IN ({cats})")
+        rcv_conds = []
+        cats_validas = [c for c in rcv_filtro if c != "Não calculado"]
+        if cats_validas:
+            cats_sql = ", ".join(f"'{c}'" for c in cats_validas)
+            rcv_conds.append(f"who_categoria_risco_simplificada IN ({cats_sql})")
+        if "Não calculado" in rcv_filtro:
+            rcv_conds.append(
+                "(who_categoria_risco_simplificada IS NULL "
+                "AND idade BETWEEN 40 AND 80)"
+            )
+        where_clauses.append(f"({' OR '.join(rcv_conds)})")
 
     where_sql = " AND ".join(where_clauses)
 
@@ -2079,9 +2099,10 @@ with fl4:
 with fl_rcv:
     rcv_filtro = st.multiselect(
         "❤️ Risco Cardiovascular",
-        options=["Baixo", "Moderado", "Alto", "Muito alto", "Crítico"],
+        options=["Baixo", "Moderado", "Alto", "Muito alto", "Crítico", "Não calculado"],
         default=[],
         placeholder="Todos",
+        help="'Não calculado' = pacientes elegíveis (40-80 anos) sem dados suficientes para o cálculo.",
         key="rcv_filtro"
     )
 with fl5a:
