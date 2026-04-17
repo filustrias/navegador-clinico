@@ -1260,78 +1260,68 @@ def create_patient_card(patient_data):
                     st.markdown("---")
                     st.markdown("**Complete as informações para calcular (ou recalcular) o risco:**")
 
-                    rc1, rc2 = st.columns(2)
-                    with rc1:
-                        if not pd.notna(pac_pas):
-                            input_pas = st.number_input(
-                                "Pressão arterial sistólica (mmHg)",
-                                min_value=80, max_value=250, value=130,
-                                key=f"rcv_pas_{cpk}"
-                            )
-                        else:
-                            input_pas = int(pac_pas)
+                    # Valores que vêm do banco (usados se disponíveis)
+                    input_pas = int(pac_pas) if pd.notna(pac_pas) else None
+                    input_col = int(pac_col) if pd.notna(pac_col) else None
+                    input_imc = float(pac_imc) if pd.notna(pac_imc) else None
+                    input_tabaco = "Sim" if pac_tabaco_registrado else None
 
-                        if not pd.notna(pac_col):
-                            input_col = st.number_input(
-                                "Colesterol total (mg/dL) — 0 se indisponível",
-                                min_value=0, max_value=500, value=0,
-                                key=f"rcv_col_{cpk}"
-                            )
-                        else:
-                            input_col = int(pac_col)
+                    # Campos apenas para o que falta
+                    if not pd.notna(pac_pas):
+                        input_pas = st.number_input(
+                            "Pressão arterial sistólica (mmHg)",
+                            min_value=80, max_value=250, value=130, step=1,
+                            key=f"rcv_pas_{cpk}"
+                        )
 
-                        if not pd.notna(pac_imc):
-                            st.markdown("**IMC — informe peso e altura:**")
-                            ic1, ic2 = st.columns(2)
-                            with ic1:
-                                input_peso = st.number_input(
-                                    "Peso (kg)", min_value=30.0, max_value=200.0,
-                                    value=float(pac_peso) if pd.notna(pac_peso) else 70.0,
-                                    step=0.5, key=f"rcv_peso_{cpk}"
-                                )
-                            with ic2:
-                                input_altura = st.number_input(
-                                    "Altura (cm)", min_value=100, max_value=220,
-                                    value=int(float(pac_altura) * 100) if pd.notna(pac_altura) and pac_altura > 0 else 165,
-                                    key=f"rcv_alt_{cpk}"
-                                )
-                            input_imc = round(input_peso / ((input_altura / 100) ** 2), 1)
-                            st.caption(f"IMC calculado: {input_imc:.1f} kg/m²")
-                        else:
-                            input_imc = float(pac_imc)
+                    if not pd.notna(pac_col):
+                        input_col = st.number_input(
+                            "Colesterol total (mg/dL) — deixe 0 se não souber",
+                            min_value=0, max_value=500, value=0, step=1,
+                            key=f"rcv_col_{cpk}"
+                        )
 
-                    with rc2:
-                        if pac_tabaco_desconhecido:
-                            st.warning(
-                                f"Não temos certeza se {genero_pronome.lower()} fuma ou não."
+                    if not pd.notna(pac_imc):
+                        st.markdown("**Peso e altura (para calcular IMC):**")
+                        ic1, ic2 = st.columns(2)
+                        with ic1:
+                            input_peso = st.number_input(
+                                "Peso (kg)", min_value=30.0, max_value=200.0,
+                                value=float(pac_peso) if pd.notna(pac_peso) else 70.0,
+                                step=0.1, format="%.1f",
+                                key=f"rcv_peso_{cpk}"
                             )
-                            input_tabaco = st.radio(
-                                f"{genero_pronome} é tabagista?",
-                                options=["Não", "Sim"],
-                                index=0,
-                                key=f"rcv_tab_{cpk}",
-                                horizontal=True
+                        with ic2:
+                            input_altura = st.number_input(
+                                "Altura (cm)", min_value=100, max_value=220,
+                                value=int(float(pac_altura) * 100) if pd.notna(pac_altura) and pac_altura > 0 else 165,
+                                step=1,
+                                key=f"rcv_alt_{cpk}"
                             )
-                        else:
-                            input_tabaco = "Sim"  # tabaco registrado = fumante
+                        input_imc = round(input_peso / ((input_altura / 100) ** 2), 1)
+                        st.caption(f"IMC calculado: **{input_imc:.1f} kg/m²**")
 
-                        input_dm = st.radio(
-                            "Diabetes mellitus?",
-                            options=["Sim", "Não"],
-                            index=0 if pac_dm else 1,
-                            key=f"rcv_dm_{cpk}",
+                    if pac_tabaco_desconhecido:
+                        st.warning(
+                            f"Não temos certeza se {genero_pronome.lower()} fuma ou não."
+                        )
+                        input_tabaco = st.radio(
+                            f"{genero_pronome} é tabagista?",
+                            options=["Não", "Sim"],
+                            index=0,
+                            key=f"rcv_tab_{cpk}",
                             horizontal=True
                         )
 
                     if st.button("🧮 Calcular risco cardiovascular", key=f"rcv_btn_{cpk}", type="primary"):
                         genero_c = pac_genero.lower() if pac_genero else ''
-                        dm_c = (input_dm == "Sim")
-                        tab_c = (input_tabaco == "Sim")
+                        tab_c = (input_tabaco == "Sim") if input_tabaco else False
+                        col_val = input_col if input_col and input_col > 0 else None
 
                         resultado = None
-                        if input_col > 0:
-                            resultado = calcular_who_lab(genero_c, pac_idade, input_pas, input_col, dm_c, tab_c)
-                        if resultado is None and input_imc > 0:
+                        if col_val:
+                            resultado = calcular_who_lab(genero_c, pac_idade, input_pas, col_val, pac_dm, tab_c)
+                        if resultado is None and input_imc and input_imc > 0:
                             resultado = calcular_who_nonlab(genero_c, pac_idade, input_pas, input_imc, tab_c)
 
                         if resultado:
@@ -1339,7 +1329,7 @@ def create_patient_card(patient_data):
                             mod_txt = "Lab-based" if resultado['modelo'] == 'lab' else "Non-lab"
                             _mostrar_resultado_rcv(resultado['risco_pct'], resultado['categoria'], mod_txt, recalc=recalc)
                         else:
-                            st.error("❌ Não foi possível calcular. Verifique se PAS e IMC estão preenchidos.")
+                            st.error("❌ Não foi possível calcular. Verifique se PAS e peso/altura estão preenchidos.")
             
 
         
