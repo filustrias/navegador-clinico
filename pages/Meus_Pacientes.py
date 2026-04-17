@@ -1002,7 +1002,15 @@ def create_patient_card(patient_data):
         acb_icone = "🔴" if acb_int >= 3 else "🟠" if acb_int >= 1 else "🟢"
         acb_texto = f" | {acb_icone} ACB {acb_int}"
 
-    titulo_card = f"👤 **{nome}** - {idade} anos | 🏥 {morbidades_texto} | 💊 {medicamentos_texto}{acb_texto} | ⚠️ {lacunas_texto}"
+    # Risco CV para o cabeçalho
+    who_risco_hdr = patient_data.get('who_risco_cvd_pct')
+    who_cat_hdr = patient_data.get('who_categoria_risco')
+    if pd.notna(who_risco_hdr) and who_cat_hdr and who_cat_hdr != 'não calculável':
+        rcv_texto = f" | ❤️ RCV {who_cat_hdr}"
+    else:
+        rcv_texto = " | ❤️ RCV não calculado"
+
+    titulo_card = f"👤 **{nome}** - {idade} anos | 🏥 {morbidades_texto} | 💊 {medicamentos_texto}{acb_texto}{rcv_texto} | ⚠️ {lacunas_texto}"
     
     with st.expander(titulo_card, expanded=False):
         
@@ -1187,7 +1195,8 @@ def create_patient_card(patient_data):
             pac_col = patient_data.get('colesterol_total')
             pac_imc = patient_data.get('IMC')
             pac_dm = pd.notna(patient_data.get('DM'))
-            pac_tabaco = pd.notna(patient_data.get('tabaco'))
+            pac_tabaco_registrado = pd.notna(patient_data.get('tabaco'))  # TRUE = fumante confirmado
+            pac_tabaco_desconhecido = not pac_tabaco_registrado  # NULL = informação insuficiente
 
             if pd.notna(who_risco) and who_cat and who_cat != 'não calculável':
                 # Risco calculado — mostrar resultado
@@ -1210,7 +1219,7 @@ def create_patient_card(patient_data):
                 if pd.notna(pac_col): dados_calc.append(f"Colesterol: {int(pac_col)} mg/dL")
                 if pd.notna(pac_imc): dados_calc.append(f"IMC: {pac_imc:.1f} kg/m²")
                 dados_calc.append(f"DM: {'Sim' if pac_dm else 'Não'}")
-                dados_calc.append(f"Tabagismo: {'Sim' if pac_tabaco else 'Não'}")
+                dados_calc.append(f"Tabagismo: {'Sim' if pac_tabaco_registrado else 'Não informado'}")
                 st.write(" · ".join(dados_calc))
 
             else:
@@ -1229,7 +1238,10 @@ def create_patient_card(patient_data):
                     if pd.notna(pac_imc): disp.append(f"✅ IMC: {pac_imc:.1f} kg/m²")
                     else: disp.append("🔴 IMC: ausente")
                     disp.append(f"{'✅' if pac_dm else '⬜'} Diabetes: {'Sim' if pac_dm else 'Não'}")
-                    disp.append(f"{'✅' if pac_tabaco else '❓'} Tabagismo: {'Sim' if pac_tabaco else 'Não informado'}")
+                    if pac_tabaco_registrado:
+                        disp.append("✅ Tabagismo: Sim (registrado no prontuário)")
+                    else:
+                        disp.append("❓ Tabagismo: Não informado — necessário perguntar ao paciente")
                     for d in disp:
                         st.write(d)
 
@@ -1267,9 +1279,9 @@ def create_patient_card(patient_data):
                             horizontal=True
                         )
                         input_tabaco = st.radio(
-                            "É tabagista?",
+                            "O paciente é tabagista?",
                             options=["Sim", "Não"],
-                            index=0 if pac_tabaco else 1,
+                            index=0 if pac_tabaco_registrado else 1,
                             key=f"rcv_tab_{cpk}",
                             horizontal=True
                         )
