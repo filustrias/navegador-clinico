@@ -581,14 +581,13 @@ def load_patient_data_paginated(
             )
         where_clauses.append(f"({' OR '.join(rcv_conds)})")
 
-    # Filtro: apenas pacientes em uso de insulina (qualquer tipo)
+    # Filtro: apenas pacientes em uso de insulina (qualquer tipo).
+    # Confirmação no núcleo crônico atual (última prescrição) — as flags
+    # principio_INSULINA_* podem estar defasadas em relação ao que o médico
+    # prescreveu por último.
     if apenas_insulina:
         where_clauses.append(
-            "(principio_INSULINA_BASAL_HUMANA IS NOT NULL "
-            "OR principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL "
-            "OR principio_INSULINA_BASAL_ANALOGICA IS NOT NULL "
-            "OR principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL "
-            "OR principio_INSULINA_MISTA IS NOT NULL)"
+            "LOWER(nucleo_cronico_atual) LIKE '%insulina%'"
         )
 
     where_sql = " AND ".join(where_clauses)
@@ -890,14 +889,13 @@ def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idad
             )
         where_clauses.append(f"({' OR '.join(rcv_conds)})")
 
-    # Filtro: apenas pacientes em uso de insulina (qualquer tipo)
+    # Filtro: apenas pacientes em uso de insulina (qualquer tipo).
+    # Confirmação no núcleo crônico atual (última prescrição) — as flags
+    # principio_INSULINA_* podem estar defasadas em relação ao que o médico
+    # prescreveu por último.
     if apenas_insulina:
         where_clauses.append(
-            "(principio_INSULINA_BASAL_HUMANA IS NOT NULL "
-            "OR principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL "
-            "OR principio_INSULINA_BASAL_ANALOGICA IS NOT NULL "
-            "OR principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL "
-            "OR principio_INSULINA_MISTA IS NOT NULL)"
+            "LOWER(nucleo_cronico_atual) LIKE '%insulina%'"
         )
 
     where_sql = " AND ".join(where_clauses)
@@ -1091,10 +1089,14 @@ def create_patient_card(patient_data):
     else:
         rcv_texto = " | ❤️ RCV não calculado"
 
-    # Alerta NPH em dose alta no cabeçalho
-    _usa_nph_hdr = patient_data.get('usa_nph') in [True, 1, '1', 'True']
+    # Alerta NPH em dose alta no cabeçalho — só se NPH está de fato na última
+    # prescrição (nucleo_cronico_atual é o truth source).
+    _usa_nph_hdr  = patient_data.get('usa_nph') in [True, 1, '1', 'True']
     _dose_nph_hdr = patient_data.get('dose_NPH_ui_kg')
-    if _usa_nph_hdr and pd.notna(_dose_nph_hdr) and float(_dose_nph_hdr) > 0.8:
+    _meds_low_hdr = str(patient_data.get('medicamentos_cronicos') or '').lower()
+    _nph_no_nucleo_hdr = ('nph' in _meds_low_hdr) or ('isofana' in _meds_low_hdr)
+    if (_usa_nph_hdr and pd.notna(_dose_nph_hdr)
+            and float(_dose_nph_hdr) > 0.8 and _nph_no_nucleo_hdr):
         nph_texto = f" | ⚠️ NPH {float(_dose_nph_hdr):.2f} UI/kg"
     else:
         nph_texto = ""
@@ -1159,10 +1161,15 @@ def create_patient_card(patient_data):
                 if medicamentos and pd.notna(medicamentos) and str(medicamentos).strip():
                     st.write(str(medicamentos))
 
-                # Linha 3: Insulina NPH com dose UI/kg (alerta se >0,8)
-                usa_nph = patient_data.get('usa_nph') in [True, 1, '1', 'True']
+                # Linha 3: Insulina NPH com dose UI/kg (alerta se >0,8).
+                # Fonte de verdade = núcleo crônico atual (última prescrição). Só exibe
+                # se NPH aparece no texto da prescrição — principio_INSULINA_BASAL_HUMANA
+                # pode estar defasado em relação ao que o médico prescreveu por último.
+                usa_nph  = patient_data.get('usa_nph') in [True, 1, '1', 'True']
                 dose_nph = patient_data.get('dose_NPH_ui_kg')
-                if usa_nph and pd.notna(dose_nph):
+                meds_txt_low = str(medicamentos or '').lower()
+                nph_no_nucleo = ('nph' in meds_txt_low) or ('isofana' in meds_txt_low)
+                if usa_nph and pd.notna(dose_nph) and nph_no_nucleo:
                     dose_val = float(dose_nph)
                     texto_nph = f"Prescrição de Insulina NPH ({dose_val:.2f} UI/kg)"
                     if dose_val > 0.8:
