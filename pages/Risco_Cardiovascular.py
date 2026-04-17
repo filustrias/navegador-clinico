@@ -331,10 +331,17 @@ territorio = {'ap': ap_sel, 'clinica': cli_sel, 'esf': esf_sel}
 # CARREGAR DADOS
 # ═══════════════════════════════════════════════════════════════
 st.title("❤️ Risco Cardiovascular")
-st.markdown("Panorama do risco cardiovascular na população — Framingham+SBC e WHO 2019/HEARTS.")
+st.markdown("Panorama do risco cardiovascular na população e calculadora WHO HEARTS.")
 st.markdown("---")
 
-with st.spinner("Carregando dados de risco cardiovascular..."):
+NOMES_ABAS = ["📊 Panorama Populacional", "🧮 Calculadora HEARTS"]
+tab_pop, tab_calc = st.tabs(NOMES_ABAS)
+
+# ═══════════════════════════════════════════════════════════════
+# ABA 1 — PANORAMA POPULACIONAL
+# ═══════════════════════════════════════════════════════════════
+with tab_pop:
+    with st.spinner("Carregando dados de risco cardiovascular..."):
     sumario = carregar_sumario_rcv(ap_sel, cli_sel, esf_sel)
     df_terr = carregar_territorio_rcv(ap_sel, cli_sel, esf_sel)
 
@@ -623,6 +630,197 @@ else:
             ['#8E44AD', '#C0392B', '#E74C3C', '#F39C12', '#2ECC71'],
             f'WHO 2019 / HEARTS por {lbl}',
         )
+
+# ═══════════════════════════════════════════════════════════════
+# ABA 2 — CALCULADORA HEARTS
+# ═══════════════════════════════════════════════════════════════
+with tab_calc:
+    from utils.risco_cv import calcular_who_lab, calcular_who_nonlab, cor_categoria_who
+
+    st.markdown("### 🧮 Calculadora de Risco Cardiovascular — WHO HEARTS 2019")
+    st.caption(
+        "Modelo calibrado para a América Latina tropical (Kaptoge et al., Lancet Global Health 2019). "
+        "Insira os dados do paciente para calcular o risco de eventos cardiovasculares em 10 anos."
+    )
+
+    st.markdown("---")
+
+    # Formulário de entrada
+    fc1, fc2 = st.columns(2)
+
+    with fc1:
+        st.markdown("**Dados demográficos**")
+        calc_sexo = st.selectbox(
+            "Sexo", options=["Masculino", "Feminino"],
+            key="calc_sexo"
+        )
+        calc_idade = st.number_input(
+            "Idade (anos)", min_value=40, max_value=80, value=55,
+            key="calc_idade",
+            help="WHO HEARTS calcula entre 40 e 80 anos."
+        )
+        calc_tabaco = st.checkbox("Fumante ativo", value=False, key="calc_tabaco")
+        calc_dm = st.checkbox("Diabetes mellitus", value=False, key="calc_dm")
+
+    with fc2:
+        st.markdown("**Dados clínicos**")
+        calc_pas = st.number_input(
+            "Pressão arterial sistólica (mmHg)",
+            min_value=80, max_value=250, value=130,
+            key="calc_pas"
+        )
+        calc_col = st.number_input(
+            "Colesterol total (mg/dL) — deixe 0 se indisponível",
+            min_value=0, max_value=500, value=0,
+            key="calc_col",
+            help="Se disponível, o modelo lab-based é usado. Senão, usa non-lab com IMC."
+        )
+        calc_imc = st.number_input(
+            "IMC (kg/m²) — usado se colesterol indisponível",
+            min_value=15.0, max_value=60.0, value=27.0, step=0.1,
+            key="calc_imc"
+        )
+
+    st.markdown("---")
+
+    # Calcular
+    if st.button("🧮 Calcular risco cardiovascular", use_container_width=True, type="primary"):
+        genero_calc = calc_sexo.lower()
+
+        resultado_lab = None
+        resultado_nonlab = None
+
+        # Tentar lab-based se colesterol disponível
+        if calc_col > 0:
+            resultado_lab = calcular_who_lab(
+                genero=genero_calc,
+                idade=calc_idade,
+                pressao_sistolica=calc_pas,
+                colesterol_total_mgdl=calc_col,
+                dm=calc_dm,
+                tabaco=calc_tabaco,
+            )
+
+        # Sempre calcular non-lab
+        resultado_nonlab = calcular_who_nonlab(
+            genero=genero_calc,
+            idade=calc_idade,
+            pressao_sistolica=calc_pas,
+            imc=calc_imc,
+            tabaco=calc_tabaco,
+        )
+
+        # Resultado principal: lab se disponível, senão non-lab
+        resultado = resultado_lab or resultado_nonlab
+
+        if resultado is None:
+            st.error("❌ Não foi possível calcular. Verifique se a idade está entre 40 e 80 anos.")
+        else:
+            st.markdown("---")
+            st.markdown("### Resultado")
+
+            cor = cor_categoria_who(resultado['categoria'])
+            modelo_usado = "Lab-based (com colesterol)" if resultado['modelo'] == 'lab' else "Non-lab (com IMC)"
+
+            # Card principal
+            st.markdown(
+                f"<div style='background:{cor}20; border-left:6px solid {cor}; "
+                f"padding:20px; border-radius:8px; margin:10px 0;'>"
+                f"<h2 style='margin:0; color:{cor};'>Risco CV em 10 anos: {resultado['risco_pct']:.1f}%</h2>"
+                f"<h3 style='margin:5px 0 0 0; color:{cor};'>Categoria: {resultado['categoria']}</h3>"
+                f"<p style='margin:10px 0 0 0; color:#666;'>Modelo: {modelo_usado}</p>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+
+            # Comparação lab vs non-lab se ambos disponíveis
+            if resultado_lab and resultado_nonlab:
+                st.markdown("##### Comparação entre modelos")
+                cmp1, cmp2 = st.columns(2)
+                with cmp1:
+                    cor_lab = cor_categoria_who(resultado_lab['categoria'])
+                    with st.container(border=True):
+                        st.markdown(f"**Lab-based** (com colesterol)")
+                        st.markdown(f"<h3 style='color:{cor_lab};'>{resultado_lab['risco_pct']:.1f}% — {resultado_lab['categoria']}</h3>",
+                                    unsafe_allow_html=True)
+                with cmp2:
+                    cor_nl = cor_categoria_who(resultado_nonlab['categoria'])
+                    with st.container(border=True):
+                        st.markdown(f"**Non-lab** (com IMC)")
+                        st.markdown(f"<h3 style='color:{cor_nl};'>{resultado_nonlab['risco_pct']:.1f}% — {resultado_nonlab['categoria']}</h3>",
+                                    unsafe_allow_html=True)
+
+            # Interpretação
+            st.markdown("##### Interpretação clínica")
+            risco = resultado['risco_pct']
+            if risco < 5:
+                st.success(
+                    "**Risco baixo (<5%)** — Orientar mudanças de estilo de vida. "
+                    "Reavaliar em 5 anos ou antes se houver mudança nos fatores de risco."
+                )
+            elif risco < 10:
+                st.info(
+                    "**Risco moderado (5-10%)** — Reforçar mudanças de estilo de vida. "
+                    "Considerar tratamento farmacológico se fatores de risco persistirem."
+                )
+            elif risco < 20:
+                st.warning(
+                    "**Risco alto (10-20%)** — Tratamento farmacológico indicado. "
+                    "Estatina e anti-hipertensivo conforme metas. Reavaliação anual."
+                )
+            elif risco < 30:
+                st.error(
+                    "**Risco muito alto (20-30%)** — Tratamento intensivo. "
+                    "Estatina alta intensidade, controle rigoroso de PA e glicemia."
+                )
+            else:
+                st.error(
+                    "**Risco crítico (≥30%)** — Prioridade máxima. "
+                    "Avaliar DCV estabelecida. Estatina alta intensidade + AAS se indicado. "
+                    "Encaminhamento para avaliação cardiológica."
+                )
+
+            # Dados usados no cálculo
+            with st.expander("Dados usados no cálculo"):
+                st.markdown(f"""
+| Variável | Valor |
+|---|---|
+| Sexo | {calc_sexo} |
+| Idade | {calc_idade} anos |
+| PAS | {calc_pas} mmHg |
+| Colesterol total | {'Não informado' if calc_col == 0 else f'{calc_col} mg/dL'} |
+| IMC | {calc_imc:.1f} kg/m² |
+| Diabetes | {'Sim' if calc_dm else 'Não'} |
+| Tabagismo | {'Sim' if calc_tabaco else 'Não'} |
+| Modelo | {modelo_usado} |
+| Região | tropical_latin_america |
+                """)
+
+    # Referências
+    st.markdown("---")
+    with st.expander("Referências e metodologia"):
+        st.markdown("""
+**WHO CVD Risk Charts 2019**
+- Kaptoge S et al. *World Health Organization cardiovascular disease risk charts: revised models to estimate risk in 21 global regions.* Lancet Global Health 2019;7(10):e1332-e1345.
+- Região utilizada: **tropical_latin_america** (inclui Brasil)
+- Validação: pacote R `WHORiskCalculator` v1.0.0 (CRAN, 2026-04-07)
+
+**Dois modelos em cascata:**
+- **Lab-based** (prioridade): usa colesterol total, PAS, idade, sexo, DM, tabagismo
+- **Non-lab-based** (fallback): usa IMC, PAS, idade, sexo, tabagismo (sem colesterol nem DM)
+
+**Categorias de risco:**
+
+| Risco 10 anos | Categoria | Conduta |
+|---|---|---|
+| <5% | Baixo | Mudança de estilo de vida |
+| 5-10% | Moderado | Reforçar MEV, considerar farmacoterapia |
+| 10-20% | Alto | Tratamento farmacológico indicado |
+| 20-30% | Muito Alto | Tratamento intensivo |
+| ≥30% | Crítico | Prioridade máxima, avaliar DCV |
+
+**Programa HEARTS (OMS/OPAS):** estratégia global de redução de risco CV em atenção primária, adotada pelo Ministério da Saúde brasileiro.
+        """)
 
 # ═══════════════════════════════════════════════════════════════
 # RODAPÉ
