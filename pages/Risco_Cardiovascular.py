@@ -781,53 +781,6 @@ with tab_calculadora:
                         st.markdown(f"<h3 style='color:{cor_nl};'>{ic_nl} {resultado_nonlab['risco_pct']:.1f}% — {resultado_nonlab['categoria']}</h3>",
                                     unsafe_allow_html=True)
 
-            # Interpretação
-            st.markdown("##### Interpretação clínica")
-            cat_final = resultado['categoria']
-            risco = resultado.get('risco_pct')
-
-            # Reclassificação direta (SBC) prevalece
-            if cat_final == 'MUITO ALTO':
-                st.error(
-                    "**Risco MUITO ALTO** — Paciente com doença cardiovascular estabelecida. "
-                    "Prevenção secundária: estatina alta intensidade, AAS, controle rigoroso de PA, "
-                    "glicemia e LDL. Encaminhamento/acompanhamento cardiológico."
-                )
-            elif cat_final == 'ALTO':
-                st.error(
-                    "**Risco ALTO** — Paciente com DM ou IRC. "
-                    "Tratamento farmacológico indicado: estatina, controle de PA e glicemia "
-                    "conforme metas. Considerar SGLT-2 se indicação. Reavaliação anual."
-                )
-            elif risco is not None:
-                # Score WHO puro
-                if risco < 5:
-                    st.success(
-                        "**Risco baixo (<5%)** — Orientar mudanças de estilo de vida. "
-                        "Reavaliar em 5 anos ou antes se houver mudança nos fatores de risco."
-                    )
-                elif risco < 10:
-                    st.info(
-                        "**Risco moderado (5-10%)** — Reforçar mudanças de estilo de vida. "
-                        "Considerar tratamento farmacológico se fatores de risco persistirem."
-                    )
-                elif risco < 20:
-                    st.warning(
-                        "**Risco alto (10-20%)** — Tratamento farmacológico indicado. "
-                        "Estatina e anti-hipertensivo conforme metas. Reavaliação anual."
-                    )
-                elif risco < 30:
-                    st.error(
-                        "**Risco muito alto (20-30%)** — Tratamento intensivo. "
-                        "Estatina alta intensidade, controle rigoroso de PA e glicemia."
-                    )
-                else:
-                    st.error(
-                        "**Risco crítico (≥30%)** — Prioridade máxima. "
-                        "Avaliar DCV estabelecida. Estatina alta intensidade + AAS se indicado. "
-                        "Encaminhamento para avaliação cardiológica."
-                    )
-
             # Dados usados no cálculo
             with st.expander("Dados usados no cálculo"):
                 st.markdown(f"""
