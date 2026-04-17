@@ -615,7 +615,8 @@ def load_patient_data_paginated(
         where_clauses.append(f"({' OR '.join(lac_conditions)})")
 
     # Filtro de risco cardiovascular (WHO simplificada — padrão PAHO/HEARTS)
-    # "Não calculado" = elegível (40-80a) mas sem categoria (dados insuficientes)
+    # "Não calculado" = elegível (40-80a), sem reclassificação SBC (sem DM/IRC/CI/AVC/DAP)
+    # e sem dados suficientes para score WHO (sem colesterol E sem IMC).
     if rcv_filtro and len(rcv_filtro) > 0:
         rcv_conds = []
         cats_validas = [c for c in rcv_filtro if c != "Não calculado"]
@@ -625,7 +626,10 @@ def load_patient_data_paginated(
         if "Não calculado" in rcv_filtro:
             rcv_conds.append(
                 "(who_categoria_risco_simplificada IS NULL "
-                "AND idade BETWEEN 40 AND 80)"
+                "AND idade BETWEEN 40 AND 80 "
+                "AND DM IS NULL AND IRC IS NULL "
+                "AND CI IS NULL AND stroke IS NULL AND vascular_periferica IS NULL "
+                "AND colesterol_total IS NULL AND IMC IS NULL)"
             )
         where_clauses.append(f"({' OR '.join(rcv_conds)})")
 
@@ -899,7 +903,8 @@ def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idad
         where_clauses.append(f"({' OR '.join(lac_conditions)})")
 
     # Filtro de risco cardiovascular (WHO simplificada — padrão PAHO/HEARTS)
-    # "Não calculado" = elegível (40-80a) mas sem categoria (dados insuficientes)
+    # "Não calculado" = elegível (40-80a), sem reclassificação SBC (sem DM/IRC/CI/AVC/DAP)
+    # e sem dados suficientes para score WHO (sem colesterol E sem IMC).
     if rcv_filtro and len(rcv_filtro) > 0:
         rcv_conds = []
         cats_validas = [c for c in rcv_filtro if c != "Não calculado"]
@@ -909,7 +914,10 @@ def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idad
         if "Não calculado" in rcv_filtro:
             rcv_conds.append(
                 "(who_categoria_risco_simplificada IS NULL "
-                "AND idade BETWEEN 40 AND 80)"
+                "AND idade BETWEEN 40 AND 80 "
+                "AND DM IS NULL AND IRC IS NULL "
+                "AND CI IS NULL AND stroke IS NULL AND vascular_periferica IS NULL "
+                "AND colesterol_total IS NULL AND IMC IS NULL)"
             )
         where_clauses.append(f"({' OR '.join(rcv_conds)})")
 
@@ -2106,7 +2114,7 @@ with fl_rcv:
         options=["Baixo", "Moderado", "Alto", "Muito alto", "Crítico", "Não calculado"],
         default=[],
         placeholder="Todos",
-        help="'Não calculado' = pacientes elegíveis (40-80 anos) sem dados suficientes para o cálculo.",
+        help="'Não calculado' = pacientes elegíveis (40-80 anos) sem DM/IRC/DCV estabelecida e sem colesterol nem IMC para o cálculo.",
         key="rcv_filtro"
     )
 with fl5a:
