@@ -19,7 +19,7 @@ from utils import theme as T
 from utils.risco_cv import (
     calcular_who_lab, calcular_who_nonlab,
     calcular_risco_completo, classificar_risco_direto,
-    cor_categoria_who, cor_categoria_completa,
+    cor_categoria_who, cor_categoria_completa, icone_categoria_who,
 )
 
 st.set_page_config(
@@ -174,18 +174,17 @@ def carregar_sumario_rcv(ap, clinica, esf):
         COUNTIF(vascular_periferica IS NOT NULL) AS n_com_dap,
         COUNTIF(CI IS NOT NULL OR stroke IS NOT NULL OR vascular_periferica IS NOT NULL) AS n_dcv_estabelecida,
 
-        -- WHO calculado (exclui 'não calculável')
-        COUNTIF(who_categoria_risco IS NOT NULL
-                AND who_categoria_risco != 'não calculável') AS n_who_calculado,
-        COUNTIF(who_categoria_risco = '>=30%') AS n_who_gte30,
-        COUNTIF(who_categoria_risco = '20-30%') AS n_who_20_30,
-        COUNTIF(who_categoria_risco = '10-20%') AS n_who_10_20,
-        COUNTIF(who_categoria_risco = '5-10%') AS n_who_5_10,
-        COUNTIF(who_categoria_risco = '<5%') AS n_who_lt5,
-        -- WHO >=30%: por doença estabelecida vs por fatores
-        COUNTIF(who_categoria_risco = '>=30%'
+        -- WHO calculado (categoria simplificada PAHO/HEARTS)
+        COUNTIF(who_categoria_risco_simplificada IS NOT NULL) AS n_who_calculado,
+        COUNTIF(who_categoria_risco_simplificada = 'Crítico')    AS n_who_gte30,
+        COUNTIF(who_categoria_risco_simplificada = 'Muito alto') AS n_who_20_30,
+        COUNTIF(who_categoria_risco_simplificada = 'Alto')       AS n_who_10_20,
+        COUNTIF(who_categoria_risco_simplificada = 'Moderado')   AS n_who_5_10,
+        COUNTIF(who_categoria_risco_simplificada = 'Baixo')      AS n_who_lt5,
+        -- Crítico: por DCV estabelecida vs por fatores
+        COUNTIF(who_categoria_risco_simplificada = 'Crítico'
                 AND (CI IS NOT NULL OR stroke IS NOT NULL OR vascular_periferica IS NOT NULL)) AS n_who_gte30_dcv,
-        COUNTIF(who_categoria_risco = '>=30%'
+        COUNTIF(who_categoria_risco_simplificada = 'Crítico'
                 AND CI IS NULL AND stroke IS NULL AND vascular_periferica IS NULL) AS n_who_gte30_fator,
 
         -- Variáveis disponíveis (para cards de cobertura)
@@ -222,8 +221,8 @@ def carregar_sumario_rcv(ap, clinica, esf):
         COUNTIF(idade BETWEEN 40 AND 80 AND IMC IS NULL) AS n_who_sem_imc,
 
         -- Concordância entre modelos (quando ambos calculáveis)
-        COUNTIF(categoria_risco_final = 'MUITO ALTO' AND who_categoria_risco = '>=30%') AS n_concordancia_muito_alto,
-        COUNTIF(categoria_risco_final = 'BAIXO' AND who_categoria_risco = '<5%') AS n_concordancia_baixo
+        COUNTIF(categoria_risco_final = 'MUITO ALTO' AND who_categoria_risco_simplificada = 'Crítico') AS n_concordancia_muito_alto,
+        COUNTIF(categoria_risco_final = 'BAIXO' AND who_categoria_risco_simplificada = 'Baixo')       AS n_concordancia_baixo
 
     FROM `{_fqn(config.TABELA_FATO)}`
     {where}
@@ -261,16 +260,16 @@ def carregar_territorio_rcv(ap, clinica, esf):
               / NULLIF(COUNTIF(idade BETWEEN 30 AND 74), 0), 1) AS pct_fram_intermediario,
         ROUND(COUNTIF(categoria_risco_final = 'BAIXO') * 100.0
               / NULLIF(COUNTIF(idade BETWEEN 30 AND 74), 0), 1) AS pct_fram_baixo,
-        -- WHO como % dos elegíveis (40-80a) do território
-        ROUND(COUNTIF(who_categoria_risco = '>=30%') * 100.0
+        -- WHO como % dos elegíveis (40-80a) do território (categoria simplificada)
+        ROUND(COUNTIF(who_categoria_risco_simplificada = 'Crítico') * 100.0
               / NULLIF(COUNTIF(idade BETWEEN 40 AND 80), 0), 1) AS pct_who_gte30,
-        ROUND(COUNTIF(who_categoria_risco = '20-30%') * 100.0
+        ROUND(COUNTIF(who_categoria_risco_simplificada = 'Muito alto') * 100.0
               / NULLIF(COUNTIF(idade BETWEEN 40 AND 80), 0), 1) AS pct_who_20_30,
-        ROUND(COUNTIF(who_categoria_risco = '10-20%') * 100.0
+        ROUND(COUNTIF(who_categoria_risco_simplificada = 'Alto') * 100.0
               / NULLIF(COUNTIF(idade BETWEEN 40 AND 80), 0), 1) AS pct_who_10_20,
-        ROUND(COUNTIF(who_categoria_risco = '5-10%') * 100.0
+        ROUND(COUNTIF(who_categoria_risco_simplificada = 'Moderado') * 100.0
               / NULLIF(COUNTIF(idade BETWEEN 40 AND 80), 0), 1) AS pct_who_5_10,
-        ROUND(COUNTIF(who_categoria_risco = '<5%') * 100.0
+        ROUND(COUNTIF(who_categoria_risco_simplificada = 'Baixo') * 100.0
               / NULLIF(COUNTIF(idade BETWEEN 40 AND 80), 0), 1) AS pct_who_lt5,
         '{label_col}' AS label_col
     FROM `{_fqn(config.TABELA_FATO)}`
@@ -545,16 +544,16 @@ with tab_panorama:
               unsafe_allow_html=True
           )
 
-  # WHO
+  # WHO (padrão PAHO/HEARTS)
   with col_w:
       st.markdown(f"**WHO 2019 / HEARTS** (n={n_who_calc:,})")
       cats_who = [
-          ("≥30%", n_who_gte30, "#8E44AD",
+          ("🔴 Crítico (≥30%)", n_who_gte30, "#7B0000",
            f"DCV estabelecida: {n_who_gte30_dcv:,} · Por fatores: {n_who_gte30_fat:,}"),
-          ("20-30%",  int(sumario.get('n_who_20_30', 0) or 0),  "#C0392B", None),
-          ("10-20%",  int(sumario.get('n_who_10_20', 0) or 0),  "#E74C3C", None),
-          ("5-10%",   int(sumario.get('n_who_5_10', 0) or 0),   "#F39C12", None),
-          ("<5%",     int(sumario.get('n_who_lt5', 0) or 0),     "#2ECC71", None),
+          ("🔴 Muito alto (20-30%)", int(sumario.get('n_who_20_30', 0) or 0), "#F44336", None),
+          ("🟠 Alto (10-20%)",       int(sumario.get('n_who_10_20', 0) or 0), "#FF9800", None),
+          ("🟡 Moderado (5-10%)",    int(sumario.get('n_who_5_10', 0) or 0),  "#FFEB3B", None),
+          ("🟢 Baixo (<5%)",         int(sumario.get('n_who_lt5', 0) or 0),   "#4CAF50", None),
       ]
       for label, n, cor, detalhe in cats_who:
           pct = _p(n, n_who_calc) if n_who_calc else 0
@@ -627,8 +626,8 @@ with tab_panorama:
           _stacked_bar_rcv(
               df_terr,
               ['pct_who_gte30', 'pct_who_20_30', 'pct_who_10_20', 'pct_who_5_10', 'pct_who_lt5'],
-              ['≥30%', '20-30%', '10-20%', '5-10%', '<5%'],
-              ['#8E44AD', '#C0392B', '#E74C3C', '#F39C12', '#2ECC71'],
+              ['Crítico', 'Muito alto', 'Alto', 'Moderado', 'Baixo'],
+              ['#7B0000', '#F44336', '#FF9800', '#FFEB3B', '#4CAF50'],
               f'WHO 2019 / HEARTS por {lbl}',
           )
 
@@ -733,14 +732,15 @@ with tab_calculadora:
             st.markdown("### Resultado")
 
             cor = cor_categoria_completa(resultado['categoria'])
+            icone_cat = icone_categoria_who(resultado['categoria'])
             risco_val = resultado.get('risco_pct')
             motivo = resultado.get('motivo', '')
             modelo_txt = resultado.get('modelo', '')
 
             if risco_val is not None:
-                titulo = f"Risco CV em 10 anos: {risco_val:.1f}%"
+                titulo = f"{icone_cat} Risco CV em 10 anos: {risco_val:.1f}%"
             else:
-                titulo = f"Risco CV: {resultado['categoria']}"
+                titulo = f"{icone_cat} Risco CV: {resultado['categoria']}"
 
             detalhes = f"<h3 style='margin:5px 0 0 0; color:{cor};'>Categoria: {resultado['categoria']}</h3>"
             if motivo:
@@ -767,16 +767,18 @@ with tab_calculadora:
                 st.markdown("##### Comparação entre modelos")
                 cmp1, cmp2 = st.columns(2)
                 with cmp1:
-                    cor_lab = cor_categoria_who(resultado_lab['categoria'])
+                    cor_lab = cor_categoria_completa(resultado_lab['categoria'])
+                    ic_lab = icone_categoria_who(resultado_lab['categoria'])
                     with st.container(border=True):
                         st.markdown(f"**Lab-based** (com colesterol)")
-                        st.markdown(f"<h3 style='color:{cor_lab};'>{resultado_lab['risco_pct']:.1f}% — {resultado_lab['categoria']}</h3>",
+                        st.markdown(f"<h3 style='color:{cor_lab};'>{ic_lab} {resultado_lab['risco_pct']:.1f}% — {resultado_lab['categoria']}</h3>",
                                     unsafe_allow_html=True)
                 with cmp2:
-                    cor_nl = cor_categoria_who(resultado_nonlab['categoria'])
+                    cor_nl = cor_categoria_completa(resultado_nonlab['categoria'])
+                    ic_nl = icone_categoria_who(resultado_nonlab['categoria'])
                     with st.container(border=True):
                         st.markdown(f"**Non-lab** (com IMC)")
-                        st.markdown(f"<h3 style='color:{cor_nl};'>{resultado_nonlab['risco_pct']:.1f}% — {resultado_nonlab['categoria']}</h3>",
+                        st.markdown(f"<h3 style='color:{cor_nl};'>{ic_nl} {resultado_nonlab['risco_pct']:.1f}% — {resultado_nonlab['categoria']}</h3>",
                                     unsafe_allow_html=True)
 
             # Interpretação

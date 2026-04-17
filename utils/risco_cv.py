@@ -312,32 +312,63 @@ def calcular_risco_completo(genero, idade, pressao_sistolica,
 
 
 def _categorizar_who(risco_pct):
-    """Categoriza o risco WHO em faixas."""
+    """Categoriza o risco WHO em rótulos simplificados (padrão PAHO/HEARTS)."""
     if risco_pct < 5:
-        return '<5%'
+        return 'Baixo'
     elif risco_pct < 10:
-        return '5-10%'
+        return 'Moderado'
     elif risco_pct < 20:
-        return '10-20%'
+        return 'Alto'
     elif risco_pct < 30:
-        return '20-30%'
+        return 'Muito alto'
     else:
-        return '>=30%'
+        return 'Crítico'
+
+
+def faixa_who(categoria):
+    """Retorna a faixa numérica da categoria WHO."""
+    return {
+        'Baixo':      '<5%',
+        'Moderado':   '5-10%',
+        'Alto':       '10-20%',
+        'Muito alto': '20-30%',
+        'Crítico':    '≥30%',
+    }.get(categoria, '')
 
 
 def cor_categoria_completa(categoria):
-    """Retorna cor para qualquer categoria (WHO ou SBC)."""
+    """Retorna cor para qualquer categoria (WHO simplificada ou SBC)."""
     return {
-        '<5%':         '#2ECC71',
-        '5-10%':       '#F39C12',
-        '10-20%':      '#E74C3C',
-        '20-30%':      '#C0392B',
-        '>=30%':       '#8E44AD',
-        'BAIXO':       '#2ECC71',
-        'INTERMEDIÁRIO': '#F39C12',
-        'ALTO':        '#E74C3C',
-        'MUITO ALTO':  '#8E44AD',
+        # WHO simplificada (padrão PAHO/HEARTS)
+        'Baixo':         '#4CAF50',
+        'Moderado':      '#FFEB3B',
+        'Alto':          '#FF9800',
+        'Muito alto':    '#F44336',
+        'Crítico':       '#7B0000',
+        # Faixas numéricas (compatibilidade)
+        '<5%':           '#4CAF50',
+        '5-10%':         '#FFEB3B',
+        '10-20%':        '#FF9800',
+        '20-30%':        '#F44336',
+        '>=30%':         '#7B0000',
+        '≥30%':          '#7B0000',
+        # SBC (Framingham reclassificado)
+        'BAIXO':         '#4CAF50',
+        'INTERMEDIÁRIO': '#FFEB3B',
+        'ALTO':          '#FF9800',
+        'MUITO ALTO':    '#7B0000',
     }.get(categoria, '#999999')
+
+
+def icone_categoria_who(categoria):
+    """Retorna ícone para a categoria WHO simplificada."""
+    return {
+        'Baixo':      '🟢',
+        'Moderado':   '🟡',
+        'Alto':       '🟠',
+        'Muito alto': '🔴',
+        'Crítico':    '🔴',
+    }.get(categoria, '⬜')
 
 
 def cor_categoria_who(categoria):

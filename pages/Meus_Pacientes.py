@@ -614,11 +614,11 @@ def load_patient_data_paginated(
         lac_conditions = [f"{lac} = TRUE" for lac in lacunas_filtro]
         where_clauses.append(f"({' OR '.join(lac_conditions)})")
 
-    # Filtro de risco cardiovascular (WHO)
+    # Filtro de risco cardiovascular (WHO simplificada — padrão PAHO/HEARTS)
     if rcv_filtro and len(rcv_filtro) > 0:
         cats = ", ".join(f"'{c}'" for c in rcv_filtro)
-        where_clauses.append(f"who_categoria_risco IN ({cats})")
-    
+        where_clauses.append(f"who_categoria_risco_simplificada IN ({cats})")
+
     where_sql = " AND ".join(where_clauses)
     order_dir = "DESC" if ordem == "desc" else "ASC"
     if ordenar_por == "dias_medico":
@@ -678,6 +678,7 @@ def load_patient_data_paginated(
       -- WHO HEARTS
       who_risco_cvd_pct,
       who_categoria_risco,
+      who_categoria_risco_simplificada,
       who_modelo_utilizado,
       who_lab_calculavel,
       who_nonlab_calculavel,
@@ -887,13 +888,13 @@ def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idad
         lac_conditions = [f"{lac} = TRUE" for lac in lacunas_filtro]
         where_clauses.append(f"({' OR '.join(lac_conditions)})")
 
-    # Filtro de risco cardiovascular (WHO)
+    # Filtro de risco cardiovascular (WHO simplificada — padrão PAHO/HEARTS)
     if rcv_filtro and len(rcv_filtro) > 0:
         cats = ", ".join(f"'{c}'" for c in rcv_filtro)
-        where_clauses.append(f"who_categoria_risco IN ({cats})")
-    
+        where_clauses.append(f"who_categoria_risco_simplificada IN ({cats})")
+
     where_sql = " AND ".join(where_clauses)
-    
+
     sql = f"""
     SELECT COUNT(*) as total
     FROM `{_fqn(config.TABELA_FATO)}`
@@ -1053,11 +1054,12 @@ def create_patient_card(patient_data):
         acb_icone = "🔴" if acb_int >= 3 else "🟠" if acb_int >= 1 else "🟢"
         acb_texto = f" | {acb_icone} ACB {acb_int}"
 
-    # Risco CV para o cabeçalho
-    who_risco_hdr = patient_data.get('who_risco_cvd_pct')
-    who_cat_hdr = patient_data.get('who_categoria_risco')
-    if pd.notna(who_risco_hdr) and who_cat_hdr and who_cat_hdr != 'não calculável':
-        rcv_texto = f" | ❤️ RCV {who_cat_hdr}"
+    # Risco CV para o cabeçalho (padrão PAHO/HEARTS)
+    from utils.risco_cv import icone_categoria_who
+    who_cat_simpl_hdr = patient_data.get('who_categoria_risco_simplificada')
+    if pd.notna(who_cat_simpl_hdr) and who_cat_simpl_hdr:
+        icone_rcv = icone_categoria_who(who_cat_simpl_hdr)
+        rcv_texto = f" | {icone_rcv} RCV {who_cat_simpl_hdr}"
     else:
         rcv_texto = " | ❤️ RCV não calculado"
 
@@ -1222,12 +1224,14 @@ def create_patient_card(patient_data):
         with tab2:
             from utils.risco_cv import (calcular_who_lab, calcular_who_nonlab,
                                         calcular_risco_completo, cor_categoria_who,
-                                        cor_categoria_completa, classificar_risco_direto)
+                                        cor_categoria_completa, classificar_risco_direto,
+                                        icone_categoria_who)
 
             st.markdown("#### ❤️ Risco Cardiovascular — WHO HEARTS")
 
             who_risco = patient_data.get('who_risco_cvd_pct')
             who_cat = patient_data.get('who_categoria_risco')
+            who_cat_simpl = patient_data.get('who_categoria_risco_simplificada')
             who_modelo = patient_data.get('who_modelo_utilizado')
             who_lab_calc = patient_data.get('who_lab_calculavel')
             who_nonlab_calc = patient_data.get('who_nonlab_calculavel')
@@ -1253,15 +1257,16 @@ def create_patient_card(patient_data):
             def _mostrar_resultado_rcv(resultado, recalc=False):
                 cat = resultado.get('categoria', '')
                 cor_r = cor_categoria_completa(cat)
+                icone = icone_categoria_who(cat)
                 sufixo = " (recalculado)" if recalc else ""
                 risco = resultado.get('risco_pct')
                 modelo = resultado.get('modelo', '')
                 motivo = resultado.get('motivo', '')
 
                 if risco is not None:
-                    titulo = f"Risco CV em 10 anos: {risco:.1f}%{sufixo}"
+                    titulo = f"{icone} Risco CV em 10 anos: {risco:.1f}%{sufixo}"
                 else:
-                    titulo = f"Risco CV: {cat}{sufixo}"
+                    titulo = f"{icone} Risco CV: {cat}{sufixo}"
 
                 detalhes = f"<p style='margin:5px 0 0 0; color:{cor_r};'><strong>Categoria: {cat}</strong></p>"
                 if motivo:
@@ -1300,14 +1305,17 @@ def create_patient_card(patient_data):
                     if reclass_direto:
                         _mostrar_resultado_rcv(reclass_direto)
 
-                    # Mostrar WHO do banco se disponível
-                    if pd.notna(who_risco) and who_cat and who_cat != 'não calculável':
-                        who_res = {'risco_pct': who_risco, 'categoria': who_cat,
+                    # Mostrar WHO do banco se disponível (usa categoria simplificada PAHO/HEARTS)
+                    cat_badge = who_cat_simpl if pd.notna(who_cat_simpl) and who_cat_simpl else None
+                    if cat_badge:
+                        who_res = {'risco_pct': who_risco if pd.notna(who_risco) else None,
+                                   'categoria': cat_badge,
                                    'modelo': "Lab-based" if who_modelo == 'lab' else "Non-lab"}
                         if not reclass_direto:
                             _mostrar_resultado_rcv(who_res)
                         else:
-                            st.caption(f"Score WHO calculado: {who_risco:.1f}% ({who_cat})")
+                            risco_txt = f"{who_risco:.1f}% " if pd.notna(who_risco) else ""
+                            st.caption(f"Score WHO calculado: {risco_txt}({cat_badge})")
                         if pac_idade and pac_idade >= 70:
                             st.caption(
                                 "**Nota ≥70 anos:** a idade domina o cálculo. "
@@ -2071,7 +2079,7 @@ with fl4:
 with fl_rcv:
     rcv_filtro = st.multiselect(
         "❤️ Risco Cardiovascular",
-        options=["<5%", "5-10%", "10-20%", "20-30%", ">=30%"],
+        options=["Baixo", "Moderado", "Alto", "Muito alto", "Crítico"],
         default=[],
         placeholder="Todos",
         key="rcv_filtro"
