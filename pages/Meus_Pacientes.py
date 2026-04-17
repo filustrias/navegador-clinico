@@ -1206,7 +1206,9 @@ def create_patient_card(patient_data):
 
         # ========== TAB 2: RISCO CARDIOVASCULAR ==========
         with tab2:
-            from utils.risco_cv import calcular_who_lab, calcular_who_nonlab, cor_categoria_who
+            from utils.risco_cv import (calcular_who_lab, calcular_who_nonlab,
+                                        calcular_risco_completo, cor_categoria_who,
+                                        cor_categoria_completa, classificar_risco_direto)
 
             st.markdown("#### ❤️ Risco Cardiovascular — WHO HEARTS")
 
@@ -1220,21 +1222,44 @@ def create_patient_card(patient_data):
             pac_pas = patient_data.get('pressao_sistolica')
             pac_col = patient_data.get('colesterol_total')
             pac_imc = patient_data.get('IMC')
-            pac_dm = pd.notna(patient_data.get('DM'))
-            pac_tabaco_registrado = pd.notna(patient_data.get('tabaco'))  # TRUE = fumante confirmado
-            pac_tabaco_desconhecido = not pac_tabaco_registrado  # NULL = informação insuficiente
+            pac_dm = patient_data.get('DM') in [True, 1, '1', 'True']
+            pac_irc = patient_data.get('IRC') in [True, 1, '1', 'True']
+            pac_ci = patient_data.get('CI') in [True, 1, '1', 'True']
+            pac_avc = patient_data.get('stroke') in [True, 1, '1', 'True']
+            pac_dap = patient_data.get('vascular_periferica') in [True, 1, '1', 'True']
+            pac_tabaco_registrado = pd.notna(patient_data.get('tabaco'))
+            pac_tabaco_desconhecido = not pac_tabaco_registrado
+
+            # Reclassificação direta (DCV, DM, IRC)
+            reclass_direto = classificar_risco_direto(
+                dm=pac_dm, irc=pac_irc, ci=pac_ci, avc=pac_avc, dap=pac_dap
+            )
 
             # Função para exibir resultado do RCV
-            def _mostrar_resultado_rcv(risco_pct, categoria, modelo, recalc=False):
-                cor_r = cor_categoria_who(categoria)
+            def _mostrar_resultado_rcv(resultado, recalc=False):
+                cat = resultado.get('categoria', '')
+                cor_r = cor_categoria_completa(cat)
                 sufixo = " (recalculado)" if recalc else ""
+                risco = resultado.get('risco_pct')
+                modelo = resultado.get('modelo', '')
+                motivo = resultado.get('motivo', '')
+
+                if risco is not None:
+                    titulo = f"Risco CV em 10 anos: {risco:.1f}%{sufixo}"
+                else:
+                    titulo = f"Risco CV: {cat}{sufixo}"
+
+                detalhes = f"<p style='margin:5px 0 0 0; color:{cor_r};'><strong>Categoria: {cat}</strong></p>"
+                if motivo:
+                    detalhes += f"<p style='margin:5px 0 0 0; color:#666;'>Motivo: {motivo}</p>"
+                if modelo:
+                    detalhes += f"<p style='margin:2px 0 0 0; color:#999; font-size:0.85em;'>Modelo: {modelo}</p>"
+
                 st.markdown(
                     f"<div style='background:{cor_r}20; border-left:6px solid {cor_r}; "
                     f"padding:16px; border-radius:8px; margin:8px 0;'>"
-                    f"<h3 style='margin:0; color:{cor_r};'>Risco CV em 10 anos: {risco_pct:.1f}%{sufixo}</h3>"
-                    f"<p style='margin:5px 0 0 0; color:{cor_r};'><strong>Categoria: {categoria}</strong></p>"
-                    f"<p style='margin:5px 0 0 0; color:#666;'>Modelo: {modelo}</p>"
-                    f"</div>",
+                    f"<h3 style='margin:0; color:{cor_r};'>{titulo}</h3>"
+                    f"{detalhes}</div>",
                     unsafe_allow_html=True
                 )
 
@@ -1257,24 +1282,25 @@ def create_patient_card(patient_data):
 
                 # ── COLUNA ESQUERDA: Resultado + dados do datalake ──
                 with col_esq:
+                    # Mostrar reclassificação direta se aplicável
+                    if reclass_direto:
+                        _mostrar_resultado_rcv(reclass_direto)
+
+                    # Mostrar WHO do banco se disponível
                     if pd.notna(who_risco) and who_cat and who_cat != 'não calculável':
-                        modelo_txt = "Lab-based (com colesterol)" if who_modelo == 'lab' else "Non-lab (com IMC)"
-                        _mostrar_resultado_rcv(who_risco, who_cat, modelo_txt)
+                        who_res = {'risco_pct': who_risco, 'categoria': who_cat,
+                                   'modelo': "Lab-based" if who_modelo == 'lab' else "Non-lab"}
+                        if not reclass_direto:
+                            _mostrar_resultado_rcv(who_res)
+                        else:
+                            st.caption(f"Score WHO calculado: {who_risco:.1f}% ({who_cat})")
                         if pac_idade and pac_idade >= 70:
                             st.caption(
-                                "**Nota sobre pacientes com 70 anos ou mais:** O modelo WHO HEARTS atribui risco elevado "
-                                "a pacientes idosos mesmo com poucos fatores de risco modificáveis, porque a idade é o "
-                                "principal determinante do risco cardiovascular absoluto. Nesta faixa etária, a decisão "
-                                "de tratar deve considerar a expectativa de vida, fragilidade, comorbidades e preferências "
-                                "do paciente — e não apenas o percentual de risco calculado."
+                                "**Nota ≥70 anos:** a idade domina o cálculo. "
+                                "Considerar expectativa de vida, fragilidade e preferências."
                             )
-                        if who_modelo == 'nonlab' and pac_dm:
-                            st.warning(
-                                "⚠️ Resultado non-lab **não considera diabetes**. "
-                                "Informe o colesterol ao lado para cálculo mais preciso."
-                            )
-                    else:
-                        st.info("Risco cardiovascular não calculado — dados insuficientes.")
+                    elif not reclass_direto:
+                        st.info("Score WHO não calculado — dados insuficientes.")
 
                     st.markdown("**Dados provenientes do datalake:**")
                     if pd.notna(pac_pas): st.write(f"✅ PAS: {int(pac_pas)} mmHg")
@@ -1335,16 +1361,17 @@ def create_patient_card(patient_data):
                             tab_c = (input_tabaco == "Sim") if input_tabaco else False
                             col_val = input_col if input_col and input_col > 0 else None
 
-                            resultado = None
-                            if col_val:
-                                resultado = calcular_who_lab(genero_c, pac_idade, input_pas, col_val, pac_dm, tab_c)
-                            if resultado is None and input_imc and input_imc > 0:
-                                resultado = calcular_who_nonlab(genero_c, pac_idade, input_pas, input_imc, tab_c)
+                            resultado = calcular_risco_completo(
+                                genero=genero_c, idade=pac_idade,
+                                pressao_sistolica=input_pas,
+                                colesterol_total_mgdl=col_val,
+                                imc=input_imc if input_imc and input_imc > 0 else None,
+                                dm=pac_dm, tabaco=tab_c,
+                                irc=pac_irc, ci=pac_ci, avc=pac_avc, dap=pac_dap,
+                            )
 
                             if resultado:
-                                recalc = pd.notna(who_risco) and who_cat and who_cat != 'não calculável'
-                                mod_txt = "Lab-based" if resultado['modelo'] == 'lab' else "Non-lab"
-                                _mostrar_resultado_rcv(resultado['risco_pct'], resultado['categoria'], mod_txt, recalc=recalc)
+                                _mostrar_resultado_rcv(resultado, recalc=True)
                             else:
                                 st.error("❌ Não foi possível calcular.")
                     else:

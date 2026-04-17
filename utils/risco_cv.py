@@ -240,6 +240,77 @@ def calcular_who_nonlab(genero, idade, pressao_sistolica, imc, tabaco):
     }
 
 
+def classificar_risco_direto(dm=False, irc=False, ci=False, avc=False, dap=False):
+    """
+    Reclassificação direta SEM cálculo de score.
+    - DCV estabelecida (CI, AVC, DAP) → MUITO ALTO
+    - DM ou IRC → ALTO
+    Retorna dict com resultado ou None se não se aplica.
+    """
+    if ci or avc or dap:
+        motivos = []
+        if ci: motivos.append("Cardiopatia isquêmica")
+        if avc: motivos.append("AVC prévio")
+        if dap: motivos.append("Doença arterial periférica")
+        return {
+            'risco_pct': None,
+            'categoria': 'MUITO ALTO',
+            'modelo': 'reclassificação direta',
+            'motivo': f"DCV estabelecida: {', '.join(motivos)}",
+        }
+    if dm or irc:
+        motivos = []
+        if dm: motivos.append("Diabetes mellitus")
+        if irc: motivos.append("Doença renal crônica")
+        return {
+            'risco_pct': None,
+            'categoria': 'ALTO',
+            'modelo': 'reclassificação direta',
+            'motivo': f"{', '.join(motivos)}",
+        }
+    return None
+
+
+def calcular_risco_completo(genero, idade, pressao_sistolica,
+                            colesterol_total_mgdl=None, imc=None,
+                            dm=False, tabaco=False,
+                            irc=False, ci=False, avc=False, dap=False):
+    """
+    Função principal: aplica reclassificação direta primeiro,
+    depois calcula WHO se aplicável.
+    Retorna dict com risco, categoria, modelo e motivo.
+    """
+    # Passo 1: Reclassificação direta (DCV, DM, IRC)
+    reclass = classificar_risco_direto(dm=dm, irc=irc, ci=ci, avc=avc, dap=dap)
+
+    # Passo 2: Calcular WHO (mesmo se reclassificado, para comparação)
+    who_result = None
+    if colesterol_total_mgdl and colesterol_total_mgdl > 0:
+        who_result = calcular_who_lab(genero, idade, pressao_sistolica,
+                                       colesterol_total_mgdl, dm, tabaco)
+    if who_result is None and imc and imc > 0:
+        who_result = calcular_who_nonlab(genero, idade, pressao_sistolica, imc, tabaco)
+
+    # Passo 3: Resultado final — reclassificação prevalece sobre score
+    if reclass:
+        # Se WHO calculou, e o risco é MAIOR que a reclassificação, usar o maior
+        if who_result and who_result['risco_pct'] is not None:
+            reclass['risco_who_pct'] = who_result['risco_pct']
+            reclass['categoria_who'] = who_result['categoria']
+            reclass['modelo_who'] = who_result['modelo']
+            # Se WHO deu >=30% e reclassificação é ALTO, promover para MUITO ALTO
+            if reclass['categoria'] == 'ALTO' and who_result['risco_pct'] >= 20:
+                reclass['categoria'] = 'MUITO ALTO'
+                reclass['motivo'] += f" + WHO {who_result['risco_pct']:.1f}%"
+        return reclass
+
+    # Sem reclassificação — usar WHO puro
+    if who_result:
+        return who_result
+
+    return None
+
+
 def _categorizar_who(risco_pct):
     """Categoriza o risco WHO em faixas."""
     if risco_pct < 5:
@@ -252,6 +323,21 @@ def _categorizar_who(risco_pct):
         return '20-30%'
     else:
         return '>=30%'
+
+
+def cor_categoria_completa(categoria):
+    """Retorna cor para qualquer categoria (WHO ou SBC)."""
+    return {
+        '<5%':         '#2ECC71',
+        '5-10%':       '#F39C12',
+        '10-20%':      '#E74C3C',
+        '20-30%':      '#C0392B',
+        '>=30%':       '#8E44AD',
+        'BAIXO':       '#2ECC71',
+        'INTERMEDIÁRIO': '#F39C12',
+        'ALTO':        '#E74C3C',
+        'MUITO ALTO':  '#8E44AD',
+    }.get(categoria, '#999999')
 
 
 def cor_categoria_who(categoria):
