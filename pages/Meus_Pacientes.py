@@ -569,7 +569,8 @@ def load_patient_data_paginated(
     busca_nome=None,
     carga_morb=None,
     ordenar_por="morbidades",
-    lacunas_filtro=None
+    lacunas_filtro=None,
+    rcv_filtro=None
 ):
     """Carrega pacientes com paginação e filtros"""
 
@@ -612,6 +613,11 @@ def load_patient_data_paginated(
     if lacunas_filtro and len(lacunas_filtro) > 0:
         lac_conditions = [f"{lac} = TRUE" for lac in lacunas_filtro]
         where_clauses.append(f"({' OR '.join(lac_conditions)})")
+
+    # Filtro de risco cardiovascular (WHO)
+    if rcv_filtro and len(rcv_filtro) > 0:
+        cats = ", ".join(f"'{c}'" for c in rcv_filtro)
+        where_clauses.append(f"who_categoria_risco IN ({cats})")
     
     where_sql = " AND ".join(where_clauses)
     order_dir = "DESC" if ordem == "desc" else "ASC"
@@ -623,6 +629,9 @@ def load_patient_data_paginated(
         order_sql = order_dir
     elif ordenar_por == "acb":
         order_col = "acb_score_total"
+        order_sql = order_dir
+    elif ordenar_por == "rcv":
+        order_col = "who_risco_cvd_pct"
         order_sql = order_dir
     else:
         order_col = "total_morbidades"
@@ -835,7 +844,7 @@ def buscar_acb_paciente(cpf: str) -> dict:
     return df.iloc[0].to_dict()
 
 @st.cache_data(show_spinner=False, ttl=900)
-def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR", busca_nome=None, carga_morb=None, lacunas_filtro=None):
+def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR", busca_nome=None, carga_morb=None, lacunas_filtro=None, rcv_filtro=None):
     """Conta total de pacientes para paginação"""
 
     where_clauses = ["area_programatica_cadastro IS NOT NULL"]
@@ -877,6 +886,11 @@ def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idad
     if lacunas_filtro and len(lacunas_filtro) > 0:
         lac_conditions = [f"{lac} = TRUE" for lac in lacunas_filtro]
         where_clauses.append(f"({' OR '.join(lac_conditions)})")
+
+    # Filtro de risco cardiovascular (WHO)
+    if rcv_filtro and len(rcv_filtro) > 0:
+        cats = ", ".join(f"'{c}'" for c in rcv_filtro)
+        where_clauses.append(f"who_categoria_risco IN ({cats})")
     
     where_sql = " AND ".join(where_clauses)
     
@@ -2025,8 +2039,8 @@ with fl2:
     )
     st.session_state.faixa_idade = faixa_idade
 
-# Linha 2: Morbidades + Carga + Lacunas
-fl3, fl4, fl5 = st.columns([2, 1, 2])
+# Linha 2: Morbidades + Carga + RCV + Grupo de Lacunas + Lacunas
+fl3, fl4, fl_rcv, fl5a, fl5b = st.columns([2, 1, 1, 1, 2])
 with fl3:
     morbidades_selecionadas = st.multiselect(
         "🦠 Filtrar por morbidades",
@@ -2054,15 +2068,22 @@ with fl4:
         placeholder="Todas",
         key="carga_morb_filtro"
     )
-with fl5:
-    # Grupos de lacunas disponíveis
+with fl_rcv:
+    rcv_filtro = st.multiselect(
+        "❤️ Risco Cardiovascular",
+        options=["<5%", "5-10%", "10-20%", "20-30%", ">=30%"],
+        default=[],
+        placeholder="Todos",
+        key="rcv_filtro"
+    )
+with fl5a:
     grupos_lacunas = sorted(set(g for g, _ in LACUNAS_COMPLETO.values()))
     grupo_lacuna_sel = st.selectbox(
         "⚠️ Grupo de lacunas",
         options=["Todos"] + grupos_lacunas,
         key="grupo_lacuna_filtro"
     )
-    # Lacunas do grupo selecionado
+with fl5b:
     if grupo_lacuna_sel == "Todos":
         lacunas_disp = [(k, desc) for k, (g, desc) in LACUNAS_COMPLETO.items()]
     else:
@@ -2076,9 +2097,9 @@ with fl5:
         key="lacunas_filtro"
     )
 
-# Linha 3: Ordenação (4 opções com direção)
+# Linha 3: Ordenação (5 opções)
 st.markdown("**Ordenar por:**")
-fl6, fl7, fl8, fl9 = st.columns(4)
+fl6, fl7, fl8, fl9, fl10 = st.columns(5)
 with fl6:
     ordem_opcoes = {
         "↓ Mais morbidades primeiro": ("morbidades", "desc"),
@@ -2106,9 +2127,19 @@ with fl9:
         "↑ Menor ACB primeiro": ("acb", "asc"),
     }
     ord4 = st.selectbox("🔴 Score ACB", options=list(ord_acb_opcoes.keys()), key="ord_acb")
+with fl10:
+    ord_rcv_opcoes = {
+        "— Não ordenar": None,
+        "↓ Maior risco primeiro": ("rcv", "desc"),
+        "↑ Menor risco primeiro": ("rcv", "asc"),
+    }
+    ord5 = st.selectbox("❤️ Risco CV", options=list(ord_rcv_opcoes.keys()), key="ord_rcv")
 
-# Determinar ordenação principal (prioridade: médico > prescrição > ACB > morbidades)
-if ord_medico_opcoes[ord2]:
+# Determinar ordenação (prioridade: rcv > médico > prescrição > ACB > morbidades)
+if ord_rcv_opcoes[ord5]:
+    ordenar_por = "rcv"
+    ordem = ord_rcv_opcoes[ord5][1]
+elif ord_medico_opcoes[ord2]:
     ordenar_por = ord_medico_opcoes[ord2][0]
     ordem = ord_medico_opcoes[ord2][1]
 elif ord_presc_opcoes[ord3]:
@@ -2152,7 +2183,8 @@ total_pacientes = count_total_patients(
     operador_morb=operador_morb,
     busca_nome=busca_nome_sql,
     carga_morb=tuple(carga_morb_filtro) if carga_morb_filtro else None,
-    lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None
+    lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None,
+    rcv_filtro=tuple(rcv_filtro) if rcv_filtro else None
 )
 
 if total_pacientes == 0:
@@ -2174,6 +2206,8 @@ if carga_morb_filtro:
     filtros_texto += f" | Carga: {', '.join(carga_morb_filtro)}"
 if lacunas_selecionadas:
     filtros_texto += f" | Lacunas: {len(lacunas_selecionadas)}"
+if rcv_filtro:
+    filtros_texto += f" | RCV: {', '.join(rcv_filtro)}"
 
 st.markdown(f"**📊 {total_pacientes:,} pacientes encontrados** | {filtros_texto}")
 
@@ -2212,6 +2246,7 @@ with st.spinner(f"Carregando página {pagina_atual + 1}..."):
             carga_morb=tuple(carga_morb_filtro) if carga_morb_filtro else None,
             ordenar_por=ordenar_por,
             lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None,
+            rcv_filtro=tuple(rcv_filtro) if rcv_filtro else None,
         )
         # Anonimizar nomes e filtrar
         if not df_pacientes.empty and 'nome' in df_pacientes.columns:
@@ -2245,6 +2280,7 @@ with st.spinner(f"Carregando página {pagina_atual + 1}..."):
             carga_morb=tuple(carga_morb_filtro) if carga_morb_filtro else None,
             ordenar_por=ordenar_por,
             lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None,
+            rcv_filtro=tuple(rcv_filtro) if rcv_filtro else None,
         )
 
 if df_pacientes.empty:
