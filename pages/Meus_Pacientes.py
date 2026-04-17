@@ -634,10 +634,26 @@ def load_patient_data_paginated(
       charlson_score,
       charlson_mediana,
       charlson_categoria,
+      charlson_pontos_morbidades,
+      charlson_pontos_idade,
+      charlson_pontos_polifarmacia,
       percentual_risco_final,
       categoria_risco_final,
       variaveis_usadas_calculo,
       framingham_variaveis_ausentes,
+      -- WHO HEARTS
+      who_risco_cvd_pct,
+      who_categoria_risco,
+      who_modelo_utilizado,
+      who_lab_calculavel,
+      who_nonlab_calculavel,
+      who_lab_variaveis_ausentes,
+      who_nonlab_variaveis_ausentes,
+      colesterol_total,
+      hdl,
+      pressao_sistolica,
+      IMC,
+      tabaco,
       dias_desde_ultima_medica,
       dias_desde_ultima_enfermagem,
       dias_desde_ultima_tecnico_enfermagem,
@@ -1088,8 +1104,9 @@ def create_patient_card(patient_data):
         # SUB-ABAS DETALHADAS
         # ============================================
 
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-            "📊 Carga de Morbidade e Risco CV",
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+            "📊 Carga de Morbidade",
+            "❤️ Risco Cardiovascular",
             "🔄 Continuidade do Cuidado",
             "⚠️ Lacunas de Cuidado",
             "💊 Polifarmácia e STOPP-START",
@@ -1097,78 +1114,196 @@ def create_patient_card(patient_data):
             "📝 Relatar Problemas"
         ])
 
-        
-        # ========== TAB 1: CARGA DE MORBIDADE E RISCO CV ==========
+        # ========== TAB 1: CARGA DE MORBIDADE ==========
         with tab1:
-            col_a, col_b = st.columns(2)
+            st.markdown("#### 📊 Carga de Morbidade")
+            charlson_score_val = patient_data.get('charlson_score')
+            charlson_mediana_val = patient_data.get('charlson_mediana')
+            charlson_cat = patient_data.get('charlson_categoria')
+            p_morb = patient_data.get('charlson_pontos_morbidades')
+            p_idade_ch = patient_data.get('charlson_pontos_idade')
+            p_poli = patient_data.get('charlson_pontos_polifarmacia')
 
+            if pd.notna(charlson_score_val) and pd.notna(charlson_cat):
+                score = int(charlson_score_val)
+                pontos_texto = "ponto" if score == 1 else "pontos"
+                texto = f"**Carga de Morbidade:** {score} {pontos_texto}"
+                if pd.notna(charlson_mediana_val):
+                    mediana = int(charlson_mediana_val)
+                    med_txt = "ponto" if mediana == 1 else "pontos"
+                    texto += f" (A mediana neste grupo etário é {mediana} {med_txt}.)"
+                st.write(texto)
+                st.write(f"**Categoria:** {charlson_cat}")
 
-            with col_a:
-                st.markdown("#### 📊 Carga de Morbidade")
-                
-                charlson_score = patient_data.get('charlson_score')
-                charlson_mediana = patient_data.get('charlson_mediana')
-                charlson_cat = patient_data.get('charlson_categoria')
-                
-                if pd.notna(charlson_score) and pd.notna(charlson_cat):
-                    # Converter para int para exibição
-                    score = int(charlson_score)
-                    
-                    # Texto base com plural/singular correto
-                    pontos_texto = "ponto" if score == 1 else "pontos"
-                    
-                    # Montar texto principal
-                    texto_principal = f"**Carga de Morbidade:** {score} {pontos_texto}"
-                    
-                    # Adicionar informação da mediana se disponível
-                    if pd.notna(charlson_mediana):
-                        mediana = int(charlson_mediana)
-                        mediana_texto = "ponto" if mediana == 1 else "pontos"
-                        texto_principal += f" (A mediana neste grupo etário é {mediana} {mediana_texto}.)"
-                    
-                    st.write(texto_principal)
-                    st.write(f"**Categoria:** {charlson_cat}")
+                # Composição da pontuação
+                componentes = []
+                if pd.notna(p_morb) and int(p_morb) > 0:
+                    componentes.append(f"morbidades ({int(p_morb)} pts)")
+                if pd.notna(p_idade_ch) and int(p_idade_ch) > 0:
+                    idade_pac = patient_data.get('idade', '')
+                    componentes.append(f"idade de {idade_pac} anos ({int(p_idade_ch)} pts)")
+                if pd.notna(p_poli) and int(p_poli) > 0:
+                    componentes.append(f"polifarmácia ({int(p_poli)} pts)")
+
+                # Listar morbidades do paciente
+                morbidades_str = patient_data.get('morbidades_lista', '') or ''
+                if not morbidades_str:
+                    # fallback: montar a partir dos campos individuais
+                    morbs = []
+                    for campo, nome_m in [('HAS','HAS'),('DM','DM'),('CI','CI'),('ICC','ICC'),
+                                          ('IRC','IRC'),('stroke','AVC'),('COPD','DPOC'),
+                                          ('arritmia','Arritmia'),('dementia','Demência'),
+                                          ('depre_ansiedade','Depressão/Ans.'),('psicoses','Psicose'),
+                                          ('obesidade_consolidada','Obesidade'),('HIV','HIV')]:
+                        v = patient_data.get(campo)
+                        if pd.notna(v) and v:
+                            morbs.append(nome_m)
+                    morbidades_str = ', '.join(morbs)
+
+                st.markdown("---")
+                st.markdown("**Informações que geraram a pontuação:**")
+                detalhes = []
+                if morbidades_str:
+                    detalhes.append(morbidades_str)
+                detalhes.extend(componentes)
+                st.write(', '.join(detalhes) + '.')
+            else:
+                st.info("Carga de morbidade não calculada.")
+
+        # ========== TAB 2: RISCO CARDIOVASCULAR ==========
+        with tab2:
+            from utils.risco_cv import calcular_who_lab, calcular_who_nonlab, cor_categoria_who
+
+            st.markdown("#### ❤️ Risco Cardiovascular — WHO HEARTS")
+
+            who_risco = patient_data.get('who_risco_cvd_pct')
+            who_cat = patient_data.get('who_categoria_risco')
+            who_modelo = patient_data.get('who_modelo_utilizado')
+            who_lab_calc = patient_data.get('who_lab_calculavel')
+            who_nonlab_calc = patient_data.get('who_nonlab_calculavel')
+            pac_idade = patient_data.get('idade')
+            pac_genero = patient_data.get('genero', '')
+            pac_pas = patient_data.get('pressao_sistolica')
+            pac_col = patient_data.get('colesterol_total')
+            pac_imc = patient_data.get('IMC')
+            pac_dm = pd.notna(patient_data.get('DM'))
+            pac_tabaco = pd.notna(patient_data.get('tabaco'))
+
+            if pd.notna(who_risco) and who_cat and who_cat != 'não calculável':
+                # Risco calculado — mostrar resultado
+                cor_r = cor_categoria_who(who_cat)
+                modelo_txt = "Lab-based (com colesterol)" if who_modelo == 'lab' else "Non-lab (com IMC)"
+                st.markdown(
+                    f"<div style='background:{cor_r}20; border-left:6px solid {cor_r}; "
+                    f"padding:16px; border-radius:8px; margin:8px 0;'>"
+                    f"<h3 style='margin:0; color:{cor_r};'>Risco CV em 10 anos: {who_risco:.1f}%</h3>"
+                    f"<p style='margin:5px 0 0 0; color:{cor_r};'><strong>Categoria: {who_cat}</strong></p>"
+                    f"<p style='margin:5px 0 0 0; color:#666;'>Modelo: {modelo_txt}</p>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+
+                # Dados usados
+                st.markdown("**Dados do paciente usados no cálculo:**")
+                dados_calc = []
+                if pd.notna(pac_pas): dados_calc.append(f"PAS: {int(pac_pas)} mmHg")
+                if pd.notna(pac_col): dados_calc.append(f"Colesterol: {int(pac_col)} mg/dL")
+                if pd.notna(pac_imc): dados_calc.append(f"IMC: {pac_imc:.1f} kg/m²")
+                dados_calc.append(f"DM: {'Sim' if pac_dm else 'Não'}")
+                dados_calc.append(f"Tabagismo: {'Sim' if pac_tabaco else 'Não'}")
+                st.write(" · ".join(dados_calc))
+
+            else:
+                # Risco NÃO calculado — formulário interativo
+                if pac_idade and (pac_idade < 40 or pac_idade > 80):
+                    st.warning(f"⚠️ Idade do paciente ({pac_idade} anos) fora da faixa WHO (40-80 anos). Cálculo não disponível.")
                 else:
-                    st.info("Carga de morbidade não calculada")
-            
-            
-            with col_b:
-                st.markdown("#### ❤️ Risco Cardiovascular Global")
-                
-                percentual_risco = patient_data.get('percentual_risco_final')
-                categoria_risco = patient_data.get('categoria_risco_final')
-                
-                if pd.notna(percentual_risco) and pd.notna(categoria_risco):
-                    # Cor baseada no risco
-                    if categoria_risco == 'Alto':
-                        st.error(f"**🔴 {categoria_risco}**")
-                    elif categoria_risco == 'Intermediário':
-                        st.warning(f"**🟡 {categoria_risco}**")
-                    else:
-                        st.success(f"**🟢 {categoria_risco}**")
-                    
-                    st.write(f"**Risco Cardiovascular Global estimado:** {percentual_risco}")
+                    st.warning("⚠️ Risco cardiovascular não calculado — dados insuficientes no prontuário.")
 
-                    # Linha em branco
-                    st.write("")
+                    st.markdown("**Dados disponíveis no prontuário:**")
+                    disp = []
+                    if pd.notna(pac_pas): disp.append(f"✅ PAS: {int(pac_pas)} mmHg")
+                    else: disp.append("🔴 PAS: ausente")
+                    if pd.notna(pac_col): disp.append(f"✅ Colesterol: {int(pac_col)} mg/dL")
+                    else: disp.append("🔴 Colesterol: ausente")
+                    if pd.notna(pac_imc): disp.append(f"✅ IMC: {pac_imc:.1f} kg/m²")
+                    else: disp.append("🔴 IMC: ausente")
+                    disp.append(f"{'✅' if pac_dm else '⬜'} Diabetes: {'Sim' if pac_dm else 'Não'}")
+                    disp.append(f"{'✅' if pac_tabaco else '❓'} Tabagismo: {'Sim' if pac_tabaco else 'Não informado'}")
+                    for d in disp:
+                        st.write(d)
 
-                    # Variáveis usadas
-                    variaveis_usadas = patient_data.get('variaveis_usadas_calculo')
-                    if pd.notna(variaveis_usadas) and str(variaveis_usadas).strip():
-                        st.markdown(f"* **Variáveis usadas no cálculo** - {variaveis_usadas}")
+                    st.markdown("---")
+                    st.markdown("**Complete os dados para calcular:**")
 
-                    # Variáveis ausentes
-                    variaveis_ausentes = patient_data.get('framingham_variaveis_ausentes')
-                    if pd.notna(variaveis_ausentes) and str(variaveis_ausentes).strip():
-                        st.markdown(f"* **Variáveis ausentes para o cálculo** - {variaveis_ausentes}")
+                    # Campos editáveis para dados ausentes
+                    cpk = patient_data.get('cpf', '')  # unique key suffix
+                    rc1, rc2 = st.columns(2)
+                    with rc1:
+                        input_pas = st.number_input(
+                            "PAS (mmHg)", min_value=80, max_value=250,
+                            value=int(pac_pas) if pd.notna(pac_pas) else 130,
+                            key=f"rcv_pas_{cpk}"
+                        )
+                        input_col = st.number_input(
+                            "Colesterol total (mg/dL) — 0 se indisponível",
+                            min_value=0, max_value=500,
+                            value=int(pac_col) if pd.notna(pac_col) else 0,
+                            key=f"rcv_col_{cpk}"
+                        )
+                        input_imc = st.number_input(
+                            "IMC (kg/m²)",
+                            min_value=15.0, max_value=60.0,
+                            value=float(pac_imc) if pd.notna(pac_imc) else 27.0,
+                            step=0.1,
+                            key=f"rcv_imc_{cpk}"
+                        )
+                    with rc2:
+                        input_dm = st.radio(
+                            "Diabetes mellitus?",
+                            options=["Sim", "Não"],
+                            index=0 if pac_dm else 1,
+                            key=f"rcv_dm_{cpk}",
+                            horizontal=True
+                        )
+                        input_tabaco = st.radio(
+                            "É tabagista?",
+                            options=["Sim", "Não"],
+                            index=0 if pac_tabaco else 1,
+                            key=f"rcv_tab_{cpk}",
+                            horizontal=True
+                        )
 
-                else:
-                    st.info("Risco cardiovascular não calculado")
+                    if st.button("🧮 Calcular risco", key=f"rcv_btn_{cpk}", type="primary"):
+                        genero_c = pac_genero.lower() if pac_genero else ''
+                        dm_c = (input_dm == "Sim")
+                        tab_c = (input_tabaco == "Sim")
+
+                        resultado = None
+                        if input_col > 0:
+                            resultado = calcular_who_lab(genero_c, pac_idade, input_pas, input_col, dm_c, tab_c)
+                        if resultado is None:
+                            resultado = calcular_who_nonlab(genero_c, pac_idade, input_pas, input_imc, tab_c)
+
+                        if resultado:
+                            cor_r = cor_categoria_who(resultado['categoria'])
+                            modelo_txt = "Lab-based" if resultado['modelo'] == 'lab' else "Non-lab"
+                            st.markdown(
+                                f"<div style='background:{cor_r}20; border-left:6px solid {cor_r}; "
+                                f"padding:16px; border-radius:8px; margin:8px 0;'>"
+                                f"<h3 style='margin:0; color:{cor_r};'>Risco CV em 10 anos: {resultado['risco_pct']:.1f}%</h3>"
+                                f"<p style='margin:5px 0 0 0; color:{cor_r};'><strong>Categoria: {resultado['categoria']}</strong></p>"
+                                f"<p style='margin:5px 0 0 0; color:#666;'>Modelo: {modelo_txt} (calculado localmente)</p>"
+                                f"</div>",
+                                unsafe_allow_html=True
+                            )
+                        else:
+                            st.error("❌ Não foi possível calcular. Verifique idade (40-80) e sexo.")
             
 
         
-        # ========== TAB 2: CONTINUIDADE DO CUIDADO ==========
-        with tab2:
+        # ========== TAB 3: CONTINUIDADE DO CUIDADO ==========
+        with tab3:
 
             # ── BLOCO 1: Frequência de Consultas ─────────────────
             st.markdown("#### 🗓️ Frequência de Consultas")
@@ -1353,8 +1488,8 @@ def create_patient_card(patient_data):
             if pd.notna(tempo_acomp):
                 st.caption(f"Tempo em acompanhamento na unidade: **{format_tempo_acompanhamento(tempo_acomp)}**")
         
-        # ========== TAB 3: LACUNAS DE CUIDADO ==========
-        with tab3:
+        # ========== TAB 4: LACUNAS DE CUIDADO ==========
+        with tab4:
             if n_lacunas == 0:
                 st.success("✅ **Nenhuma lacuna de cuidado identificada**")
             else:
@@ -1427,8 +1562,8 @@ def create_patient_card(patient_data):
                             else:
                                 st.write(f"• {lacuna}")
         
-        # ========== TAB 4: POLIFARMÁCIA E STOPP-START ==========
-        with tab4:
+        # ========== TAB 5: POLIFARMÁCIA E STOPP-START ==========
+        with tab5:
             cpf_pac  = str(patient_data.get("cpf", ""))
             idade_pac = int(patient_data.get("idade", 0) or 0)
 
@@ -1653,8 +1788,8 @@ def create_patient_card(patient_data):
                 else:
                     st.info("Sem dados ACB.")
 
-        # ========== TAB 5: INÉRCIA TERAPÊUTICA (PLACEHOLDER) ==========
-        with tab5:
+        # ========== TAB 6: INÉRCIA TERAPÊUTICA (PLACEHOLDER) ==========
+        with tab6:
             st.info("🚧 **Módulo em desenvolvimento**")
             st.markdown("""
             Esta aba apresentará:
@@ -1665,8 +1800,8 @@ def create_patient_card(patient_data):
             """)
 
 
-        # ========== TAB 6: RELATAR PROBLEMA ==========
-        with tab6:
+        # ========== TAB 7: RELATAR PROBLEMA ==========
+        with tab7:
             formulario_relato(patient_data, usuario_logado)
                 
         
