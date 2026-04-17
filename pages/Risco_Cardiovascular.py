@@ -522,48 +522,56 @@ with tab_panorama:
   n_who_gte30_dcv = int(sumario.get('n_who_gte30_dcv', 0) or 0)
   n_who_gte30_fat = int(sumario.get('n_who_gte30_fator', 0) or 0)
 
-  col_f, col_w = st.columns(2)
-
-  # Framingham+SBC
-  with col_f:
+  # Cabeçalhos
+  h_f, h_w = st.columns(2)
+  with h_f:
       st.markdown(f"**Framingham + SBC** (n={n_fram_calc:,})")
-      cats_fram = [
-          ("MUITO ALTO (>20%)", n_fram_ma, "#C0392B",
-           f"DCV estabelecida: {n_fram_ma_dcv:,} · Por fatores: {n_fram_ma_fat:,}"),
-          ("ALTO (10-20%)",     int(sumario.get('n_fram_alto', 0) or 0), "#E74C3C", None),
-          ("INTERMEDIÁRIO (5-10%)", int(sumario.get('n_fram_intermediario', 0) or 0), "#F39C12", None),
-          ("BAIXO (<5%)",       int(sumario.get('n_fram_baixo', 0) or 0), "#2ECC71", None),
-      ]
-      for label, n, cor, detalhe in cats_fram:
-          pct = _p(n, n_fram_calc) if n_fram_calc else 0
-          det_html = f"<br><span style='font-size:0.85em; color:#666;'>{detalhe}</span>" if detalhe else ""
-          st.markdown(
-              f"<div style='background:{cor}20; border-left:4px solid {cor}; "
-              f"padding:8px 12px; margin:4px 0; border-radius:4px;'>"
-              f"<strong>{label}</strong>: {n:,} ({pct:.0f}%){det_html}</div>",
-              unsafe_allow_html=True
-          )
-
-  # WHO (padrão PAHO/HEARTS)
-  with col_w:
+  with h_w:
       st.markdown(f"**WHO 2019 / HEARTS** (n={n_who_calc:,})")
-      cats_who = [
-          ("🔴 Crítico (≥30%)", n_who_gte30, "#7B0000",
-           f"DCV estabelecida: {n_who_gte30_dcv:,} · Por fatores: {n_who_gte30_fat:,}"),
-          ("🔴 Muito alto (20-30%)", int(sumario.get('n_who_20_30', 0) or 0), "#F44336", None),
-          ("🟠 Alto (10-20%)",       int(sumario.get('n_who_10_20', 0) or 0), "#FF9800", None),
-          ("🟡 Moderado (5-10%)",    int(sumario.get('n_who_5_10', 0) or 0),  "#FFEB3B", None),
-          ("🟢 Baixo (<5%)",         int(sumario.get('n_who_lt5', 0) or 0),   "#4CAF50", None),
-      ]
-      for label, n, cor, detalhe in cats_who:
-          pct = _p(n, n_who_calc) if n_who_calc else 0
-          det_html = f"<br><span style='font-size:0.85em; color:#666;'>{detalhe}</span>" if detalhe else ""
+
+  def _card(label, n, cor, detalhe, total):
+      if label is None:
+          # Spacer invisível com altura equivalente a card com detalhe
           st.markdown(
-              f"<div style='background:{cor}20; border-left:4px solid {cor}; "
-              f"padding:8px 12px; margin:4px 0; border-radius:4px;'>"
-              f"<strong>{label}</strong>: {n:,} ({pct:.0f}%){det_html}</div>",
+              "<div style='padding:8px 12px; margin:4px 0; "
+              "visibility:hidden;'>—<br><span style='font-size:0.85em;'>—</span></div>",
               unsafe_allow_html=True
           )
+          return
+      pct = _p(n, total) if total else 0
+      det_html = f"<br><span style='font-size:0.85em; color:#666;'>{detalhe}</span>" if detalhe else ""
+      st.markdown(
+          f"<div style='background:{cor}20; border-left:4px solid {cor}; "
+          f"padding:8px 12px; margin:4px 0; border-radius:4px;'>"
+          f"<strong>{label}</strong>: {n:,} ({pct:.0f}%){det_html}</div>",
+          unsafe_allow_html=True
+      )
+
+  # Pares emparelhados por faixa de risco
+  linhas = [
+      # (Framingham side, WHO side)
+      (None,
+       ("🔴 Crítico (≥30%)", n_who_gte30, "#7B0000",
+        f"DCV estabelecida: {n_who_gte30_dcv:,} · Por fatores: {n_who_gte30_fat:,}")),
+      (("MUITO ALTO (>20%)", n_fram_ma, "#C0392B",
+        f"DCV estabelecida: {n_fram_ma_dcv:,} · Por fatores: {n_fram_ma_fat:,}"),
+       ("🔴 Muito alto (20-30%)", int(sumario.get('n_who_20_30', 0) or 0), "#F44336", None)),
+      (("ALTO (10-20%)", int(sumario.get('n_fram_alto', 0) or 0), "#E74C3C", None),
+       ("🟠 Alto (10-20%)", int(sumario.get('n_who_10_20', 0) or 0), "#FF9800", None)),
+      (("INTERMEDIÁRIO (5-10%)", int(sumario.get('n_fram_intermediario', 0) or 0), "#F39C12", None),
+       ("🟡 Moderado (5-10%)", int(sumario.get('n_who_5_10', 0) or 0), "#FFEB3B", None)),
+      (("BAIXO (<5%)", int(sumario.get('n_fram_baixo', 0) or 0), "#2ECC71", None),
+       ("🟢 Baixo (<5%)", int(sumario.get('n_who_lt5', 0) or 0), "#4CAF50", None)),
+  ]
+  for linha_f, linha_w in linhas:
+      r_f, r_w = st.columns(2)
+      with r_f:
+          if linha_f is None:
+              _card(None, None, None, None, None)
+          else:
+              _card(*linha_f, total=n_fram_calc)
+      with r_w:
+          _card(*linha_w, total=n_who_calc)
 
 
   st.markdown("---")
