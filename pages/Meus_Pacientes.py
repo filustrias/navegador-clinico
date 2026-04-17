@@ -517,7 +517,8 @@ def load_patient_data_paginated(
     carga_morb=None,
     ordenar_por="morbidades",
     lacunas_filtro=None,
-    rcv_filtro=None
+    rcv_filtro=None,
+    apenas_insulina=False
 ):
     """Carrega pacientes com paginação e filtros"""
 
@@ -580,20 +581,33 @@ def load_patient_data_paginated(
             )
         where_clauses.append(f"({' OR '.join(rcv_conds)})")
 
+    # Filtro: apenas pacientes em uso de insulina (qualquer tipo)
+    if apenas_insulina:
+        where_clauses.append(
+            "(principio_INSULINA_BASAL_HUMANA IS NOT NULL "
+            "OR principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL "
+            "OR principio_INSULINA_BASAL_ANALOGICA IS NOT NULL "
+            "OR principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL "
+            "OR principio_INSULINA_MISTA IS NOT NULL)"
+        )
+
     where_sql = " AND ".join(where_clauses)
     order_dir = "DESC" if ordem == "desc" else "ASC"
     if ordenar_por == "dias_medico":
         order_col = "dias_desde_ultima_medica"
-        order_sql = order_dir
+        order_sql = f"{order_dir} NULLS LAST"
     elif ordenar_por == "dias_prescricao":
         order_col = "dias_desde_ultima_prescricao_cronica"
-        order_sql = order_dir
+        order_sql = f"{order_dir} NULLS LAST"
     elif ordenar_por == "acb":
         order_col = "acb_score_total"
-        order_sql = order_dir
+        order_sql = f"{order_dir} NULLS LAST"
     elif ordenar_por == "rcv":
         order_col = "who_risco_cvd_pct"
-        order_sql = order_dir
+        order_sql = f"{order_dir} NULLS LAST"
+    elif ordenar_por == "dose_nph":
+        order_col = "dose_NPH_ui_kg"
+        order_sql = f"{order_dir} NULLS LAST"
     else:
         order_col = "total_morbidades"
         order_sql = order_dir
@@ -680,6 +694,14 @@ def load_patient_data_paginated(
       dias_desde_ultima_prescricao_cronica,
       polifarmacia,
       hiperpolifarmacia,
+      -- Insulinas
+      (principio_INSULINA_BASAL_HUMANA IS NOT NULL
+       OR principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL
+       OR principio_INSULINA_BASAL_ANALOGICA IS NOT NULL
+       OR principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL
+       OR principio_INSULINA_MISTA IS NOT NULL) AS usa_insulina,
+      (principio_INSULINA_BASAL_HUMANA IS NOT NULL) AS usa_nph,
+      dose_NPH_ui_kg,
       acb_score_total,
       categoria_acb,
       COALESCE(alerta_acb_idoso, FALSE) AS alerta_acb_idoso,
@@ -806,7 +828,7 @@ def buscar_acb_paciente(cpf: str) -> dict:
     return df.iloc[0].to_dict()
 
 @st.cache_data(show_spinner=False, ttl=900)
-def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR", busca_nome=None, carga_morb=None, lacunas_filtro=None, rcv_filtro=None):
+def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR", busca_nome=None, carga_morb=None, lacunas_filtro=None, rcv_filtro=None, apenas_insulina=False):
     """Conta total de pacientes para paginação"""
 
     where_clauses = ["area_programatica_cadastro IS NOT NULL"]
@@ -867,6 +889,16 @@ def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idad
                 "AND colesterol_total IS NULL AND IMC IS NULL)"
             )
         where_clauses.append(f"({' OR '.join(rcv_conds)})")
+
+    # Filtro: apenas pacientes em uso de insulina (qualquer tipo)
+    if apenas_insulina:
+        where_clauses.append(
+            "(principio_INSULINA_BASAL_HUMANA IS NOT NULL "
+            "OR principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL "
+            "OR principio_INSULINA_BASAL_ANALOGICA IS NOT NULL "
+            "OR principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL "
+            "OR principio_INSULINA_MISTA IS NOT NULL)"
+        )
 
     where_sql = " AND ".join(where_clauses)
 
@@ -1059,7 +1091,15 @@ def create_patient_card(patient_data):
     else:
         rcv_texto = " | ❤️ RCV não calculado"
 
-    titulo_card = f"👤 **{nome}** - {idade} anos | 🏥 {morbidades_texto} | 💊 {medicamentos_texto}{acb_texto}{rcv_texto} | ⚠️ {lacunas_texto}"
+    # Alerta NPH em dose alta no cabeçalho
+    _usa_nph_hdr = patient_data.get('usa_nph') in [True, 1, '1', 'True']
+    _dose_nph_hdr = patient_data.get('dose_NPH_ui_kg')
+    if _usa_nph_hdr and pd.notna(_dose_nph_hdr) and float(_dose_nph_hdr) > 0.8:
+        nph_texto = f" | ⚠️ NPH {float(_dose_nph_hdr):.2f} UI/kg"
+    else:
+        nph_texto = ""
+
+    titulo_card = f"👤 **{nome}** - {idade} anos | 🏥 {morbidades_texto} | 💊 {medicamentos_texto}{acb_texto}{rcv_texto}{nph_texto} | ⚠️ {lacunas_texto}"
     
     with st.expander(titulo_card, expanded=False):
         
@@ -1114,12 +1154,28 @@ def create_patient_card(patient_data):
             else:
                 # Linha 1: quantidade
                 st.write(f"**{int(n_meds)} medicamentos em uso**")
-                
+
                 # Linha 2: lista de medicamentos
                 if medicamentos and pd.notna(medicamentos) and str(medicamentos).strip():
                     st.write(str(medicamentos))
-                
-                # Linha 3: última prescrição
+
+                # Linha 3: Insulina NPH com dose UI/kg (alerta se >0,8)
+                usa_nph = patient_data.get('usa_nph') in [True, 1, '1', 'True']
+                dose_nph = patient_data.get('dose_NPH_ui_kg')
+                if usa_nph and pd.notna(dose_nph):
+                    dose_val = float(dose_nph)
+                    texto_nph = f"Prescrição de Insulina NPH ({dose_val:.2f} UI/kg)"
+                    if dose_val > 0.8:
+                        st.markdown(
+                            f"<div style='background:#FFCDD2; border-left:4px solid #C62828; "
+                            f"padding:6px 10px; border-radius:4px; margin:4px 0; color:#B71C1C;'>"
+                            f"⚠️ <strong>{texto_nph}</strong></div>",
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.write(texto_nph)
+
+                # Linha 4: última prescrição
                 if pd.notna(dias_prescricao) and dias_prescricao != 9999:
                     dias = int(float(dias_prescricao))
                     st.write(f"Última prescrição há {dias} dias")
@@ -2105,9 +2161,17 @@ with fl5b:
         key="lacunas_filtro"
     )
 
-# Linha 3: Ordenação (5 opções)
+# Linha 2b: filtro de insulina
+apenas_insulina = st.checkbox(
+    "💉 Apenas pacientes em uso de insulina",
+    value=False,
+    key="apenas_insulina_filter",
+    help="Considera qualquer tipo de insulina: NPH, regular, análogos basal/prandial e misturas."
+)
+
+# Linha 3: Ordenação (6 opções)
 st.markdown("**Ordenar por:**")
-fl6, fl7, fl8, fl9, fl10 = st.columns(5)
+fl6, fl7, fl8, fl9, fl10, fl11 = st.columns(6)
 with fl6:
     ordem_opcoes = {
         "↓ Mais morbidades primeiro": ("morbidades", "desc"),
@@ -2142,9 +2206,19 @@ with fl10:
         "↑ Menor risco primeiro": ("rcv", "asc"),
     }
     ord5 = st.selectbox("❤️ Risco CV", options=list(ord_rcv_opcoes.keys()), key="ord_rcv")
+with fl11:
+    ord_nph_opcoes = {
+        "— Não ordenar": None,
+        "↓ Maior dose NPH/kg primeiro": ("dose_nph", "desc"),
+        "↑ Menor dose NPH/kg primeiro": ("dose_nph", "asc"),
+    }
+    ord6 = st.selectbox("💉 Dose NPH (UI/kg)", options=list(ord_nph_opcoes.keys()), key="ord_nph")
 
-# Determinar ordenação (prioridade: rcv > médico > prescrição > ACB > morbidades)
-if ord_rcv_opcoes[ord5]:
+# Determinar ordenação (prioridade: dose NPH > rcv > médico > prescrição > ACB > morbidades)
+if ord_nph_opcoes[ord6]:
+    ordenar_por = "dose_nph"
+    ordem = ord_nph_opcoes[ord6][1]
+elif ord_rcv_opcoes[ord5]:
     ordenar_por = "rcv"
     ordem = ord_rcv_opcoes[ord5][1]
 elif ord_medico_opcoes[ord2]:
@@ -2192,7 +2266,8 @@ total_pacientes = count_total_patients(
     busca_nome=busca_nome_sql,
     carga_morb=tuple(carga_morb_filtro) if carga_morb_filtro else None,
     lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None,
-    rcv_filtro=tuple(rcv_filtro) if rcv_filtro else None
+    rcv_filtro=tuple(rcv_filtro) if rcv_filtro else None,
+    apenas_insulina=apenas_insulina,
 )
 
 if total_pacientes == 0:
@@ -2216,6 +2291,8 @@ if lacunas_selecionadas:
     filtros_texto += f" | Lacunas: {len(lacunas_selecionadas)}"
 if rcv_filtro:
     filtros_texto += f" | RCV: {', '.join(rcv_filtro)}"
+if apenas_insulina:
+    filtros_texto += " | 💉 Em insulina"
 
 st.markdown(f"**📊 {total_pacientes:,} pacientes encontrados** | {filtros_texto}")
 
@@ -2255,6 +2332,7 @@ with st.spinner(f"Carregando página {pagina_atual + 1}..."):
             ordenar_por=ordenar_por,
             lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None,
             rcv_filtro=tuple(rcv_filtro) if rcv_filtro else None,
+            apenas_insulina=apenas_insulina,
         )
         # Anonimizar nomes e filtrar
         if not df_pacientes.empty and 'nome' in df_pacientes.columns:
@@ -2289,6 +2367,7 @@ with st.spinner(f"Carregando página {pagina_atual + 1}..."):
             ordenar_por=ordenar_por,
             lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None,
             rcv_filtro=tuple(rcv_filtro) if rcv_filtro else None,
+            apenas_insulina=apenas_insulina,
         )
 
 if df_pacientes.empty:
