@@ -1228,6 +1228,15 @@ def create_patient_card(patient_data):
                 if pd.notna(who_risco) and who_cat and who_cat != 'não calculável':
                     modelo_txt = "Lab-based (com colesterol)" if who_modelo == 'lab' else "Non-lab (com IMC)"
                     _mostrar_resultado_rcv(who_risco, who_cat, modelo_txt)
+                    # Nota para idosos ≥70
+                    if pac_idade and pac_idade >= 70:
+                        st.caption(
+                            "**Nota sobre pacientes com 70 anos ou mais:** O modelo WHO HEARTS atribui risco elevado "
+                            "a pacientes idosos mesmo com poucos fatores de risco modificáveis, porque a idade é o "
+                            "principal determinante do risco cardiovascular absoluto. Nesta faixa etária, a decisão "
+                            "de tratar deve considerar a expectativa de vida, fragilidade, comorbidades e preferências "
+                            "do paciente — e não apenas o percentual de risco calculado."
+                        )
                     # Alerta se non-lab em diabético (subestima risco)
                     if who_modelo == 'nonlab' and pac_dm:
                         st.warning(
