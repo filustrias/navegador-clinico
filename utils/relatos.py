@@ -189,4 +189,3 @@ def formulario_relato(patient_data: dict, usuario: dict):
             
             if sucesso:
                 st.success("✅ Relato enviado com sucesso! Obrigado pela contribuição.")
-                st.balloons()
