@@ -16,7 +16,11 @@ from utils.anonimizador import (
 )
 import config
 from utils import theme as T
-from utils.risco_cv import calcular_who_lab, calcular_who_nonlab, cor_categoria_who
+from utils.risco_cv import (
+    calcular_who_lab, calcular_who_nonlab,
+    calcular_risco_completo, classificar_risco_direto,
+    cor_categoria_who, cor_categoria_completa,
+)
 
 st.set_page_config(
     page_title="Risco Cardiovascular · Navegador Clínico",
@@ -658,6 +662,12 @@ with tab_calculadora:
         )
         calc_tabaco = st.checkbox("Fumante ativo", value=False, key="calc_tabaco")
         calc_dm = st.checkbox("Diabetes mellitus", value=False, key="calc_dm")
+        calc_irc = st.checkbox("Doença renal crônica (IRC)", value=False, key="calc_irc")
+
+        st.markdown("**Doença cardiovascular estabelecida:**")
+        calc_ci = st.checkbox("Cardiopatia isquêmica (IAM, angina)", value=False, key="calc_ci")
+        calc_avc = st.checkbox("AVC prévio", value=False, key="calc_avc")
+        calc_dap = st.checkbox("Doença arterial periférica", value=False, key="calc_dap")
 
     with fc2:
         st.markdown("**Dados clínicos**")
@@ -677,6 +687,10 @@ with tab_calculadora:
             min_value=15.0, max_value=60.0, value=27.0, step=0.1,
             key="calc_imc"
         )
+        st.caption(
+            "ℹ️ **Reclassificação direta:** Pacientes com CI, AVC ou DAP são classificados "
+            "automaticamente como MUITO ALTO; com DM ou IRC, como ALTO — independente do score."
+        )
 
     st.markdown("---")
 
@@ -684,31 +698,33 @@ with tab_calculadora:
     if st.button("🧮 Calcular risco cardiovascular", use_container_width=True, type="primary"):
         genero_calc = calc_sexo.lower()
 
-        resultado_lab = None
-        resultado_nonlab = None
-
-        # Tentar lab-based se colesterol disponível
-        if calc_col > 0:
-            resultado_lab = calcular_who_lab(
-                genero=genero_calc,
-                idade=calc_idade,
-                pressao_sistolica=calc_pas,
-                colesterol_total_mgdl=calc_col,
-                dm=calc_dm,
-                tabaco=calc_tabaco,
-            )
-
-        # Sempre calcular non-lab
-        resultado_nonlab = calcular_who_nonlab(
-            genero=genero_calc,
-            idade=calc_idade,
-            pressao_sistolica=calc_pas,
-            imc=calc_imc,
-            tabaco=calc_tabaco,
+        # Reclassificação direta
+        reclass = classificar_risco_direto(
+            dm=calc_dm, irc=calc_irc, ci=calc_ci, avc=calc_avc, dap=calc_dap
         )
 
-        # Resultado principal: lab se disponível, senão non-lab
-        resultado = resultado_lab or resultado_nonlab
+        # WHO lab / non-lab (para referência)
+        resultado_lab = None
+        if calc_col > 0:
+            resultado_lab = calcular_who_lab(
+                genero=genero_calc, idade=calc_idade,
+                pressao_sistolica=calc_pas, colesterol_total_mgdl=calc_col,
+                dm=calc_dm, tabaco=calc_tabaco,
+            )
+        resultado_nonlab = calcular_who_nonlab(
+            genero=genero_calc, idade=calc_idade,
+            pressao_sistolica=calc_pas, imc=calc_imc, tabaco=calc_tabaco,
+        )
+
+        # Resultado final — reclassificação prevalece
+        resultado = calcular_risco_completo(
+            genero=genero_calc, idade=calc_idade,
+            pressao_sistolica=calc_pas,
+            colesterol_total_mgdl=calc_col if calc_col > 0 else None,
+            imc=calc_imc,
+            dm=calc_dm, tabaco=calc_tabaco,
+            irc=calc_irc, ci=calc_ci, avc=calc_avc, dap=calc_dap,
+        )
 
         if resultado is None:
             st.error("❌ Não foi possível calcular. Verifique se a idade está entre 40 e 80 anos.")
@@ -716,19 +732,35 @@ with tab_calculadora:
             st.markdown("---")
             st.markdown("### Resultado")
 
-            cor = cor_categoria_who(resultado['categoria'])
-            modelo_usado = "Lab-based (com colesterol)" if resultado['modelo'] == 'lab' else "Non-lab (com IMC)"
+            cor = cor_categoria_completa(resultado['categoria'])
+            risco_val = resultado.get('risco_pct')
+            motivo = resultado.get('motivo', '')
+            modelo_txt = resultado.get('modelo', '')
 
-            # Card principal
+            if risco_val is not None:
+                titulo = f"Risco CV em 10 anos: {risco_val:.1f}%"
+            else:
+                titulo = f"Risco CV: {resultado['categoria']}"
+
+            detalhes = f"<h3 style='margin:5px 0 0 0; color:{cor};'>Categoria: {resultado['categoria']}</h3>"
+            if motivo:
+                detalhes += f"<p style='margin:10px 0 0 0; color:#666;'>Motivo: {motivo}</p>"
+            if modelo_txt:
+                detalhes += f"<p style='margin:5px 0 0 0; color:#999; font-size:0.9em;'>Modelo: {modelo_txt}</p>"
+
             st.markdown(
                 f"<div style='background:{cor}20; border-left:6px solid {cor}; "
                 f"padding:20px; border-radius:8px; margin:10px 0;'>"
-                f"<h2 style='margin:0; color:{cor};'>Risco CV em 10 anos: {resultado['risco_pct']:.1f}%</h2>"
-                f"<h3 style='margin:5px 0 0 0; color:{cor};'>Categoria: {resultado['categoria']}</h3>"
-                f"<p style='margin:10px 0 0 0; color:#666;'>Modelo: {modelo_usado}</p>"
-                f"</div>",
+                f"<h2 style='margin:0; color:{cor};'>{titulo}</h2>"
+                f"{detalhes}</div>",
                 unsafe_allow_html=True
             )
+
+            if reclass and (resultado_lab or resultado_nonlab):
+                st.info(
+                    "ℹ️ Paciente classificado por **reclassificação direta**. "
+                    "O score WHO é mostrado abaixo apenas como referência."
+                )
 
             # Comparação lab vs non-lab se ambos disponíveis
             if resultado_lab and resultado_nonlab:
