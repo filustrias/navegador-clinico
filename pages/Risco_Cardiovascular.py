@@ -370,35 +370,54 @@ with tab_panorama:
   n_fram_calc = int(sumario.get('n_fram_calculado', 0) or 0)
   n_who_calc  = int(sumario.get('n_who_calculado', 0) or 0)
 
-  c1, c2, c3 = st.columns(3)
-  with c1:
-      with st.container(border=True):
-          st.metric("👥 População total", f"{tot:,}")
-  with c2:
-      with st.container(border=True):
-          st.metric("📊 Elegíveis Framingham (30-74a)", f"{n_eleg_fram:,}",
-                    f"{_p(n_eleg_fram, tot):.0f}% da população")
-  with c3:
-      with st.container(border=True):
-          st.metric("🌍 Elegíveis WHO/HEARTS (40-80a)", f"{n_eleg_who:,}",
-                    f"{_p(n_eleg_who, tot):.0f}% da população")
-
   n_who_lab      = int(sumario.get('n_who_lab', 0) or 0)
   n_who_nonlab   = int(sumario.get('n_who_nonlab', 0) or 0)
 
-  c4, c5 = st.columns(2)
-  with c4:
-      with st.container(border=True):
-          st.metric("📊 Framingham+SBC calculado", f"{n_fram_calc:,}",
-                    f"{_p(n_fram_calc, n_eleg_fram):.0f}% dos elegíveis (30-74a)")
-  with c5:
-      with st.container(border=True):
-          st.metric("🌍 WHO/HEARTS calculado", f"{n_who_calc:,}",
-                    f"{_p(n_who_calc, n_eleg_who):.0f}% dos elegíveis (40-80a)")
-          st.caption(
-              f"Lab-based: {n_who_lab:,} · "
-              f"Non-lab: {n_who_nonlab:,}"
-          )
+  # Cards com alturas fixas: coluna 1 (tall) = 2× coluna 2/3 (small) + gap
+  _H_SMALL = 130
+  _H_TALL  = _H_SMALL * 2 + 16  # dois cards empilhados + gap do Streamlit
+
+  def _card_html(titulo, valor, delta=None, caption=None, h=_H_SMALL):
+      delta_html = (f"<div style='color:#09ab3b; font-size:0.85em; "
+                    f"margin-top:4px;'>↑ {delta}</div>" if delta else "")
+      cap_html = (f"<div style='color:{T.TEXT_MUTED}; font-size:0.8em; "
+                  f"margin-top:6px;'>{caption}</div>" if caption else "")
+      font_size = "2.5rem" if h > _H_SMALL else "2rem"
+      return (
+          f"<div style='border:1px solid {T.BORDER}; border-radius:8px; "
+          f"padding:14px 16px; height:{h}px; box-sizing:border-box; "
+          f"display:flex; flex-direction:column; justify-content:center; "
+          f"background:{T.CARD_BG};'>"
+          f"<div style='color:{T.TEXT_SECONDARY}; font-size:0.88em;'>{titulo}</div>"
+          f"<div style='font-size:{font_size}; font-weight:500; "
+          f"line-height:1.1; margin-top:4px; color:{T.TEXT};'>{valor}</div>"
+          f"{delta_html}{cap_html}"
+          f"</div>"
+      )
+
+  c1, c2, c3 = st.columns(3)
+  with c1:
+      st.markdown(_card_html("👥 População total", f"{tot:,}", h=_H_TALL),
+                  unsafe_allow_html=True)
+  with c2:
+      st.markdown(_card_html(
+          "📊 Elegíveis Framingham (30-74a)", f"{n_eleg_fram:,}",
+          delta=f"{_p(n_eleg_fram, tot):.0f}% da população"
+      ), unsafe_allow_html=True)
+      st.markdown(_card_html(
+          "🌍 Elegíveis WHO/HEARTS (40-80a)", f"{n_eleg_who:,}",
+          delta=f"{_p(n_eleg_who, tot):.0f}% da população"
+      ), unsafe_allow_html=True)
+  with c3:
+      st.markdown(_card_html(
+          "📊 Framingham+SBC calculado", f"{n_fram_calc:,}",
+          delta=f"{_p(n_fram_calc, n_eleg_fram):.0f}% dos elegíveis (30-74a)"
+      ), unsafe_allow_html=True)
+      st.markdown(_card_html(
+          "🌍 WHO/HEARTS calculado", f"{n_who_calc:,}",
+          delta=f"{_p(n_who_calc, n_eleg_who):.0f}% dos elegíveis (40-80a)",
+          caption=f"Lab-based: {n_who_lab:,} · Non-lab: {n_who_nonlab:,}"
+      ), unsafe_allow_html=True)
 
   # Variáveis mais ausentes
   st.markdown("##### Disponibilidade de variáveis clínicas")
