@@ -1228,6 +1228,13 @@ def create_patient_card(patient_data):
                 if pd.notna(who_risco) and who_cat and who_cat != 'não calculável':
                     modelo_txt = "Lab-based (com colesterol)" if who_modelo == 'lab' else "Non-lab (com IMC)"
                     _mostrar_resultado_rcv(who_risco, who_cat, modelo_txt)
+                    # Alerta se non-lab em diabético (subestima risco)
+                    if who_modelo == 'nonlab' and pac_dm:
+                        st.warning(
+                            "⚠️ **Atenção:** este resultado foi calculado pelo modelo non-lab, que **não considera diabetes**. "
+                            "O risco real pode ser significativamente maior. "
+                            "Informe o **colesterol total** abaixo para obter um cálculo mais preciso (modelo lab-based)."
+                        )
 
                 # Dados do prontuário com semáforo
                 st.markdown("**Dados do prontuário:**")
@@ -1252,9 +1259,11 @@ def create_patient_card(patient_data):
                 for d in dados_info:
                     st.write(d)
 
-                # Verificar o que falta
-                falta_algo = (not pd.notna(pac_pas) or not pd.notna(pac_col)
-                              or not pd.notna(pac_imc) or pac_tabaco_desconhecido)
+                # Verificar o que falta — inclui colesterol em diabéticos (non-lab subestima)
+                falta_pas = not pd.notna(pac_pas)
+                falta_col = not pd.notna(pac_col)
+                falta_imc = not pd.notna(pac_imc)
+                falta_algo = falta_pas or falta_col or falta_imc or pac_tabaco_desconhecido
 
                 if falta_algo:
                     st.markdown("---")
