@@ -977,7 +977,9 @@ def extrair_lacunas_paciente(patient_data):
 
 def create_patient_card(patient_data):
 
-    # ✅ ANONIMIZAR DADOS (ADICIONAR ESTA LINHA)
+    # Preserva original (não-anonimizado) para formulário de relato —
+    # precisamos do território real ao registrar o problema.
+    patient_data_original = patient_data
     patient_data = anonimizar_paciente(patient_data)
 
     nome = patient_data.get('nome', 'Nome não informado')
@@ -1898,7 +1900,7 @@ def create_patient_card(patient_data):
 
         # ========== TAB 7: RELATAR PROBLEMA ==========
         with tab7:
-            formulario_relato(patient_data, usuario_logado)
+            formulario_relato(patient_data_original, usuario_logado)
                 
         
 

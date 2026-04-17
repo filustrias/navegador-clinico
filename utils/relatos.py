@@ -163,13 +163,19 @@ def formulario_relato(patient_data: dict, usuario: dict):
                 st.error("⚠️ Informe a data do óbito")
                 return
             
-            # Salvar
+            # Salvar — aceita tanto nomes originais do banco quanto os aliases
+            # do SELECT de Meus_Pacientes (nome_clinica_cadastro AS clinica_familia,
+            # nome_esf_cadastro AS ESF).
+            clinica_val = (patient_data.get('nome_clinica_cadastro')
+                           or patient_data.get('clinica_familia'))
+            esf_val     = (patient_data.get('nome_esf_cadastro')
+                           or patient_data.get('ESF'))
             sucesso = salvar_relato(
                 cpf_paciente=patient_data.get('cpf'),
                 nome_paciente=patient_data.get('nome'),
                 area_programatica=patient_data.get('area_programatica_cadastro'),
-                clinica=patient_data.get('nome_clinica_cadastro'),
-                esf=patient_data.get('nome_esf_cadastro'),
+                clinica=clinica_val,
+                esf=esf_val,
                 usuario_relator=usuario['username'],
                 nome_relator=usuario['nome_completo'],
                 tipo_relato=tipo_relato.split(" - ")[0],
