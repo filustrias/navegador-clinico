@@ -1198,19 +1198,27 @@ def create_patient_card(patient_data):
             pac_tabaco_registrado = pd.notna(patient_data.get('tabaco'))  # TRUE = fumante confirmado
             pac_tabaco_desconhecido = not pac_tabaco_registrado  # NULL = informação insuficiente
 
-            if pd.notna(who_risco) and who_cat and who_cat != 'não calculável':
-                # Risco calculado — mostrar resultado
-                cor_r = cor_categoria_who(who_cat)
-                modelo_txt = "Lab-based (com colesterol)" if who_modelo == 'lab' else "Non-lab (com IMC)"
+            # Função para exibir resultado do RCV
+            def _mostrar_resultado_rcv(risco_pct, categoria, modelo, recalc=False):
+                cor_r = cor_categoria_who(categoria)
+                sufixo = " (recalculado)" if recalc else ""
                 st.markdown(
                     f"<div style='background:{cor_r}20; border-left:6px solid {cor_r}; "
                     f"padding:16px; border-radius:8px; margin:8px 0;'>"
-                    f"<h3 style='margin:0; color:{cor_r};'>Risco CV em 10 anos: {who_risco:.1f}%</h3>"
-                    f"<p style='margin:5px 0 0 0; color:{cor_r};'><strong>Categoria: {who_cat}</strong></p>"
-                    f"<p style='margin:5px 0 0 0; color:#666;'>Modelo: {modelo_txt}</p>"
+                    f"<h3 style='margin:0; color:{cor_r};'>Risco CV em 10 anos: {risco_pct:.1f}%{sufixo}</h3>"
+                    f"<p style='margin:5px 0 0 0; color:{cor_r};'><strong>Categoria: {categoria}</strong></p>"
+                    f"<p style='margin:5px 0 0 0; color:#666;'>Modelo: {modelo}</p>"
                     f"</div>",
                     unsafe_allow_html=True
                 )
+
+            cpk = patient_data.get('cpf', '')
+            genero_pronome = "Esta paciente" if pac_genero and pac_genero.lower() in ('f','feminino') else "Este paciente"
+
+            if pd.notna(who_risco) and who_cat and who_cat != 'não calculável':
+                # Risco calculado — mostrar resultado do banco
+                modelo_txt = "Lab-based (com colesterol)" if who_modelo == 'lab' else "Non-lab (com IMC)"
+                _mostrar_resultado_rcv(who_risco, who_cat, modelo_txt)
 
                 # Dados usados
                 st.markdown("**Dados do paciente usados no cálculo:**")
@@ -1219,8 +1227,39 @@ def create_patient_card(patient_data):
                 if pd.notna(pac_col): dados_calc.append(f"Colesterol: {int(pac_col)} mg/dL")
                 if pd.notna(pac_imc): dados_calc.append(f"IMC: {pac_imc:.1f} kg/m²")
                 dados_calc.append(f"DM: {'Sim' if pac_dm else 'Não'}")
-                dados_calc.append(f"Tabagismo: {'Sim' if pac_tabaco_registrado else 'Não informado'}")
+                if pac_tabaco_registrado:
+                    dados_calc.append("Tabagismo: Sim")
+                else:
+                    dados_calc.append("Tabagismo: Não informado")
                 st.write(" · ".join(dados_calc))
+
+                # Se tabagismo desconhecido, oferecer recálculo
+                if pac_tabaco_desconhecido:
+                    st.markdown("---")
+                    st.warning(
+                        f"Cálculo feito considerando o paciente como não-tabagista, "
+                        f"mas não temos certeza se {genero_pronome.lower()} fuma ou não."
+                    )
+                    input_tab_rc = st.radio(
+                        f"{genero_pronome} é tabagista?",
+                        options=["Não", "Sim"],
+                        index=0,
+                        key=f"rcv_tab_rc_{cpk}",
+                        horizontal=True
+                    )
+                    tab_rc = (input_tab_rc == "Sim")
+                    if tab_rc:
+                        # Recalcular com tabagismo = True
+                        genero_c = pac_genero.lower() if pac_genero else ''
+                        res = None
+                        if pd.notna(pac_col) and pac_col > 0:
+                            res = calcular_who_lab(genero_c, pac_idade, pac_pas, pac_col, pac_dm, True)
+                        if res is None and pd.notna(pac_imc):
+                            res = calcular_who_nonlab(genero_c, pac_idade, pac_pas, pac_imc, True)
+                        if res:
+                            st.markdown("**Resultado recalculado com tabagismo = Sim:**")
+                            mod_txt = "Lab-based" if res['modelo'] == 'lab' else "Non-lab"
+                            _mostrar_resultado_rcv(res['risco_pct'], res['categoria'], mod_txt, recalc=True)
 
             else:
                 # Risco NÃO calculado — formulário interativo
