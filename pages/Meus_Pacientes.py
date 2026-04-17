@@ -568,7 +568,8 @@ def load_patient_data_paginated(
     limit=20,
     busca_nome=None,
     carga_morb=None,
-    ordenar_por="morbidades"
+    ordenar_por="morbidades",
+    lacunas_filtro=None
 ):
     """Carrega pacientes com paginação e filtros"""
 
@@ -606,17 +607,26 @@ def load_patient_data_paginated(
             morb_conditions = [f"{col} IS NOT NULL" for col in morb_cols]
             if morb_conditions:
                 where_clauses.append(f"({' OR '.join(morb_conditions)})")
+
+    # Filtro de lacunas
+    if lacunas_filtro and len(lacunas_filtro) > 0:
+        lac_conditions = [f"{lac} = TRUE" for lac in lacunas_filtro]
+        where_clauses.append(f"({' OR '.join(lac_conditions)})")
     
     where_sql = " AND ".join(where_clauses)
+    order_dir = "DESC" if ordem == "desc" else "ASC"
     if ordenar_por == "dias_medico":
         order_col = "dias_desde_ultima_medica"
-        order_sql = "DESC"
+        order_sql = order_dir
     elif ordenar_por == "dias_prescricao":
         order_col = "dias_desde_ultima_prescricao_cronica"
-        order_sql = "DESC"
+        order_sql = order_dir
+    elif ordenar_por == "acb":
+        order_col = "acb_score_total"
+        order_sql = order_dir
     else:
         order_col = "total_morbidades"
-        order_sql = "DESC" if ordem == "desc" else "ASC"
+        order_sql = order_dir
     
     # Construir SELECT com TODAS as morbidades convertidas para boolean
     morbidades_select = []
@@ -825,7 +835,7 @@ def buscar_acb_paciente(cpf: str) -> dict:
     return df.iloc[0].to_dict()
 
 @st.cache_data(show_spinner=False, ttl=900)
-def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR", busca_nome=None, carga_morb=None):
+def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR", busca_nome=None, carga_morb=None, lacunas_filtro=None):
     """Conta total de pacientes para paginação"""
 
     where_clauses = ["area_programatica_cadastro IS NOT NULL"]
@@ -862,6 +872,11 @@ def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idad
             morb_conditions = [f"{col} IS NOT NULL" for col in morb_cols]
             if morb_conditions:
                 where_clauses.append(f"({' OR '.join(morb_conditions)})")
+
+    # Filtro de lacunas
+    if lacunas_filtro and len(lacunas_filtro) > 0:
+        lac_conditions = [f"{lac} = TRUE" for lac in lacunas_filtro]
+        where_clauses.append(f"({' OR '.join(lac_conditions)})")
     
     where_sql = " AND ".join(where_clauses)
     
@@ -1983,21 +1998,20 @@ with fl2:
     )
     st.session_state.faixa_idade = faixa_idade
 
-# Linha 2: Morbidades + Operador + Carga de morbidade
-fl3, fl4, fl5 = st.columns([2, 1, 1])
+# Linha 2: Morbidades + Carga + Lacunas
+fl3, fl4, fl5 = st.columns([2, 1, 2])
 with fl3:
     morbidades_selecionadas = st.multiselect(
-        "🦠 Morbidades",
+        "🦠 Filtrar por morbidades",
         options=LISTA_MORBIDADES,
         default=st.session_state.morbidades_selecionadas,
         placeholder="Todas",
         key="morb_select"
     )
     st.session_state.morbidades_selecionadas = morbidades_selecionadas
-with fl4:
     operador_index = 0 if "OU" in st.session_state.operador_morbidades else 1
     operador_morbidades = st.radio(
-        "Operador morbidades",
+        "Operador",
         options=["OU (pelo menos uma)", "E (todas)"],
         index=operador_index,
         disabled=len(morbidades_selecionadas) == 0,
@@ -2005,7 +2019,7 @@ with fl4:
     )
     st.session_state.operador_morbidades = operador_morbidades
     operador_morb = "AND" if "E" in operador_morbidades else "OR"
-with fl5:
+with fl4:
     carga_morb_filtro = st.multiselect(
         "📊 Carga de morbidade",
         options=["Muito Alto", "Alto", "Moderado", "Baixo"],
@@ -2013,37 +2027,72 @@ with fl5:
         placeholder="Todas",
         key="carga_morb_filtro"
     )
+with fl5:
+    # Grupos de lacunas disponíveis
+    grupos_lacunas = sorted(set(g for g, _ in LACUNAS_COMPLETO.values()))
+    grupo_lacuna_sel = st.selectbox(
+        "⚠️ Grupo de lacunas",
+        options=["Todos"] + grupos_lacunas,
+        key="grupo_lacuna_filtro"
+    )
+    # Lacunas do grupo selecionado
+    if grupo_lacuna_sel == "Todos":
+        lacunas_disp = [(k, desc) for k, (g, desc) in LACUNAS_COMPLETO.items()]
+    else:
+        lacunas_disp = [(k, desc) for k, (g, desc) in LACUNAS_COMPLETO.items() if g == grupo_lacuna_sel]
+    lacunas_selecionadas = st.multiselect(
+        "⚠️ Filtrar por lacunas",
+        options=[k for k, _ in lacunas_disp],
+        format_func=lambda k: dict(lacunas_disp).get(k, k),
+        default=[],
+        placeholder="Todas",
+        key="lacunas_filtro"
+    )
 
-# Linha 3: Ordenação
-fl6, fl7, fl8 = st.columns(3)
+# Linha 3: Ordenação (4 opções com direção)
+st.markdown("**Ordenar por:**")
+fl6, fl7, fl8, fl9 = st.columns(4)
 with fl6:
     ordem_opcoes = {
-        "↓ Mais morbidades primeiro": "desc",
-        "↑ Menos morbidades primeiro": "asc"
+        "↓ Mais morbidades primeiro": ("morbidades", "desc"),
+        "↑ Menos morbidades primeiro": ("morbidades", "asc"),
     }
-    ordem_selecionada = st.selectbox(
-        "📊 Ordenar por",
-        options=list(ordem_opcoes.keys()),
-        key="ordem_select"
-    )
-    ordem = ordem_opcoes[ordem_selecionada]
+    ord1 = st.selectbox("🦠 Morbidades", options=list(ordem_opcoes.keys()), key="ord_morb")
 with fl7:
-    ordenar_dias_medico = st.checkbox(
-        "⏳ Ordenar por dias sem médico", value=False,
-        key="ordenar_dias_medico"
-    )
+    ord_medico_opcoes = {
+        "— Não ordenar": None,
+        "↓ Mais dias sem médico": ("dias_medico", "desc"),
+        "↑ Menos dias sem médico": ("dias_medico", "asc"),
+    }
+    ord2 = st.selectbox("⏳ Dias sem médico", options=list(ord_medico_opcoes.keys()), key="ord_med")
 with fl8:
-    ordenar_dias_prescricao = st.checkbox(
-        "💊 Ordenar por dias sem prescrição", value=False,
-        key="ordenar_dias_prescricao"
-    )
-# Determinar ordenação
-if ordenar_dias_medico:
-    ordenar_por = "dias_medico"
-elif ordenar_dias_prescricao:
-    ordenar_por = "dias_prescricao"
+    ord_presc_opcoes = {
+        "— Não ordenar": None,
+        "↓ Mais dias sem prescrição": ("dias_prescricao", "desc"),
+        "↑ Menos dias sem prescrição": ("dias_prescricao", "asc"),
+    }
+    ord3 = st.selectbox("💊 Dias sem prescrição", options=list(ord_presc_opcoes.keys()), key="ord_presc")
+with fl9:
+    ord_acb_opcoes = {
+        "— Não ordenar": None,
+        "↓ Maior ACB primeiro": ("acb", "desc"),
+        "↑ Menor ACB primeiro": ("acb", "asc"),
+    }
+    ord4 = st.selectbox("🔴 Score ACB", options=list(ord_acb_opcoes.keys()), key="ord_acb")
+
+# Determinar ordenação principal (prioridade: médico > prescrição > ACB > morbidades)
+if ord_medico_opcoes[ord2]:
+    ordenar_por = ord_medico_opcoes[ord2][0]
+    ordem = ord_medico_opcoes[ord2][1]
+elif ord_presc_opcoes[ord3]:
+    ordenar_por = ord_presc_opcoes[ord3][0]
+    ordem = ord_presc_opcoes[ord3][1]
+elif ord_acb_opcoes[ord4]:
+    ordenar_por = "acb"
+    ordem = ord_acb_opcoes[ord4][1]
 else:
     ordenar_por = "morbidades"
+    ordem = ordem_opcoes[ord1][1]
 
 busca_nome_raw = busca_nome_input.strip() if busca_nome_input else None
 # No modo anônimo, a busca é feita no DataFrame (após anonimização), não no SQL
@@ -2075,7 +2124,8 @@ total_pacientes = count_total_patients(
     morbidades=morbidades_selecionadas,
     operador_morb=operador_morb,
     busca_nome=busca_nome_sql,
-    carga_morb=carga_morb_filtro if carga_morb_filtro else None
+    carga_morb=carga_morb_filtro if carga_morb_filtro else None,
+    lacunas_filtro=lacunas_selecionadas if lacunas_selecionadas else None
 )
 
 if total_pacientes == 0:
@@ -2131,6 +2181,7 @@ with st.spinner(f"Carregando página {pagina_atual + 1}..."):
             limit=5000,
             carga_morb=carga_morb_filtro if carga_morb_filtro else None,
             ordenar_por=ordenar_por,
+            lacunas_filtro=lacunas_selecionadas if lacunas_selecionadas else None,
         )
         # Anonimizar nomes e filtrar
         if not df_pacientes.empty and 'nome' in df_pacientes.columns:
@@ -2163,6 +2214,7 @@ with st.spinner(f"Carregando página {pagina_atual + 1}..."):
             busca_nome=busca_nome_sql,
             carga_morb=carga_morb_filtro if carga_morb_filtro else None,
             ordenar_por=ordenar_por,
+            lacunas_filtro=lacunas_selecionadas if lacunas_selecionadas else None,
         )
 
 if df_pacientes.empty:
