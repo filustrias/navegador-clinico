@@ -435,68 +435,27 @@ LISTA_MORBIDADES = [
 # MAPEAMENTO COMPLETO DE LACUNAS (43 LACUNAS)
 # ============================================
 
-LACUNAS_COMPLETO = {
-    # === CONTROLE DE PRESSÃO ARTERIAL (5) ===
-    'lacuna_rastreio_PA_adulto': ('PA', 'Adulto sem rastreamento de PA (>365d)'),
-    'lacuna_PA_hipertenso_180d': ('PA', 'Hipertenso sem aferição de PA (>180d)'),
-    'lacuna_HAS_descontrolado_menor80': ('PA', 'HAS descontrolado <80a (≥140/90)'),
-    'lacuna_HAS_descontrolado_80mais': ('PA', 'HAS descontrolado ≥80a (≥150/90)'),
-    'lacuna_DM_HAS_PA_descontrolada': ('PA', 'DM+HAS com PA >135/80'),
-    
-    # === CONTROLE GLICÊMICO (4) ===
-    'lacuna_DM_sem_HbA1c_recente': ('Glicemia', 'DM sem HbA1c recente (>180d)'),
-    'lacuna_DM_descontrolado': ('Glicemia', 'DM descontrolado (HbA1c acima da meta)'),
-    'lacuna_rastreio_DM_hipertenso': ('Glicemia', 'Hipertenso sem rastreio de DM (>365d)'),
-    'lacuna_rastreio_DM_45mais': ('Glicemia', 'Adulto ≥45a sem rastreio de DM (>3a)'),
-    
-    # === EXAMES LABORATORIAIS (7) ===
-    'lacuna_creatinina_HAS_DM': ('Exames', 'HAS/DM sem creatinina (365d)'),
-    'lacuna_colesterol_HAS_DM': ('Exames', 'HAS/DM sem colesterol (365d)'),
-    'lacuna_eas_HAS_DM': ('Exames', 'HAS/DM sem EAS (365d)'),
-    'lacuna_ecg_HAS_DM': ('Exames', 'HAS/DM sem ECG (365d)'),
-    'lacuna_DM_hba1c_nao_solicitado': ('Exames', 'DM sem HbA1c solicitado (365d)'),
-    'lacuna_DM_microalbuminuria_nao_solicitado': ('Exames', 'DM sem microalbuminúria (365d)'),
-    'lacuna_IMC_HAS_DM': ('Exames', 'HAS/DM sem IMC calculável'),
-    
-    # === PREVENÇÃO DE COMPLICAÇÕES DO DIABETES (3) ===
-    'lacuna_DM_sem_exame_pe_365d': ('Complicações DM', 'DM sem exame do pé (>365d)'),
-    'lacuna_DM_sem_exame_pe_180d': ('Complicações DM', 'DM sem exame do pé (>180d)'),
-    'lacuna_DM_nunca_teve_exame_pe': ('Complicações DM', 'DM nunca teve exame do pé'),
-    
-    # === CARDIOPATIA ISQUÊMICA (4) ===
-    'lacuna_CI_sem_AAS': ('CI', 'CI sem AAS/anticoagulante'),
-    'lacuna_CI_sem_estatina_alta': ('CI', 'CI sem estatina alta intensidade'),
-    'lacuna_CI_sem_estatina_qualquer': ('CI', 'CI sem qualquer estatina'),
-    'lacuna_CI_ICC_sem_BB': ('CI', 'CI+ICC sem betabloqueador'),
-    
-    # === INSUFICIÊNCIA CARDÍACA - FALTA DE MEDICAMENTOS (5) ===
-    'lacuna_ICC_sem_SGLT2': ('ICC', 'ICC sem SGLT-2'),
-    'lacuna_ICC_sem_IECA_BRA': ('ICC', 'ICC sem IECA/BRA'),
-    'lacuna_ICC_sem_INRA': ('ICC', 'ICC sem INRA (Sacubitril)'),
-    'lacuna_ICC_sem_ARM': ('ICC', 'ICC sem ARM (Espironolactona)'),
-    'lacuna_ICC_sem_SRAA_e_sem_hidralazina_nitrato': ('ICC', 'ICC sem SRAA nem H+N'),
-    
-    # === USO INADEQUADO/CONTRAINDICADO (5) ===
-    'lacuna_IECA_BRA_concomitante': ('Uso Inadequado', '⚠️ IECA + BRA concomitante'),
-    'lacuna_ICC_INRA_IECA_concomitante': ('Uso Inadequado', '⚠️ ICC: INRA + IECA (perigoso)'),
-    'lacuna_ICC_uso_BCC_nao_DHP': ('Uso Inadequado', '⚠️ ICC + BCC não-DHP (contraindicado)'),
-    'lacuna_ICC_uso_AINE': ('Uso Inadequado', '⚠️ ICC + AINE crônico'),
-    'lacuna_diur_alca_sem_ICC': ('Uso Inadequado', '⚠️ Diurético de alça sem ICC'),
-    
-    # === IRC E DM COMPLICADO (2) ===
-    'lacuna_IRC_sem_SGLT2': ('IRC/DM Complicado', 'IRC sem SGLT-2'),
-    'lacuna_DM_complicado_sem_SGLT2': ('IRC/DM Complicado', 'DM+ICC/IRC/CI sem SGLT-2'),
-    
-    # === FIBRILAÇÃO ATRIAL (3) ===
-    'lacuna_FA_sem_anticoagulacao': ('FA', 'FA sem anticoagulação'),
-    'lacuna_FA_sem_controle_FC': ('FA', 'FA sem controle de FC'),
-    'lacuna_FA_ICC_sem_digoxina': ('FA', 'FA+ICC sem digoxina'),
-    
-    # === ALERTA DE QUALIDADE (1) ===
-    'HAS_sem_CID': ('Alerta', '⚠️ HAS sem CID registrado'),
-}
+# ═══════════════════════════════════════════════════════════════
+# LACUNAS — derivadas de utils/lacunas_config.py (fonte única de verdade,
+# compartilhada com a page Lacunas de Cuidado).
+# Estrutura local: {coluna_fato: (grupos_tuple, descricao)}
+#   - grupos_tuple: tupla de grupos aos quais a lacuna pertence (1 ou mais).
+# ═══════════════════════════════════════════════════════════════
+from utils.lacunas_config import LACUNAS as _LACUNAS_CFG, get_grupos_ordenados
 
-# Flags positivos (não são lacunas, mas indicadores úteis)
+def _build_lacunas_completo():
+    out = {}
+    for nome, info in _LACUNAS_CFG.items():
+        col = info["coluna_fato"]
+        grupo = info["grupo"]
+        grupos = tuple(grupo) if isinstance(grupo, list) else (grupo,)
+        out[col] = (grupos, nome)
+    return out
+
+LACUNAS_COMPLETO = _build_lacunas_completo()
+GRUPOS_LACUNAS_ORDENADOS = get_grupos_ordenados()
+
+# Flags clínicos — não são lacunas, mas indicadores auxiliares exibidos no card.
 FLAGS_POSITIVOS = {
     'DM_controlado': '✅ DM controlado',
     'DM_melhorando': '✅ DM melhorando',
@@ -504,20 +463,6 @@ FLAGS_POSITIVOS = {
 
 FLAGS_ALERTA = {
     'DM_piorando': '⚠️ DM piorando',
-}
-
-# Grupos para organização na UI
-GRUPOS_LACUNAS = {
-    'PA': '🩺 Controle de Pressão Arterial',
-    'Glicemia': '🩸 Controle Glicêmico',
-    'Exames': '🔬 Exames Laboratoriais',
-    'Complicações DM': '🦶 Prevenção de Complicações do Diabetes',
-    'CI': '❤️ Cardiopatia Isquêmica',
-    'ICC': '💔 Insuficiência Cardíaca',
-    'Uso Inadequado': '⚠️ Uso Inadequado de Medicamentos',
-    'IRC/DM Complicado': '🫘 IRC e Diabetes Complicado',
-    'FA': '⚡ Fibrilação Atrial',
-    'Alerta': '📋 Alertas de Qualidade',
 }
 
 # ============================================
@@ -659,7 +604,7 @@ def load_patient_data_paginated(
     
     # Construir SELECT com TODAS as lacunas
     lacunas_select = []
-    for campo_lacuna, (grupo, descricao) in LACUNAS_COMPLETO.items():
+    for campo_lacuna in LACUNAS_COMPLETO.keys():
         lacunas_select.append(campo_lacuna)
     
     # Adicionar flags
@@ -1004,14 +949,16 @@ def extrair_lacunas_paciente(patient_data):
     """Extrai lacunas TRUE do paciente, organizadas por grupo"""
     lacunas_por_grupo = {}
     
-    # Processar lacunas
-    for campo_lacuna, (grupo, descricao) in LACUNAS_COMPLETO.items():
+    # Processar lacunas — lacunas multi-grupo (HAS/DM) aparecem só uma vez,
+    # no primeiro grupo da lista.
+    for campo_lacuna, (grupos, descricao) in LACUNAS_COMPLETO.items():
         valor = patient_data.get(campo_lacuna)
-        
+
         if valor in [True, 1, '1', 'True', 'true', 'TRUE']:
-            if grupo not in lacunas_por_grupo:
-                lacunas_por_grupo[grupo] = []
-            lacunas_por_grupo[grupo].append(descricao)
+            grupo_primario = grupos[0]
+            if grupo_primario not in lacunas_por_grupo:
+                lacunas_por_grupo[grupo_primario] = []
+            lacunas_por_grupo[grupo_primario].append(descricao)
     
     # Processar flags positivos
     flags_ativos = []
@@ -1046,7 +993,7 @@ def create_patient_card(patient_data):
         n_medicamentos = 0
 
     # Contar lacunas TRUE
-    n_lacunas = sum(1 for campo, (grupo, desc) in LACUNAS_COMPLETO.items()
+    n_lacunas = sum(1 for campo in LACUNAS_COMPLETO
                     if patient_data.get(campo) in [True, 1, '1', 'True'])
 
     # Processar morbidades
@@ -1646,45 +1593,41 @@ def create_patient_card(patient_data):
 
                 st.markdown("#### Lacunas Identificadas por Categoria")
 
-                # Ordem de prioridade: uso inadequado primeiro (risco imediato), depois falta de tratamento, depois monitoramento
+                # Ordem de prioridade: prescrições inapropriadas primeiro (risco imediato),
+                # depois falta de tratamento, por fim rastreio
                 PRIORIDADE_GRUPOS = [
-                    'Uso Inadequado',   # risco imediato — contraindicações
-                    'CI',               # cardiopatia isquêmica — falta de tratamento
-                    'ICC',              # insuficiência cardíaca — falta de tratamento
-                    'IRC',              # renal crônica — falta de tratamento
-                    'PA',               # pressão arterial — controle e monitoramento
-                    'Glicemia',         # diabetes — controle e monitoramento
-                    'Complicações DM',  # pé diabético
-                    'Exames',           # monitoramento laboratorial
-                    'Rastreamento',     # prevenção primária
+                    'Prescrições Inapropriadas',
+                    'Cardiopatia Isquêmica (CI)',
+                    'Insuficiência Cardíaca (ICC)',
+                    'Doença Renal Crônica (IRC)',
+                    'Fibrilação Atrial (FA)',
+                    'Hipertensão (HAS)',
+                    'Diabetes Mellitus (DM)',
+                    'Rastreio',
                 ]
-                # Grupos definidos no GRUPOS_LACUNAS — usar ordem de prioridade se disponível, senão manter original
                 grupos_ordenados = sorted(
                     lacunas_por_grupo.keys(),
                     key=lambda g: PRIORIDADE_GRUPOS.index(g) if g in PRIORIDADE_GRUPOS else 99
                 )
 
                 ICONE_GRUPO = {
-                    'Uso Inadequado':  '⚠️',
-                    'CI':              '❤️',
-                    'ICC':             '💔',
-                    'IRC':             '🫘',
-                    'PA':              '🩺',
-                    'Glicemia':        '🍬',
-                    'Complicações DM': '🦶',
-                    'Exames':          '🧪',
-                    'Rastreamento':    '🔍',
+                    'Prescrições Inapropriadas':    '⚠️',
+                    'Cardiopatia Isquêmica (CI)':   '❤️',
+                    'Insuficiência Cardíaca (ICC)': '💔',
+                    'Doença Renal Crônica (IRC)':   '🫘',
+                    'Fibrilação Atrial (FA)':       '⚡',
+                    'Hipertensão (HAS)':            '🩺',
+                    'Diabetes Mellitus (DM)':       '🍬',
+                    'Rastreio':                     '🔍',
                 }
 
                 for grupo in grupos_ordenados:
                     lacunas_grupo = lacunas_por_grupo[grupo]
                     icone = ICONE_GRUPO.get(grupo, '📌')
-                    # Usar nomes do GRUPOS_LACUNAS se disponível
-                    label_grupo = GRUPOS_LACUNAS.get(grupo, grupo)
-                    # Uso inadequado abre expandido por ser risco imediato
-                    aberto = grupo == 'Uso Inadequado'
+                    # Prescrições inapropriadas abrem expandidas (risco imediato)
+                    aberto = grupo == 'Prescrições Inapropriadas'
                     with st.expander(
-                        f"{icone} {label_grupo} ({len(lacunas_grupo)})",
+                        f"{icone} {grupo} ({len(lacunas_grupo)})",
                         expanded=aberto
                     ):
                         for lacuna in lacunas_grupo:
@@ -2118,17 +2061,17 @@ with fl_rcv:
         key="rcv_filtro"
     )
 with fl5a:
-    grupos_lacunas = sorted(set(g for g, _ in LACUNAS_COMPLETO.values()))
     grupo_lacuna_sel = st.selectbox(
         "⚠️ Grupo de lacunas",
-        options=["Todos"] + grupos_lacunas,
+        options=["Todos"] + GRUPOS_LACUNAS_ORDENADOS,
         key="grupo_lacuna_filtro"
     )
 with fl5b:
     if grupo_lacuna_sel == "Todos":
-        lacunas_disp = [(k, desc) for k, (g, desc) in LACUNAS_COMPLETO.items()]
+        lacunas_disp = [(k, desc) for k, (grupos, desc) in LACUNAS_COMPLETO.items()]
     else:
-        lacunas_disp = [(k, desc) for k, (g, desc) in LACUNAS_COMPLETO.items() if g == grupo_lacuna_sel]
+        lacunas_disp = [(k, desc) for k, (grupos, desc) in LACUNAS_COMPLETO.items()
+                        if grupo_lacuna_sel in grupos]
     lacunas_selecionadas = st.multiselect(
         "⚠️ Filtrar por lacunas",
         options=[k for k, _ in lacunas_disp],

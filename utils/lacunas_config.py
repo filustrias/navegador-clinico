@@ -268,6 +268,14 @@ LACUNAS = {
         "descricao": "Prevalência de pacientes diabéticos para os quais não foi solicitada microalbuminúria nos últimos 365 dias.",
         "regra": "DM ativa + sem solicitação de microalbuminúria nos últimos 365 dias.",
     },
+    "DM sem CID registrado": {
+        "grupo": "Diabetes Mellitus (DM)",
+        "coluna_fato": "DM_sem_CID",
+        "alias_pct": "pct_DM_sem_CID",
+        "denominador_sql": "COUNTIF(DM IS NOT NULL)",
+        "descricao": "Prevalência de pacientes diabéticos sem o CID correspondente registrado no prontuário.",
+        "regra": "DM ativa + ausência de CID E10/E11/E13/E14 no prontuário.",
+    },
 
     # ── Lacunas compartilhadas HAS/DM (pertencem a ambos os grupos) ──
 
@@ -345,6 +353,14 @@ LACUNAS = {
         "denominador_sql": "COUNTIF(DM IS NOT NULL AND HAS IS NOT NULL AND dias_desde_ultima_pa <= 180)",
         "descricao": "Prevalência de pacientes diabéticos e hipertensos cuja última PA está acima da meta restrita (PAS >135 ou PAD >80 mmHg).",
         "regra": "DM e HAS ativas + PA recente (≤180 dias) com PAS >135 ou PAD >80 mmHg.",
+    },
+    "HAS sem CID registrado": {
+        "grupo": "Hipertensão (HAS)",
+        "coluna_fato": "HAS_sem_CID",
+        "alias_pct": "pct_HAS_sem_CID",
+        "denominador_sql": "COUNTIF(HAS IS NOT NULL)",
+        "descricao": "Prevalência de pacientes hipertensos sem o CID correspondente registrado no prontuário.",
+        "regra": "HAS ativa + ausência de CID I10–I15 no prontuário.",
     },
 
     # ── Grupo 9 — Rastreio ───────────────────────────────────
