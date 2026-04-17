@@ -268,7 +268,7 @@ LACUNAS = {
         "denominador_sql": "COUNTIF(DM IS NOT NULL)",
         "descricao": "Prevalência de pacientes diabéticos sem o CID correspondente registrado no prontuário.",
         "regra": "DM ativa + ausência de CID E10/E11/E13/E14 no prontuário.",
-        "justificativa_clinica": "Diagnóstico sem CID compromete notificação, pagamento por performance, vigilância epidemiológica e inclusão em linhas de cuidado.",
+        "justificativa_clinica": "Diagnóstico sem CID compromete a continuidade e a qualidade do cuidado, o tratamento adequado destes pacientes e atrasa a identificação de complicações.",
     },
 
     # ── Lacunas compartilhadas HAS/DM (pertencem a ambos os grupos) ──
@@ -364,7 +364,7 @@ LACUNAS = {
         "denominador_sql": "COUNTIF(HAS IS NOT NULL)",
         "descricao": "Prevalência de pacientes hipertensos sem o CID correspondente registrado no prontuário.",
         "regra": "HAS ativa + ausência de CID I10–I15 no prontuário.",
-        "justificativa_clinica": "Diagnóstico sem CID compromete notificação, pagamento por performance, vigilância epidemiológica e inclusão em linhas de cuidado.",
+        "justificativa_clinica": "Diagnóstico sem CID compromete a continuidade e a qualidade do cuidado, o tratamento adequado destes pacientes e atrasa a identificação de complicações.",
     },
 
     # ── Grupo 6 — Prescrições Inapropriadas ──────────────────
