@@ -840,7 +840,7 @@ with tab_calculadora:
     | IMC | {calc_imc:.1f} kg/m² |
     | Diabetes | {'Sim' if calc_dm else 'Não'} |
     | Tabagismo | {'Sim' if calc_tabaco else 'Não'} |
-    | Modelo | {modelo_usado} |
+    | Modelo | {modelo_txt or '—'} |
     | Região | tropical_latin_america |
                 """)
 

@@ -291,17 +291,13 @@ def calcular_risco_completo(genero, idade, pressao_sistolica,
     if who_result is None and imc and imc > 0:
         who_result = calcular_who_nonlab(genero, idade, pressao_sistolica, imc, tabaco)
 
-    # Passo 3: Resultado final — reclassificação prevalece sobre score
+    # Passo 3: Resultado final — reclassificação direta SBC é definitiva,
+    # nunca é promovida pelo score WHO (DM/IRC=ALTO, DCV=MUITO ALTO sempre).
     if reclass:
-        # Se WHO calculou, e o risco é MAIOR que a reclassificação, usar o maior
         if who_result and who_result['risco_pct'] is not None:
             reclass['risco_who_pct'] = who_result['risco_pct']
             reclass['categoria_who'] = who_result['categoria']
             reclass['modelo_who'] = who_result['modelo']
-            # Se WHO deu >=30% e reclassificação é ALTO, promover para MUITO ALTO
-            if reclass['categoria'] == 'ALTO' and who_result['risco_pct'] >= 20:
-                reclass['categoria'] = 'MUITO ALTO'
-                reclass['motivo'] += f" + WHO {who_result['risco_pct']:.1f}%"
         return reclass
 
     # Sem reclassificação — usar WHO puro
