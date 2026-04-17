@@ -2124,8 +2124,8 @@ total_pacientes = count_total_patients(
     morbidades=morbidades_selecionadas,
     operador_morb=operador_morb,
     busca_nome=busca_nome_sql,
-    carga_morb=carga_morb_filtro if carga_morb_filtro else None,
-    lacunas_filtro=lacunas_selecionadas if lacunas_selecionadas else None
+    carga_morb=tuple(carga_morb_filtro) if carga_morb_filtro else None,
+    lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None
 )
 
 if total_pacientes == 0:
@@ -2141,11 +2141,14 @@ if 'pagina_atual' not in st.session_state:
 pagina_atual = st.session_state.pagina_atual
 
 filtros_texto = f"Área: {anonimizar_ap(area_selecionada)} | Clínica: {anonimizar_clinica(clinica_selecionada)} | ESF: {anonimizar_esf(esf_selecionada)}"
-
 if morbidades_selecionadas:
-    filtros_texto += f" | Morbidades filtradas: {len(morbidades_selecionadas)}"
+    filtros_texto += f" | Morbidades: {len(morbidades_selecionadas)}"
+if carga_morb_filtro:
+    filtros_texto += f" | Carga: {', '.join(carga_morb_filtro)}"
+if lacunas_selecionadas:
+    filtros_texto += f" | Lacunas: {len(lacunas_selecionadas)}"
 
-st.info(f"📊 Filtros: {filtros_texto}")
+st.markdown(f"**📊 {total_pacientes:,} pacientes encontrados** | {filtros_texto}")
 
 st.success(f"**{estatisticas['total']} pacientes cadastrados | {estatisticas['multimorbidos']} multimórbidos | {estatisticas['polifarmacia']} em polifarmácia**")
 
@@ -2179,9 +2182,9 @@ with st.spinner(f"Carregando página {pagina_atual + 1}..."):
             ordem=ordem,
             offset=0,
             limit=5000,
-            carga_morb=carga_morb_filtro if carga_morb_filtro else None,
+            carga_morb=tuple(carga_morb_filtro) if carga_morb_filtro else None,
             ordenar_por=ordenar_por,
-            lacunas_filtro=lacunas_selecionadas if lacunas_selecionadas else None,
+            lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None,
         )
         # Anonimizar nomes e filtrar
         if not df_pacientes.empty and 'nome' in df_pacientes.columns:
@@ -2212,9 +2215,9 @@ with st.spinner(f"Carregando página {pagina_atual + 1}..."):
             offset=offset,
             limit=PACIENTES_POR_PAGINA,
             busca_nome=busca_nome_sql,
-            carga_morb=carga_morb_filtro if carga_morb_filtro else None,
+            carga_morb=tuple(carga_morb_filtro) if carga_morb_filtro else None,
             ordenar_por=ordenar_por,
-            lacunas_filtro=lacunas_selecionadas if lacunas_selecionadas else None,
+            lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None,
         )
 
 if df_pacientes.empty:
