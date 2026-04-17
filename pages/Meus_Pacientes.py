@@ -438,8 +438,9 @@ LISTA_MORBIDADES = [
 # ═══════════════════════════════════════════════════════════════
 # LACUNAS — derivadas de utils/lacunas_config.py (fonte única de verdade,
 # compartilhada com a page Lacunas de Cuidado).
-# Estrutura local: {coluna_fato: (grupos_tuple, descricao)}
+# Estrutura local: {coluna_fato: (grupos_tuple, descricao, justificativa)}
 #   - grupos_tuple: tupla de grupos aos quais a lacuna pertence (1 ou mais).
+#   - justificativa: texto clínico exibido ao lado da lacuna no card.
 # ═══════════════════════════════════════════════════════════════
 from utils.lacunas_config import LACUNAS as _LACUNAS_CFG, get_grupos_ordenados
 
@@ -449,7 +450,8 @@ def _build_lacunas_completo():
         col = info["coluna_fato"]
         grupo = info["grupo"]
         grupos = tuple(grupo) if isinstance(grupo, list) else (grupo,)
-        out[col] = (grupos, nome)
+        just = info.get("justificativa_clinica", "")
+        out[col] = (grupos, nome, just)
     return out
 
 LACUNAS_COMPLETO = _build_lacunas_completo()
@@ -950,15 +952,15 @@ def extrair_lacunas_paciente(patient_data):
     lacunas_por_grupo = {}
     
     # Processar lacunas — lacunas multi-grupo (HAS/DM) aparecem só uma vez,
-    # no primeiro grupo da lista.
-    for campo_lacuna, (grupos, descricao) in LACUNAS_COMPLETO.items():
+    # no primeiro grupo da lista. Cada item é (descricao, justificativa).
+    for campo_lacuna, (grupos, descricao, justificativa) in LACUNAS_COMPLETO.items():
         valor = patient_data.get(campo_lacuna)
 
         if valor in [True, 1, '1', 'True', 'true', 'TRUE']:
             grupo_primario = grupos[0]
             if grupo_primario not in lacunas_por_grupo:
                 lacunas_por_grupo[grupo_primario] = []
-            lacunas_por_grupo[grupo_primario].append(descricao)
+            lacunas_por_grupo[grupo_primario].append((descricao, justificativa))
     
     # Processar flags positivos
     flags_ativos = []
@@ -1598,8 +1600,7 @@ def create_patient_card(patient_data):
                 PRIORIDADE_GRUPOS = [
                     'Prescrições Inapropriadas',
                     'Cardiopatia Isquêmica (CI)',
-                    'Insuficiência Cardíaca (ICC)',
-                    'Doença Renal Crônica (IRC)',
+                    'ICC e IRC (manejo clínico)',
                     'Fibrilação Atrial (FA)',
                     'Hipertensão (HAS)',
                     'Diabetes Mellitus (DM)',
@@ -1613,8 +1614,7 @@ def create_patient_card(patient_data):
                 ICONE_GRUPO = {
                     'Prescrições Inapropriadas':    '⚠️',
                     'Cardiopatia Isquêmica (CI)':   '❤️',
-                    'Insuficiência Cardíaca (ICC)': '💔',
-                    'Doença Renal Crônica (IRC)':   '🫘',
+                    'ICC e IRC (manejo clínico)':   '💔',
                     'Fibrilação Atrial (FA)':       '⚡',
                     'Hipertensão (HAS)':            '🩺',
                     'Diabetes Mellitus (DM)':       '🍬',
@@ -1626,15 +1626,20 @@ def create_patient_card(patient_data):
                     icone = ICONE_GRUPO.get(grupo, '📌')
                     # Prescrições inapropriadas abrem expandidas (risco imediato)
                     aberto = grupo == 'Prescrições Inapropriadas'
+                    is_alerta = grupo == 'Prescrições Inapropriadas'
                     with st.expander(
                         f"{icone} {grupo} ({len(lacunas_grupo)})",
                         expanded=aberto
                     ):
-                        for lacuna in lacunas_grupo:
-                            if '⚠️' in str(lacuna):
-                                st.error(f"• {lacuna}")
-                            else:
-                                st.write(f"• {lacuna}")
+                        for desc_lac, just_lac in lacunas_grupo:
+                            titulo = f"**{desc_lac}**"
+                            corpo = f"<span style='color:#666; font-size:0.9em;'>{just_lac}</span>" if just_lac else ""
+                            bullet = "🔴" if is_alerta else "•"
+                            st.markdown(
+                                f"{bullet} {titulo}"
+                                + (f"<br>&nbsp;&nbsp;&nbsp;{corpo}" if corpo else ""),
+                                unsafe_allow_html=True
+                            )
         
         # ========== TAB 5: POLIFARMÁCIA E STOPP-START ==========
         with tab5:
@@ -2068,9 +2073,9 @@ with fl5a:
     )
 with fl5b:
     if grupo_lacuna_sel == "Todos":
-        lacunas_disp = [(k, desc) for k, (grupos, desc) in LACUNAS_COMPLETO.items()]
+        lacunas_disp = [(k, desc) for k, (grupos, desc, _) in LACUNAS_COMPLETO.items()]
     else:
-        lacunas_disp = [(k, desc) for k, (grupos, desc) in LACUNAS_COMPLETO.items()
+        lacunas_disp = [(k, desc) for k, (grupos, desc, _) in LACUNAS_COMPLETO.items()
                         if grupo_lacuna_sel in grupos]
     lacunas_selecionadas = st.multiselect(
         "⚠️ Filtrar por lacunas",

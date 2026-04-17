@@ -491,7 +491,7 @@ with tab1:
     if modo_todas_geral:
         cols_media = list(MAPA_LAC_COL.values())
         col_v = cols_media[0]  # placeholder, será recalculado abaixo
-        st.info("**Lacunas geral** — Média de todas as 39 lacunas de cuidado.")
+        st.info(f"**Lacunas geral** — Média de todas as {len(LACUNAS)} lacunas de cuidado.")
     elif modo_todas_grupo:
         cols_media = [MAPA_LAC_COL[l] for l in lacs_do_grupo]
         col_v = cols_media[0]  # placeholder, será recalculado abaixo
@@ -503,9 +503,12 @@ with tab1:
         cols_media = None
         col_v = MAPA_LAC_COL[lac_violin_sel]
         info_lac = LACUNAS[lac_violin_sel]
+        just = info_lac.get('justificativa_clinica', '')
+        just_md = f"\n\n**Justificativa clínica:** {just}" if just else ""
         st.info(
             f"**{lac_violin_sel}** — {info_lac['descricao']}\n\n"
             f"**Regra:** {info_lac['regra']}"
+            f"{just_md}"
         )
 
     charlson_opts = ['Muito Alto', 'Alto', 'Moderado', 'Baixo']
