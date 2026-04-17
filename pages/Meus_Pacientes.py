@@ -637,7 +637,7 @@ def load_patient_data_paginated(
       percentual_risco_final,
       categoria_risco_final,
       variaveis_usadas_calculo,
-      variaveis_ausentes_calculo,
+      framingham_variaveis_ausentes,
       dias_desde_ultima_medica,
       dias_desde_ultima_enfermagem,
       dias_desde_ultima_tecnico_enfermagem,
@@ -1158,7 +1158,7 @@ def create_patient_card(patient_data):
                         st.markdown(f"* **Variáveis usadas no cálculo** - {variaveis_usadas}")
 
                     # Variáveis ausentes
-                    variaveis_ausentes = patient_data.get('variaveis_ausentes_calculo')
+                    variaveis_ausentes = patient_data.get('framingham_variaveis_ausentes')
                     if pd.notna(variaveis_ausentes) and str(variaveis_ausentes).strip():
                         st.markdown(f"* **Variáveis ausentes para o cálculo** - {variaveis_ausentes}")
 
