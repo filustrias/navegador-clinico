@@ -1032,11 +1032,28 @@ def create_patient_card(patient_data):
         acb_texto = f" | {acb_icone} ACB {acb_int}"
 
     # Risco CV para o cabeçalho (padrão PAHO/HEARTS)
-    from utils.risco_cv import icone_categoria_who
-    who_cat_simpl_hdr = patient_data.get('who_categoria_risco_simplificada')
-    if pd.notna(who_cat_simpl_hdr) and who_cat_simpl_hdr:
-        icone_rcv = icone_categoria_who(who_cat_simpl_hdr)
-        rcv_texto = f" | {icone_rcv} RCV {who_cat_simpl_hdr}"
+    # Reclassificação SBC direta prevalece: DCV estabelecida (CI/AVC/DAP) → Muito alto;
+    # DM ou IRC → Alto. Só se nenhuma dessas condições se aplicar usamos o score WHO.
+    from utils.risco_cv import icone_categoria_who, classificar_risco_direto
+    _pac_dm_hdr  = patient_data.get('DM')  in [True, 1, '1', 'True']
+    _pac_irc_hdr = patient_data.get('IRC') in [True, 1, '1', 'True']
+    _pac_ci_hdr  = patient_data.get('CI')  in [True, 1, '1', 'True']
+    _pac_avc_hdr = patient_data.get('stroke') in [True, 1, '1', 'True']
+    _pac_dap_hdr = patient_data.get('vascular_periferica') in [True, 1, '1', 'True']
+    _reclass_hdr = classificar_risco_direto(
+        dm=_pac_dm_hdr, irc=_pac_irc_hdr,
+        ci=_pac_ci_hdr, avc=_pac_avc_hdr, dap=_pac_dap_hdr,
+    )
+    if _reclass_hdr:
+        # SBC direto — mapeia 'MUITO ALTO'/'ALTO' para rótulo PAHO
+        cat_hdr = 'Muito alto' if _reclass_hdr['categoria'] == 'MUITO ALTO' else 'Alto'
+    else:
+        cat_simpl = patient_data.get('who_categoria_risco_simplificada')
+        cat_hdr = cat_simpl if pd.notna(cat_simpl) and cat_simpl else None
+
+    if cat_hdr:
+        icone_rcv = icone_categoria_who(cat_hdr)
+        rcv_texto = f" | {icone_rcv} RCV {cat_hdr}"
     else:
         rcv_texto = " | ❤️ RCV não calculado"
 
