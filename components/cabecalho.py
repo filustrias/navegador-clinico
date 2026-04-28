@@ -31,6 +31,7 @@ ROTAS = {
     "Diabetes":      "pages/Diabetes.py",
     "Hipertensão":   "pages/Hipertensao.py",
     "Risco CV":      "pages/Risco_Cardiovascular.py",
+    "Visão ESF":     "pages/Visao_ESF.py",
 }
 
 ICONES_MENU = [
@@ -43,6 +44,7 @@ ICONES_MENU = [
     "droplet-fill",             # Diabetes
     "heart-pulse-fill",         # Hipertensão
     "heart-fill",               # Risco CV
+    "clipboard2-pulse-fill",    # Visão ESF
 ]
 
 # Garantia: ROTAS e ICONES_MENU devem ter o mesmo tamanho
