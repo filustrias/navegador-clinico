@@ -7,7 +7,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
-from streamlit_option_menu import option_menu
+from components.cabecalho import renderizar_cabecalho
 from utils.bigquery_client import get_bigquery_client
 from utils.data_loader import carregar_opcoes_filtros
 from utils.anonimizador import (
@@ -37,87 +37,8 @@ if 'usuario_global' not in st.session_state or not st.session_state.usuario_glob
     st.stop()
 
 usuario_logado = st.session_state['usuario_global']
-if isinstance(usuario_logado, dict):
-    nome    = usuario_logado.get('nome_completo', 'Usuário')
-    esf     = usuario_logado.get('esf')     or 'N/A'
-    clinica = usuario_logado.get('clinica') or 'N/A'
-    ap      = usuario_logado.get('area_programatica') or 'N/A'
-else:
-    nome = str(usuario_logado)
-    esf = clinica = ap = 'N/A'
 
-ctx = {
-    'ap':      None if ap      == 'N/A' else ap,
-    'clinica': None if clinica == 'N/A' else clinica,
-    'esf':     None if esf     == 'N/A' else esf,
-}
-
-# ═══════════════════════════════════════════════════════════════
-# CABEÇALHO
-# ═══════════════════════════════════════════════════════════════
-st.markdown("""
-<style>
-    [data-testid="stSidebarNav"] {display: none;}
-</style>
-""", unsafe_allow_html=True)
-
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.markdown(f"""
-    <h1 style='margin: 0; padding: 0; color: {T.TEXT};'>
-        🏥 Navegador Clínico de Multimorbidade e Polifarmácia
-    </h1>
-    """, unsafe_allow_html=True)
-with col2:
-    info_lines = [f"<strong>{nome}</strong>"]
-    if esf     != 'N/A': info_lines.append(f"ESF: {esf}")
-    if clinica != 'N/A': info_lines.append(f"Clínica: {clinica}")
-    if ap      != 'N/A': info_lines.append(f"AP: {ap}")
-    st.markdown(f"""
-    <div style='text-align: right; padding-top: 10px; color: {T.TEXT}; font-size: 0.9em;'>
-        <span style='font-size: 1.3em;'>👤</span> {"<br>".join(info_lines)}
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("---")
-
-PAGINA_ATUAL = "Risco CV"
-ROTAS = {
-    "Home":          "Home.py",
-    "População":     "pages/Minha_Populacao.py",
-    "Pacientes":     "pages/Meus_Pacientes.py",
-    "Lacunas":       "pages/Lacunas_de_Cuidado.py",
-    "Continuidade":  "pages/Acesso_Continuidade.py",
-    "Polifarmácia":  "pages/Polifarmacia_ACB.py",
-    "Diabetes":      "pages/Diabetes.py",
-    "Hipertensão":   "pages/Hipertensao.py",
-    "Risco CV":      "pages/Risco_Cardiovascular.py",
-}
-ICONES = [
-    "house-fill", "people-fill", "person-lines-fill",
-    "exclamation-triangle-fill", "arrow-repeat", "capsule",
-    "droplet-fill", "heart-pulse-fill", "heart-fill",
-]
-selected = option_menu(
-    menu_title=None,
-    options=list(ROTAS.keys()),
-    icons=ICONES,
-    default_index=list(ROTAS.keys()).index(PAGINA_ATUAL),
-    orientation="horizontal",
-    styles={
-        "container":         {"padding": "0!important", "background-color": T.NAV_BG},
-        "icon":              {"font-size": "22px", "color": T.TEXT, "display": "block", "margin-bottom": "4px"},
-        "nav-link":          {"font-size": "11px", "text-align": "center", "margin": "0px",
-                              "padding": "10px 18px", "color": T.NAV_LINK, "background-color": T.SECONDARY_BG,
-                              "--hover-color": T.NAV_HOVER, "display": "flex", "flex-direction": "column",
-                              "align-items": "center", "line-height": "1.2", "white-space": "nowrap"},
-        "nav-link-selected": {"background-color": T.NAV_SELECTED_BG, "color": T.NAV_SELECTED_TEXT, "font-weight": "600"},
-    }
-)
-if selected != PAGINA_ATUAL:
-    st.switch_page(ROTAS[selected])
-
-st.markdown("---")
+renderizar_cabecalho("Risco CV")
 
 # ═══════════════════════════════════════════════════════════════
 # HELPERS

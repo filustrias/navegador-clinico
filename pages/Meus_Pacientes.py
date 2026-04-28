@@ -10,7 +10,7 @@ from utils.anonimizador import (
     anonimizar_ap, anonimizar_clinica, anonimizar_esf,
     anonimizar_nome, anonimizar_paciente, mostrar_badge_anonimo, MODO_ANONIMO
 )
-from streamlit_option_menu import option_menu
+from components.cabecalho import renderizar_cabecalho
 from utils.auth import exibir_usuario_logado
 from utils import theme as T
 
@@ -32,119 +32,7 @@ if 'usuario_global' not in st.session_state or not st.session_state.usuario_glob
 
 usuario_logado = st.session_state['usuario_global']
 
-# Extrair dados do usuário
-if isinstance(usuario_logado, dict):
-    nome = usuario_logado.get('nome_completo', 'Usuário')
-    esf = usuario_logado.get('esf') or 'N/A'
-    clinica = usuario_logado.get('clinica') or 'N/A'
-    ap = usuario_logado.get('area_programatica') or 'N/A'
-else:
-    nome = str(usuario_logado)
-    esf = clinica = ap = 'N/A'
-
-# ═══════════════════════════════════════════════════════════════
-# 🎨 CABEÇALHO CONSISTENTE
-# ═══════════════════════════════════════════════════════════════
-
-# Esconder o menu lateral nativo do Streamlit
-st.markdown("""
-<style>
-    [data-testid="stSidebarNav"] {display: none;}
-</style>
-""", unsafe_allow_html=True)
-
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    st.markdown(f"""
-    <h1 style='margin: 0; padding: 0; color: {T.TEXT};'>
-        🏥 Navegador Clínico de Multimorbidade e Polifarmácia
-    </h1>
-    """, unsafe_allow_html=True)
-
-with col2:
-    info_lines = [f"<strong>{nome}</strong>"]
-    if esf != 'N/A':
-        info_lines.append(f"ESF: {esf}")
-    if clinica != 'N/A':
-        info_lines.append(f"Clínica: {clinica}")
-    if ap != 'N/A':
-        info_lines.append(f"AP: {ap}")
-
-    st.markdown(f"""
-    <div style='text-align: right; padding-top: 10px; color: {T.TEXT}; font-size: 0.9em;'>
-        <span style='font-size: 1.3em;'>👤</span> {"<br>".join(info_lines)}
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("---")
-
-PAGINA_ATUAL = "Pacientes"   # ← essa linha NÃO muda — cada arquivo tem o seu valor
-ROTAS = {
-    "Home":          "Home.py",
-    "População":     "pages/Minha_Populacao.py",
-    "Pacientes":     "pages/Meus_Pacientes.py",
-    "Lacunas":       "pages/Lacunas_de_Cuidado.py",
-    "Continuidade":  "pages/Acesso_Continuidade.py",
-    "Polifarmácia":  "pages/Polifarmacia_ACB.py",
-    "Diabetes":      "pages/Diabetes.py",
-    "Hipertensão":   "pages/Hipertensao.py",
-    "Risco CV":      "pages/Risco_Cardiovascular.py",
-}
-
-ICONES_MENU = [
-    "house-fill",               # Home
-    "people-fill",              # População
-    "person-lines-fill",        # Pacientes
-    "exclamation-triangle-fill",# Lacunas
-    "arrow-repeat",             # Continuidade
-    "capsule",                  # Polifarmácia
-    "droplet-fill",             # Diabetes
-    "heart-pulse-fill",         # Hipertensão
-    "heart-fill",               # Risco CV
-]
-selected = option_menu(
-    menu_title=None,
-    options=list(ROTAS.keys()),
-    icons=ICONES_MENU,
-    default_index=list(ROTAS.keys()).index(PAGINA_ATUAL),
-    orientation="horizontal",
-    styles={
-        "container": {
-            "padding": "0!important",
-            "background-color": T.NAV_BG,
-        },
-        "icon": {
-            "font-size": "22px",
-            "color": T.TEXT,
-            "display": "block",
-            "margin-bottom": "4px",
-        },
-        "nav-link": {
-            "font-size": "11px",
-            "text-align": "center",
-            "margin": "0px",
-            "padding": "10px 18px",
-            "color": T.NAV_LINK,
-            "background-color": T.SECONDARY_BG,
-            "--hover-color": T.NAV_HOVER,
-            "display": "flex",
-            "flex-direction": "column",
-            "align-items": "center",
-            "line-height": "1.2",
-            "white-space": "nowrap",
-        },
-        "nav-link-selected": {
-            "background-color": T.NAV_SELECTED_BG,
-            "color": T.NAV_SELECTED_TEXT,
-            "font-weight": "600",
-        },
-    }
-)
-if selected != PAGINA_ATUAL:
-    st.switch_page(ROTAS[selected])
-
-st.markdown("---")
+renderizar_cabecalho("Pacientes")
 
 
 # ============================================
