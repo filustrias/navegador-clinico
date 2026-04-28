@@ -21,6 +21,7 @@ from utils.ipc import (
     calcular_ipc, gerar_sql_total_lacunas, explicar_ipc_paciente,
     PESOS_DEFAULT, BONUS_DCV_SEM_PREV, CORES_IPC,
 )
+from utils.morbidades import gerar_sql_morbidades_lista
 import config
 
 st.set_page_config(
@@ -69,33 +70,45 @@ def carregar_territorios() -> pd.DataFrame:
 @st.cache_data(show_spinner=False, ttl=900)
 def carregar_pacientes_ipc(ap: str, clinica: str, esf: str) -> pd.DataFrame:
     """Carrega colunas necessárias para o IPC + identificação do paciente."""
-    sql_total_lac = gerar_sql_total_lacunas("total_lacunas")
+    sql_total_lac   = gerar_sql_total_lacunas("total_lacunas")
+    sql_morb_lista  = gerar_sql_morbidades_lista("morbidades_lista")
     sql = f"""
+    WITH stopp AS (
+        SELECT cpf, COALESCE(total_criterios_stopp, 0) AS total_criterios_stopp
+        FROM `rj-sms-sandbox.sub_pav_us.MM_stopp_start`
+    )
     SELECT
-        cpf, nome, idade, genero,
-        area_programatica_cadastro,
-        nome_clinica_cadastro AS clinica,
-        nome_esf_cadastro     AS esf,
-        charlson_score,
-        charlson_categoria,
-        acb_score_total,
-        categoria_acb,
-        dias_desde_ultima_medica,
-        consultas_medicas_365d,
-        total_morbidades,
-        polifarmacia,
-        hiperpolifarmacia,
+        f.cpf, f.nome, f.idade, f.genero,
+        f.area_programatica_cadastro,
+        f.nome_clinica_cadastro AS clinica,
+        f.nome_esf_cadastro     AS esf,
+        f.charlson_score,
+        f.charlson_categoria,
+        f.acb_score_total,
+        f.categoria_acb,
+        f.dias_desde_ultima_medica,
+        f.consultas_medicas_365d,
+        f.total_morbidades,
+        f.polifarmacia,
+        f.hiperpolifarmacia,
+        f.nucleo_cronico_atual         AS medicamentos_lista,
+        f.dose_NPH_ui_kg,
         -- DCV estabelecida
-        CI, stroke, vascular_periferica,
+        f.CI, f.stroke, f.vascular_periferica,
         -- Lacunas individuais usadas no bônus
-        lacuna_CI_sem_AAS,
-        lacuna_CI_sem_estatina_qualquer,
+        f.lacuna_CI_sem_AAS,
+        f.lacuna_CI_sem_estatina_qualquer,
         -- Total de lacunas (soma dos 41 booleanos)
-        {sql_total_lac}
-    FROM `{_fqn(config.TABELA_FATO)}`
-    WHERE area_programatica_cadastro = '{ap}'
-      AND nome_clinica_cadastro     = '{clinica}'
-      AND nome_esf_cadastro         = '{esf}'
+        {sql_total_lac},
+        -- Lista textual de morbidades ativas
+        {sql_morb_lista},
+        -- Total de critérios STOPP (JOIN com MM_stopp_start)
+        COALESCE(s.total_criterios_stopp, 0) AS total_criterios_stopp
+    FROM `{_fqn(config.TABELA_FATO)}` AS f
+    LEFT JOIN stopp s ON f.cpf = s.cpf
+    WHERE f.area_programatica_cadastro = '{ap}'
+      AND f.nome_clinica_cadastro     = '{clinica}'
+      AND f.nome_esf_cadastro         = '{esf}'
     """
     return bq(sql)
 
@@ -173,10 +186,10 @@ st.caption(
     f"· ESF **{anonimizar_esf(esf_sel)}**"
 )
 
-with st.expander("ℹ️ Sobre o IPC — Índice de Prioridade de Cuidado", expanded=False):
+with st.expander("ℹ️ Sobre o IPC — Índice de Priorização de Cuidado", expanded=False):
     st.markdown(f"""
 **O IPC é um índice composto que ordena pacientes por necessidade de
-atenção da equipe.** Combina quatro dimensões clínicas em uma única
+atenção da equipe.** Combina cinco dimensões clínicas em uma única
 escala de 0 a 1, com bandas absolutas (independentes da amostra),
 permitindo comparar pacientes entre ESFs, clínicas e APs.
 
@@ -184,10 +197,11 @@ permitindo comparar pacientes entre ESFs, clínicas e APs.
 
 | Dimensão | Peso | Bandas |
 |---|---|---|
-| 🦠 **Charlson** (carga de morbidade) | {PESOS_DEFAULT['charlson']:.0%} | 0–3 → 0 · 4–6 → 0,33 · 7–9 → 0,67 · ≥10 → 1 |
-| 💊 **ACB** (carga anticolinérgica) | {PESOS_DEFAULT['acb']:.0%} | 0 → 0 · 1 → 0,33 · 2 → 0,67 · ≥3 → 1 |
-| ⏳ **Dias sem consulta médica** | {PESOS_DEFAULT['acesso']:.0%} | 0–180 → 0 · 181–365 → 0,5 · 366–730 → 0,85 · >730 ou nunca → 1 |
+| 🦠 **Carga de Morbidade** (Charlson) | {PESOS_DEFAULT['charlson']:.0%} | 0–3 → 0 · 4–6 → 0,33 · 7–9 → 0,67 · ≥10 → 1 |
 | ⚠️ **Total de lacunas de cuidado** | {PESOS_DEFAULT['lacunas']:.0%} | 0 → 0 · 1–3 → 0,33 · 4–7 → 0,67 · ≥8 → 1 |
+| ⏳ **Dias sem consulta médica** | {PESOS_DEFAULT['acesso']:.0%} | 0–180 → 0 · 181–365 → 0,5 · 366–730 → 0,85 · >730 ou nunca → 1 |
+| 💊 **ACB** (carga anticolinérgica) | {PESOS_DEFAULT['acb']:.0%} | 0 → 0 · 1 → 0,33 · 2 → 0,67 · ≥3 → 1 |
+| 🚫 **STOPP** (prescrições inapropriadas) | {PESOS_DEFAULT['stopp']:.0%} | 0 → 0 · 1 → 0,33 · 2 → 0,67 · ≥3 → 1 |
 
 **Bônus de +{BONUS_DCV_SEM_PREV:.2f}** quando o paciente tem DCV estabelecida
 (CI, AVC ou doença arterial periférica) **e** mantém lacunas de prevenção
@@ -206,11 +220,11 @@ cortado em 1,0.
 #### Diferença para o ICA
 
 O ICA (Índice Composto de Acesso, na page **Continuidade**) usa
-apenas Charlson + intervalo entre consultas, e normaliza pelo
-máximo da amostra carregada — útil para ranking interno, mas não
-comparável entre territórios. O IPC adiciona ACB e lacunas, e usa
-limiares clínicos absolutos. **Os dois coexistem** e podem ser
-contrastados conforme o uso.
+apenas Carga de Morbidade + intervalo entre consultas, e normaliza
+pelo máximo da amostra carregada — útil para ranking interno, mas
+não comparável entre territórios. O IPC adiciona ACB, STOPP e
+lacunas, e usa limiares clínicos absolutos. **Os dois coexistem** e
+podem ser contrastados conforme o uso.
 """)
 
 # ═══════════════════════════════════════════════════════════════
@@ -286,30 +300,48 @@ with tab_resumo:
                 unsafe_allow_html=True,
             )
 
-    # Histograma do IPC
+    # Histograma do IPC — bins curtos coloridos pela faixa de IPC
     st.markdown("##### Histograma do IPC")
-    fig_hist = px.histogram(
-        df, x='ipc', nbins=40,
-        labels={'ipc': 'IPC', 'count': 'Pacientes'},
+    n_bins = 80
+    bins = np.linspace(0, 1.0, n_bins + 1)
+    counts, edges = np.histogram(df['ipc'].clip(0, 1.0), bins=bins)
+    centros = (edges[:-1] + edges[1:]) / 2
+
+    def _cor_para_centro(c):
+        if c >= 0.75: return CORES_IPC['Crítico']
+        if c >= 0.50: return CORES_IPC['Alto']
+        if c >= 0.25: return CORES_IPC['Moderado']
+        return CORES_IPC['Baixo']
+
+    cores_bins = [_cor_para_centro(c) for c in centros]
+
+    fig_hist = go.Figure(
+        go.Bar(
+            x=centros, y=counts,
+            marker=dict(color=cores_bins, line=dict(width=0)),
+            width=(1.0 / n_bins) * 0.95,
+            hovertemplate='IPC %{x:.2f}<br>%{y} pacientes<extra></extra>',
+        )
     )
-    fig_hist.update_traces(marker_color='#4f8ef7', opacity=0.85)
-    for limiar, cor_v in [(0.25, '#FFEB3B'), (0.50, '#FF9800'), (0.75, '#7B0000')]:
-        fig_hist.add_vline(x=limiar, line_dash='dash', line_color=cor_v)
+    for limiar in (0.25, 0.50, 0.75):
+        fig_hist.add_vline(x=limiar, line_dash='dash', line_color='#888888')
     fig_hist.update_layout(
-        height=320, bargap=0.05,
+        height=320, bargap=0.0,
         margin=dict(l=10, r=10, t=20, b=40),
         paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
         xaxis=dict(range=[0, 1.05], title='IPC',
                    tickfont=dict(color=T.TEXT_MUTED), gridcolor=T.GRID),
-        yaxis=dict(tickfont=dict(color=T.TEXT_MUTED), gridcolor=T.GRID),
+        yaxis=dict(title='Pacientes',
+                   tickfont=dict(color=T.TEXT_MUTED), gridcolor=T.GRID),
     )
     st.plotly_chart(fig_hist, use_container_width=True)
 
     # Top-10 mais críticos
-    st.markdown("#### 3️⃣ 10 pacientes mais críticos (maior IPC)")
+    st.markdown("#### 3️⃣ Aqui estão os 10 pacientes mais críticos da sua equipe (pacientes com maior IPC)")
     st.caption(
-        "Ranking pelo IPC. Empates são desempatados por Charlson. "
-        "Use como ponto de partida para discussão clínica em equipe."
+        "Ranking pelo IPC. Empates são desempatados pela Carga de "
+        "Morbidade. Use como ponto de partida para discussão "
+        "clínica em equipe."
     )
     top = df.sort_values(['ipc', 'charlson_score'],
                         ascending=[False, False]).head(10).copy()
@@ -317,24 +349,52 @@ with tab_resumo:
     if top.empty:
         st.info("Sem pacientes para listar.")
     else:
-        # Tabela enxuta
+        def _fmt_int_or_dash(v):
+            return f"{int(v)}" if pd.notna(v) else "—"
+
+        def _fmt_nph(v):
+            if pd.isna(v) or v is None or v == 0:
+                return "—"
+            return f"{float(v):.2f}"
+
         top_show = pd.DataFrame({
             '#': range(1, len(top) + 1),
             'Paciente': top['nome_exib'].values,
             'Idade': top['idade'].astype('Int64').values,
             'IPC': top['ipc'].round(2).values,
             'Categoria': top['ipc_categoria'].values,
-            'Charlson': top['charlson_score'].astype('Int64').values,
+            'Carga de Morbidade': top['charlson_score'].astype('Int64').values,
+            'Morbidades': top['morbidades_lista'].fillna('—').values,
             'ACB': top['acb_score_total'].astype('Int64').values,
+            'STOPP': top['total_criterios_stopp'].astype('Int64').values,
             'Dias s/ médico': top['dias_desde_ultima_medica'].apply(
-                lambda v: f"{int(v)}" if pd.notna(v) else "—"
+                _fmt_int_or_dash
             ).values,
             'Lacunas': top['total_lacunas'].astype('Int64').values,
+            'Medicamentos (última prescrição)': top['medicamentos_lista'].fillna('—').values,
+            'NPH (UI/kg)': top['dose_NPH_ui_kg'].apply(_fmt_nph).values,
             'DCV s/ prev': top['ipc_dcv_sem_prev'].apply(
                 lambda v: '⚠️' if v else ''
             ).values,
         })
-        st.dataframe(top_show, hide_index=True, use_container_width=True)
+        st.dataframe(
+            top_show, hide_index=True, use_container_width=True,
+            column_config={
+                'Morbidades':   st.column_config.TextColumn('Morbidades',   width='large'),
+                'Medicamentos (última prescrição)':
+                    st.column_config.TextColumn('Medicamentos (última prescrição)',
+                                                width='large'),
+                'IPC':          st.column_config.NumberColumn('IPC', format='%.2f'),
+                'Carga de Morbidade':
+                    st.column_config.NumberColumn('Carga de Morbidade', width='small'),
+                'ACB':          st.column_config.NumberColumn('ACB',     width='small'),
+                'STOPP':        st.column_config.NumberColumn('STOPP',   width='small'),
+                'Lacunas':      st.column_config.NumberColumn('Lacunas', width='small'),
+                'Dias s/ médico': st.column_config.TextColumn('Dias s/ médico', width='small'),
+                'NPH (UI/kg)':  st.column_config.TextColumn('NPH (UI/kg)', width='small'),
+                'DCV s/ prev':  st.column_config.TextColumn('DCV s/ prev', width='small'),
+            },
+        )
 
         # Detalhe expandido por paciente
         with st.expander("Ver decomposição do IPC por paciente"):
@@ -358,14 +418,15 @@ with tab_analise:
     st.markdown(
         "Esta aba investiga **colinearidade entre as dimensões do IPC** "
         "e a forma da distribuição de cada uma na equipe selecionada. "
-        "É esperada alguma correlação positiva entre Charlson e total "
+        "É esperada alguma correlação positiva entre Carga de Morbidade e total "
         "de lacunas (mais morbidades → mais oportunidades para lacunas), "
         "mas dimensões muito redundantes empobrecem o índice."
     )
 
     cols_dim = {
-        'charlson_score':           'Charlson',
+        'charlson_score':           'Carga de Morbidade',
         'acb_score_total':          'ACB',
+        'total_criterios_stopp':    'STOPP',
         'dias_desde_ultima_medica': 'Dias s/ médico',
         'total_lacunas':            'N° lacunas',
         'ipc':                      'IPC final',
@@ -406,14 +467,15 @@ with tab_analise:
     # Distribuição de cada dimensão (banda)
     st.markdown("#### Distribuição de cada dimensão (após mapeamento em banda)")
     bandas_cols = {
-        'ipc_charlson_band': '🦠 Charlson',
-        'ipc_acb_band':      '💊 ACB',
-        'ipc_acesso_band':   '⏳ Dias s/ médico',
+        'ipc_charlson_band': '🦠 Carga de Morbidade',
         'ipc_lacunas_band':  '⚠️ Lacunas',
+        'ipc_acesso_band':   '⏳ Dias s/ médico',
+        'ipc_acb_band':      '💊 ACB',
+        'ipc_stopp_band':    '🚫 STOPP',
     }
-    cb1, cb2 = st.columns(2)
+    cb_cols = st.columns(2)
     for i, (col_band, label) in enumerate(bandas_cols.items()):
-        target = cb1 if i % 2 == 0 else cb2
+        target = cb_cols[i % 2]
         with target:
             counts = df[col_band].value_counts().sort_index()
             fig_b = go.Figure(go.Bar(

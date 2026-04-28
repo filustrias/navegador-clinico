@@ -1,25 +1,27 @@
 """
-IPC — Índice de Prioridade de Cuidado
-=====================================
+IPC — Índice de Priorização de Cuidado
+======================================
 
-Composto de 4 dimensões clínicas mapeadas para [0, 1] por bandas
+Composto de 5 dimensões clínicas mapeadas para [0, 1] por bandas
 absolutas (não dependem da amostra), permitindo comparação entre
 ESFs, clínicas e APs.
 
 Dimensões e pesos default:
-  - Charlson (carga de morbidade):     30%
-  - ACB (carga anticolinérgica):       20%
+  - Carga de Morbidade (Charlson):     25%
+  - Lacunas de cuidado:                25%
   - Dias sem consulta médica:          20%
-  - Total de lacunas de cuidado:       30%
+  - ACB (carga anticolinérgica):       15%
+  - STOPP (prescrições inapropriadas): 15%
 
 Bônus de +0,10 quando o paciente tem DCV estabelecida (CI/AVC/DAP)
 e mantém lacunas de prevenção secundária pendentes (sem AAS ou sem
 estatina). O resultado final é cortado em 1,0.
 
-Fonte das colunas (tabela fato): charlson_score, acb_score_total,
-dias_desde_ultima_medica, CI, stroke, vascular_periferica,
-lacuna_CI_sem_AAS, lacuna_CI_sem_estatina_qualquer e o conjunto
-de 41 colunas booleanas de lacunas (vide utils/lacunas_config.py).
+Fontes:
+  - charlson_score, acb_score_total, dias_desde_ultima_medica, CI,
+    stroke, vascular_periferica, lacuna_CI_*  → tabela fato
+  - total_lacunas → soma SQL das 41 colunas (vide gerar_sql_total_lacunas)
+  - total_criterios_stopp → JOIN com MM_stopp_start
 """
 import pandas as pd
 from utils.lacunas_config import LACUNAS
@@ -29,10 +31,11 @@ from utils.lacunas_config import LACUNAS
 # ═══════════════════════════════════════════════════════════════
 
 PESOS_DEFAULT = {
-    'charlson': 0.30,
-    'acb':      0.20,
+    'charlson': 0.25,
+    'lacunas':  0.25,
     'acesso':   0.20,
-    'lacunas':  0.30,
+    'acb':      0.15,
+    'stopp':    0.15,
 }
 
 BONUS_DCV_SEM_PREV = 0.10
@@ -64,6 +67,13 @@ BANDAS_LACUNAS = [
     (3,   0.33),
     (7,   0.67),
     (1e9, 1.00),
+]
+
+BANDAS_STOPP = [
+    (0,   0.00),   # nenhum critério
+    (1,   0.33),   # 1 critério
+    (2,   0.67),   # 2 critérios
+    (1e9, 1.00),   # ≥3 critérios
 ]
 
 CATEGORIAS_IPC = [
@@ -130,11 +140,13 @@ def calcular_ipc(df: pd.DataFrame, pesos: dict = None) -> pd.DataFrame:
         - acb_score_total             (numérica)
         - dias_desde_ultima_medica    (numérica, NaN = nunca consultou)
         - total_lacunas               (numérica, soma das 41 lacunas)
+        - total_criterios_stopp       (numérica)
         - CI, stroke, vascular_periferica (datas; NaN = sem condição)
         - lacuna_CI_sem_AAS, lacuna_CI_sem_estatina_qualquer (boolean)
 
     Adiciona ao DataFrame:
-        - ipc_charlson_band, ipc_acb_band, ipc_acesso_band, ipc_lacunas_band
+        - ipc_charlson_band, ipc_acb_band, ipc_acesso_band,
+          ipc_lacunas_band, ipc_stopp_band
         - ipc_base                  (soma ponderada das bandas, antes do bônus)
         - ipc_dcv_sem_prev          (bool — paciente recebe bônus?)
         - ipc_bonus                 (0 ou BONUS_DCV_SEM_PREV)
@@ -157,12 +169,16 @@ def calcular_ipc(df: pd.DataFrame, pesos: dict = None) -> pd.DataFrame:
     out['ipc_lacunas_band'] = out.get('total_lacunas', pd.Series(dtype=float)).apply(
         lambda v: _aplicar_banda(v, BANDAS_LACUNAS, default_quando_nulo=0.0)
     )
+    out['ipc_stopp_band'] = out.get('total_criterios_stopp', pd.Series(dtype=float)).apply(
+        lambda v: _aplicar_banda(v, BANDAS_STOPP, default_quando_nulo=0.0)
+    )
 
     out['ipc_base'] = (
         pesos['charlson'] * out['ipc_charlson_band']
-        + pesos['acb']    * out['ipc_acb_band']
-        + pesos['acesso'] * out['ipc_acesso_band']
         + pesos['lacunas']* out['ipc_lacunas_band']
+        + pesos['acesso'] * out['ipc_acesso_band']
+        + pesos['acb']    * out['ipc_acb_band']
+        + pesos['stopp']  * out['ipc_stopp_band']
     )
 
     # Bônus: DCV estabelecida (CI/AVC/DAP) sem prevenção secundária
@@ -196,21 +212,25 @@ def explicar_ipc_paciente(row: pd.Series) -> str:
     partes = []
     if row.get('charlson_score') is not None and not pd.isna(row.get('charlson_score')):
         partes.append(
-            f"Charlson {int(row['charlson_score'])} → banda {row['ipc_charlson_band']:.2f}"
+            f"Carga de Morbidade {int(row['charlson_score'])} → banda {row['ipc_charlson_band']:.2f}"
         )
-    if row.get('acb_score_total') is not None and not pd.isna(row.get('acb_score_total')):
+    if pd.notna(row.get('total_lacunas')):
         partes.append(
-            f"ACB {int(row['acb_score_total'])} → banda {row['ipc_acb_band']:.2f}"
+            f"{int(row['total_lacunas'])} lacunas → banda {row['ipc_lacunas_band']:.2f}"
         )
     dias = row.get('dias_desde_ultima_medica')
     if pd.notna(dias):
         partes.append(f"{int(dias)}d s/ médico → banda {row['ipc_acesso_band']:.2f}")
     else:
         partes.append("nunca consultou → banda 1.00")
-    if pd.notna(row.get('total_lacunas')):
+    if row.get('acb_score_total') is not None and not pd.isna(row.get('acb_score_total')):
         partes.append(
-            f"{int(row['total_lacunas'])} lacunas → banda {row['ipc_lacunas_band']:.2f}"
+            f"ACB {int(row['acb_score_total'])} → banda {row['ipc_acb_band']:.2f}"
+        )
+    if row.get('total_criterios_stopp') is not None and not pd.isna(row.get('total_criterios_stopp')):
+        partes.append(
+            f"STOPP {int(row['total_criterios_stopp'])} → banda {row['ipc_stopp_band']:.2f}"
         )
     if row.get('ipc_dcv_sem_prev'):
-        partes.append(f"+0.10 (DCV sem prevenção secundária)")
+        partes.append("+0.10 (DCV sem prevenção secundária)")
     return " · ".join(partes)
