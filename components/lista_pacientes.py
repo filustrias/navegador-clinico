@@ -346,12 +346,17 @@ def load_patient_data_paginated(
         where_clauses.append(f"({' OR '.join(rcv_conds)})")
 
     # Filtro: apenas pacientes em uso de insulina (qualquer tipo).
-    # Confirmação no núcleo crônico atual (última prescrição) — as flags
-    # principio_INSULINA_* podem estar defasadas em relação ao que o médico
-    # prescreveu por último.
+    # Usa as flags estruturais principio_INSULINA_* — bate com o KPI
+    # populacional da page Diabetes e da Visão ESF (mesma janela do
+    # pipeline). A coluna NPH (UI/kg) no card e o destaque vermelho
+    # continuam usando o critério estrito (núcleo crônico atual).
     if apenas_insulina:
         where_clauses.append(
-            "LOWER(nucleo_cronico_atual) LIKE '%insulina%'"
+            "(principio_INSULINA_BASAL_HUMANA IS NOT NULL "
+            "OR principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL "
+            "OR principio_INSULINA_BASAL_ANALOGICA IS NOT NULL "
+            "OR principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL "
+            "OR principio_INSULINA_MISTA IS NOT NULL)"
         )
 
     where_sql = " AND ".join(where_clauses)
@@ -654,12 +659,17 @@ def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idad
         where_clauses.append(f"({' OR '.join(rcv_conds)})")
 
     # Filtro: apenas pacientes em uso de insulina (qualquer tipo).
-    # Confirmação no núcleo crônico atual (última prescrição) — as flags
-    # principio_INSULINA_* podem estar defasadas em relação ao que o médico
-    # prescreveu por último.
+    # Usa as flags estruturais principio_INSULINA_* — bate com o KPI
+    # populacional da page Diabetes e da Visão ESF (mesma janela do
+    # pipeline). A coluna NPH (UI/kg) no card e o destaque vermelho
+    # continuam usando o critério estrito (núcleo crônico atual).
     if apenas_insulina:
         where_clauses.append(
-            "LOWER(nucleo_cronico_atual) LIKE '%insulina%'"
+            "(principio_INSULINA_BASAL_HUMANA IS NOT NULL "
+            "OR principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL "
+            "OR principio_INSULINA_BASAL_ANALOGICA IS NOT NULL "
+            "OR principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL "
+            "OR principio_INSULINA_MISTA IS NOT NULL)"
         )
 
     where_sql = " AND ".join(where_clauses)
