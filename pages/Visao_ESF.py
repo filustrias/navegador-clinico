@@ -542,12 +542,26 @@ with tab_lacunas:
                 return 'color: #27AE60; font-weight: 600;'   # verde
             return 'color: #6B7280;'
 
+        # Gradiente manual verde→amarelo→vermelho (sem matplotlib)
+        def _gradiente_pct(v, vmin=0.0, vmax=100.0):
+            if pd.isna(v):
+                return ''
+            norm = max(0.0, min(1.0, (float(v) - vmin) / (vmax - vmin)))
+            if norm <= 0.5:                       # verde → amarelo
+                t = norm * 2
+                r = int(round(76  + (255 - 76)  * t))
+                g = int(round(175 + (235 - 175) * t))
+                b = int(round( 80 + ( 59 -  80) * t))
+            else:                                  # amarelo → vermelho
+                t = (norm - 0.5) * 2
+                r = int(round(255 + (231 - 255) * t))
+                g = int(round(235 + ( 76 - 235) * t))
+                b = int(round( 59 + ( 60 -  59) * t))
+            return f'background-color: rgba({r},{g},{b},0.55);'
+
         styled = (
             df_tab.style
-            .background_gradient(
-                subset=['% Equipe', '% Município'],
-                cmap='RdYlGn_r', vmin=0, vmax=100,
-            )
+            .applymap(_gradiente_pct, subset=['% Equipe', '% Município'])
             .format({
                 '% Equipe':    lambda v: f'{v:.1f}%' if pd.notna(v) else '—',
                 '% Município': lambda v: f'{v:.1f}%' if pd.notna(v) else '—',
