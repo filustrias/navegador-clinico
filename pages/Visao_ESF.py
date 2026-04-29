@@ -23,6 +23,11 @@ from utils.ipc import (
 )
 from utils.morbidades import gerar_sql_morbidades_lista
 from utils.lacunas_config import LACUNAS, GRUPOS_LACUNAS
+from utils.criterios_idoso import (
+    CRITERIOS_STOPP, CRITERIOS_START, CRITERIOS_BEERS,
+    todos_codigos_stopp, todos_codigos_start, todos_codigos_beers,
+    coluna_para_codigo, descricao_curta, justificativa, categoria, tipo,
+)
 import config
 
 st.set_page_config(
@@ -175,6 +180,138 @@ def carregar_lacunas_agregado(ap: str = None, clinica: str = None,
     return pd.DataFrame(linhas)
 
 
+@st.cache_data(show_spinner=False, ttl=900)
+def carregar_criterios_idoso_agregado(ap: str, clinica: str, esf: str) -> dict:
+    """
+    Para a equipe selecionada, devolve dict com:
+      - 'totais_por_criterio': DataFrame (codigo, n_pacientes, pct)
+      - 'distribuicao_stopp', 'distribuicao_start', 'distribuicao_beers':
+        DataFrames (n_criterios, n_pacientes) — quantos pacientes têm
+        0, 1, 2, 3, ≥4 critérios de cada tipo
+      - 'n_pacientes_equipe', 'n_com_stopp', 'n_com_start', 'n_com_beers'
+    """
+    todos_codigos = (todos_codigos_stopp() + todos_codigos_start()
+                     + todos_codigos_beers())
+    countifs = ",\n        ".join(
+        f"COUNTIF(s.{coluna_para_codigo(c)} = TRUE) AS {c}"
+        for c in todos_codigos
+    )
+
+    sql = f"""
+    WITH ss AS (
+        SELECT s.*
+        FROM `{_fqn(config.TABELA_FATO)}` f
+        LEFT JOIN `rj-sms-sandbox.sub_pav_us.MM_stopp_start` s
+               ON f.cpf = s.cpf
+        WHERE f.area_programatica_cadastro = '{ap}'
+          AND f.nome_clinica_cadastro     = '{clinica}'
+          AND f.nome_esf_cadastro         = '{esf}'
+    )
+    SELECT
+        COUNT(*) AS n_pacientes_equipe,
+        COUNTIF(COALESCE(s.total_criterios_stopp, 0) > 0)  AS n_com_stopp,
+        COUNTIF(COALESCE(s.total_criterios_start, 0) > 0)  AS n_com_start,
+        COUNTIF(COALESCE(s.total_criterios_beers, 0) > 0)  AS n_com_beers,
+        -- Distribuição por nº de critérios (cap em 4+)
+        COUNTIF(COALESCE(s.total_criterios_stopp, 0) = 0)  AS stopp_eq_0,
+        COUNTIF(COALESCE(s.total_criterios_stopp, 0) = 1)  AS stopp_eq_1,
+        COUNTIF(COALESCE(s.total_criterios_stopp, 0) = 2)  AS stopp_eq_2,
+        COUNTIF(COALESCE(s.total_criterios_stopp, 0) = 3)  AS stopp_eq_3,
+        COUNTIF(COALESCE(s.total_criterios_stopp, 0) >= 4) AS stopp_ge_4,
+        COUNTIF(COALESCE(s.total_criterios_start, 0) = 0)  AS start_eq_0,
+        COUNTIF(COALESCE(s.total_criterios_start, 0) = 1)  AS start_eq_1,
+        COUNTIF(COALESCE(s.total_criterios_start, 0) = 2)  AS start_eq_2,
+        COUNTIF(COALESCE(s.total_criterios_start, 0) = 3)  AS start_eq_3,
+        COUNTIF(COALESCE(s.total_criterios_start, 0) >= 4) AS start_ge_4,
+        COUNTIF(COALESCE(s.total_criterios_beers, 0) = 0)  AS beers_eq_0,
+        COUNTIF(COALESCE(s.total_criterios_beers, 0) = 1)  AS beers_eq_1,
+        COUNTIF(COALESCE(s.total_criterios_beers, 0) = 2)  AS beers_eq_2,
+        COUNTIF(COALESCE(s.total_criterios_beers, 0) = 3)  AS beers_eq_3,
+        COUNTIF(COALESCE(s.total_criterios_beers, 0) >= 4) AS beers_ge_4,
+        -- COUNTIF de cada critério individual
+        {countifs}
+    FROM ss s
+    """
+    df = bq(sql)
+    if df.empty:
+        return {
+            'n_pacientes_equipe': 0, 'n_com_stopp': 0,
+            'n_com_start': 0, 'n_com_beers': 0,
+            'totais_por_criterio': pd.DataFrame(),
+            'distribuicao_stopp':  pd.DataFrame(),
+            'distribuicao_start':  pd.DataFrame(),
+            'distribuicao_beers':  pd.DataFrame(),
+        }
+    row = df.iloc[0]
+    n_total = int(row['n_pacientes_equipe'] or 0) or 1
+
+    totais = []
+    for c in todos_codigos:
+        n = int(row.get(c, 0) or 0)
+        totais.append({
+            'codigo':  c,
+            'tipo':    tipo(c),
+            'categoria': categoria(c),
+            'descricao': descricao_curta(c),
+            'justificativa': justificativa(c),
+            'n_pacientes': n,
+            'pct':         round(n / n_total * 100, 1) if n_total else 0.0,
+        })
+    df_tot = pd.DataFrame(totais)
+
+    def _dist(prefix):
+        return pd.DataFrame([
+            {'n_criterios': '0',  'n_pacientes': int(row[f'{prefix}_eq_0'] or 0)},
+            {'n_criterios': '1',  'n_pacientes': int(row[f'{prefix}_eq_1'] or 0)},
+            {'n_criterios': '2',  'n_pacientes': int(row[f'{prefix}_eq_2'] or 0)},
+            {'n_criterios': '3',  'n_pacientes': int(row[f'{prefix}_eq_3'] or 0)},
+            {'n_criterios': '≥4', 'n_pacientes': int(row[f'{prefix}_ge_4'] or 0)},
+        ])
+
+    return {
+        'n_pacientes_equipe': int(row['n_pacientes_equipe'] or 0),
+        'n_com_stopp':        int(row['n_com_stopp']        or 0),
+        'n_com_start':        int(row['n_com_start']        or 0),
+        'n_com_beers':        int(row['n_com_beers']        or 0),
+        'totais_por_criterio': df_tot,
+        'distribuicao_stopp':  _dist('stopp'),
+        'distribuicao_start':  _dist('start'),
+        'distribuicao_beers':  _dist('beers'),
+    }
+
+
+@st.cache_data(show_spinner=False, ttl=900)
+def carregar_criterios_idoso_nominal(ap: str, clinica: str, esf: str) -> pd.DataFrame:
+    """
+    Devolve DataFrame paciente-a-paciente apenas com quem tem
+    ≥1 critério positivo, com colunas individuais de cada critério.
+    """
+    todos_codigos = (todos_codigos_stopp() + todos_codigos_start()
+                     + todos_codigos_beers())
+    flags = ",\n        ".join(
+        f"s.{coluna_para_codigo(c)} AS {c}"
+        for c in todos_codigos
+    )
+    sql = f"""
+    SELECT
+        f.cpf, f.nome, f.idade, f.genero,
+        COALESCE(s.total_criterios_stopp, 0) AS total_stopp,
+        COALESCE(s.total_criterios_start, 0) AS total_start,
+        COALESCE(s.total_criterios_beers, 0) AS total_beers,
+        {flags}
+    FROM `{_fqn(config.TABELA_FATO)}` f
+    LEFT JOIN `rj-sms-sandbox.sub_pav_us.MM_stopp_start` s
+           ON f.cpf = s.cpf
+    WHERE f.area_programatica_cadastro = '{ap}'
+      AND f.nome_clinica_cadastro     = '{clinica}'
+      AND f.nome_esf_cadastro         = '{esf}'
+      AND (COALESCE(s.total_criterios_stopp, 0) > 0
+           OR COALESCE(s.total_criterios_start, 0) > 0
+           OR COALESCE(s.total_criterios_beers, 0) > 0)
+    """
+    return bq(sql)
+
+
 def _kpi(col, label, valor, delta=None, ajuda=None):
     with col:
         with st.container(border=True):
@@ -273,9 +410,10 @@ else:
 # ═══════════════════════════════════════════════════════════════
 # ABAS
 # ═══════════════════════════════════════════════════════════════
-tab_resumo, tab_lacunas, tab_analise = st.tabs([
+tab_resumo, tab_lacunas, tab_polif, tab_analise = st.tabs([
     "📊 Resumo da equipe",
     "⚠️ Lacunas",
+    "💊 Polifarmácia",
     "🔬 Análise do IPC",
 ])
 
@@ -680,7 +818,208 @@ with tab_lacunas:
             )
 
 # ─────────────────────────────────────────────────────────────
-# ABA 3 — ANÁLISE DO IPC
+# ABA 3 — POLIFARMÁCIA (STOPP/START/Beers)
+# ─────────────────────────────────────────────────────────────
+with tab_polif:
+    st.markdown("#### Critérios de prescrição em idosos — STOPP, START e Beers")
+    st.caption(
+        "STOPP = medicamentos potencialmente inapropriados que devem ser "
+        "evitados/revistos. START = medicamentos indicados ausentes da "
+        "prescrição. Beers = critérios complementares (AGS 2023). "
+        "Cada paciente pode somar múltiplos critérios; um critério é "
+        "contado uma única vez por paciente, independente de quantos "
+        "medicamentos da classe estejam prescritos."
+    )
+
+    with st.spinner("Calculando critérios da equipe..."):
+        agg = carregar_criterios_idoso_agregado(ap_sel, cli_sel, esf_sel)
+
+    n_total_pol = agg.get('n_pacientes_equipe', 0) or 1
+
+    # ─── Cards de totais por tipo ───
+    p1, p2, p3, p4 = st.columns(4)
+    _kpi(p1, "👥 Pacientes da equipe", f"{agg.get('n_pacientes_equipe', 0):,}")
+    _kpi(p2, "🚫 Com STOPP", f"{agg.get('n_com_stopp', 0):,}",
+         f"{agg.get('n_com_stopp', 0)/n_total_pol*100:.0f}%")
+    _kpi(p3, "💡 Com START", f"{agg.get('n_com_start', 0):,}",
+         f"{agg.get('n_com_start', 0)/n_total_pol*100:.0f}%")
+    _kpi(p4, "🇺🇸 Com Beers", f"{agg.get('n_com_beers', 0):,}",
+         f"{agg.get('n_com_beers', 0)/n_total_pol*100:.0f}%")
+
+    # ─── Distribuição: gráfico de barras ───
+    st.markdown("##### Distribuição de critérios por paciente")
+    st.caption(
+        "Quantos pacientes têm 0, 1, 2, 3 ou ≥4 critérios de cada tipo."
+    )
+    df_d_stopp = agg.get('distribuicao_stopp', pd.DataFrame())
+    df_d_start = agg.get('distribuicao_start', pd.DataFrame())
+    df_d_beers = agg.get('distribuicao_beers', pd.DataFrame())
+
+    if not df_d_stopp.empty:
+        fig_d = go.Figure()
+        ordem = ['0', '1', '2', '3', '≥4']
+        fig_d.add_trace(go.Bar(
+            x=ordem, y=df_d_stopp.set_index('n_criterios')
+                                  .reindex(ordem)['n_pacientes'].values,
+            name='STOPP',
+            marker=dict(color='#C0392B'),
+            text=df_d_stopp.set_index('n_criterios')
+                            .reindex(ordem)['n_pacientes'].values,
+            textposition='outside',
+            textfont=dict(size=14, color=T.TEXT),
+        ))
+        fig_d.add_trace(go.Bar(
+            x=ordem, y=df_d_start.set_index('n_criterios')
+                                  .reindex(ordem)['n_pacientes'].values,
+            name='START',
+            marker=dict(color='#27AE60'),
+            text=df_d_start.set_index('n_criterios')
+                            .reindex(ordem)['n_pacientes'].values,
+            textposition='outside',
+            textfont=dict(size=14, color=T.TEXT),
+        ))
+        fig_d.add_trace(go.Bar(
+            x=ordem, y=df_d_beers.set_index('n_criterios')
+                                  .reindex(ordem)['n_pacientes'].values,
+            name='Beers',
+            marker=dict(color='#4f8ef7'),
+            text=df_d_beers.set_index('n_criterios')
+                            .reindex(ordem)['n_pacientes'].values,
+            textposition='outside',
+            textfont=dict(size=14, color=T.TEXT),
+        ))
+        fig_d.update_layout(
+            barmode='group',
+            height=380,
+            margin=dict(l=10, r=10, t=20, b=40),
+            paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
+            xaxis=dict(
+                title=dict(text='Nº de critérios por paciente',
+                           font=dict(color=T.TEXT, size=14)),
+                tickfont=dict(color=T.TEXT, size=14),
+            ),
+            yaxis=dict(
+                title=dict(text='Pacientes',
+                           font=dict(color=T.TEXT, size=14)),
+                tickfont=dict(color=T.TEXT_MUTED, size=13),
+                gridcolor=T.GRID,
+                rangemode='tozero',
+            ),
+            legend=dict(orientation='h', x=0.5, xanchor='center',
+                        y=1.10, yanchor='bottom',
+                        font=dict(color=T.TEXT, size=14)),
+        )
+        st.plotly_chart(fig_d, use_container_width=True)
+
+    st.markdown("---")
+
+    # ─── Tabela detalhada de cada critério ───
+    df_tot = agg.get('totais_por_criterio', pd.DataFrame())
+    if not df_tot.empty:
+        st.markdown("##### Detalhe por critério")
+
+        tipo_sel = st.radio(
+            "Tipo de critério",
+            options=['STOPP', 'START', 'Beers', 'Todos'],
+            index=0, horizontal=True, key="pol_tipo_filtro",
+        )
+
+        df_show = df_tot.copy()
+        if tipo_sel != 'Todos':
+            df_show = df_show[df_show['tipo'] == tipo_sel]
+        df_show = df_show.sort_values('n_pacientes', ascending=False)
+
+        st.dataframe(
+            pd.DataFrame({
+                'Tipo':         df_show['tipo'].values,
+                'Categoria':    df_show['categoria'].values,
+                'Critério':     df_show['descricao'].values,
+                'Pacientes':    df_show['n_pacientes'].values,
+                '% Equipe':     df_show['pct'].values,
+                'Justificativa clínica': df_show['justificativa'].values,
+            }),
+            hide_index=True, use_container_width=True, height=520,
+            column_config={
+                'Tipo':       st.column_config.TextColumn('Tipo', width='small'),
+                'Categoria':  st.column_config.TextColumn('Categoria', width='small'),
+                'Critério':   st.column_config.TextColumn('Critério', width='medium'),
+                'Pacientes':  st.column_config.NumberColumn('Pacientes', width='small'),
+                '% Equipe':   st.column_config.NumberColumn('% Equipe', format='%.1f%%',
+                                                            width='small'),
+                'Justificativa clínica':
+                    st.column_config.TextColumn('Justificativa clínica', width='large'),
+            },
+        )
+
+    st.markdown("---")
+
+    # ─── Lista nominal dos pacientes com ≥1 critério ───
+    st.markdown("##### Lista de pacientes com critérios positivos")
+    st.caption(
+        "Apenas pacientes com pelo menos um critério STOPP, START ou Beers. "
+        "A coluna 'Critérios ativos' lista os códigos sinalizados — "
+        "consulte a tabela acima para a justificativa clínica de cada um."
+    )
+
+    with st.spinner("Carregando lista nominal..."):
+        df_nom = carregar_criterios_idoso_nominal(ap_sel, cli_sel, esf_sel)
+
+    if df_nom.empty:
+        st.success("✅ Nenhum paciente da equipe tem critério STOPP/START/Beers ativo.")
+    else:
+        todos_codigos = (todos_codigos_stopp() + todos_codigos_start()
+                         + todos_codigos_beers())
+
+        def _linhas_paciente(row):
+            ativos = []
+            for c in todos_codigos:
+                v = row.get(c)
+                if v in [True, 1, '1', 'True', 'true', 'TRUE']:
+                    ativos.append(f"{c} ({descricao_curta(c)})")
+            return " · ".join(ativos) if ativos else "—"
+
+        df_nom = df_nom.copy()
+        df_nom['criterios_ativos'] = df_nom.apply(_linhas_paciente, axis=1)
+
+        if MODO_ANONIMO:
+            df_nom['nome_exib'] = df_nom.apply(
+                lambda r: anonimizar_nome(str(r.get('cpf') or r.get('nome', '')),
+                                          r.get('genero', '')),
+                axis=1,
+            )
+        else:
+            df_nom['nome_exib'] = df_nom['nome']
+
+        df_nom['total_critérios'] = (
+            df_nom['total_stopp'] + df_nom['total_start'] + df_nom['total_beers']
+        )
+        df_nom = df_nom.sort_values('total_critérios', ascending=False)
+
+        st.dataframe(
+            pd.DataFrame({
+                'Paciente':         df_nom['nome_exib'].values,
+                'Idade':            df_nom['idade'].astype('Int64').values,
+                'STOPP':            df_nom['total_stopp'].astype('Int64').values,
+                'START':            df_nom['total_start'].astype('Int64').values,
+                'Beers':            df_nom['total_beers'].astype('Int64').values,
+                'Total':            df_nom['total_critérios'].astype('Int64').values,
+                'Critérios ativos': df_nom['criterios_ativos'].values,
+            }),
+            hide_index=True, use_container_width=True, height=520,
+            column_config={
+                'Paciente':  st.column_config.TextColumn('Paciente', width='medium'),
+                'Idade':     st.column_config.NumberColumn('Idade', width='small'),
+                'STOPP':     st.column_config.NumberColumn('STOPP', width='small'),
+                'START':     st.column_config.NumberColumn('START', width='small'),
+                'Beers':     st.column_config.NumberColumn('Beers', width='small'),
+                'Total':     st.column_config.NumberColumn('Total', width='small'),
+                'Critérios ativos':
+                    st.column_config.TextColumn('Critérios ativos', width='large'),
+            },
+        )
+
+# ─────────────────────────────────────────────────────────────
+# ABA 4 — ANÁLISE DO IPC
 # ─────────────────────────────────────────────────────────────
 with tab_analise:
     st.markdown(
