@@ -36,6 +36,9 @@ usuario_logado = st.session_state['usuario_global']
 
 renderizar_cabecalho("Diabetes")
 
+from utils.auth import get_contexto_territorial
+ctx = get_contexto_territorial()
+
 # ═══════════════════════════════════════════════════════════════
 # HELPERS
 # ═══════════════════════════════════════════════════════════════
