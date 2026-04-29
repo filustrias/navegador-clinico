@@ -430,10 +430,12 @@ def carregar_hipertensao_nominal(ap: str, clinica: str, esf: str) -> pd.DataFram
         pressao_sistolica,
         pressao_diastolica,
         dias_desde_ultima_pa,
+        dias_desde_ultima_medica,
         status_controle_pressorio,
         pct_dias_has_controlado_365d,
         meta_pas,
         HAS_sem_CID,
+        DM, IRC, ICC, CI,
         lacuna_PA_hipertenso_180d,
         lacuna_HAS_descontrolado_menor80,
         lacuna_HAS_descontrolado_80mais,
@@ -460,8 +462,15 @@ def carregar_diabetes_agregado(ap: str, clinica: str, esf: str) -> dict:
         COUNT(*)                                                       AS n_total,
         COUNTIF(DM IS NOT NULL)                                        AS n_dm,
         COUNTIF(DM_sem_CID = TRUE)                                     AS n_sem_cid,
-        COUNTIF(DM IS NOT NULL AND status_controle_glicemico = 'controlado')    AS n_ctrl,
-        COUNTIF(DM IS NOT NULL AND status_controle_glicemico = 'descontrolado') AS n_desc,
+        -- Controle glicêmico calculado pela meta etária (HbA1c recente ≤180d)
+        COUNTIF(DM IS NOT NULL
+                AND hba1c_atual IS NOT NULL
+                AND dias_desde_ultima_hba1c <= 180
+                AND hba1c_atual <= meta_hba1c)                          AS n_ctrl,
+        COUNTIF(DM IS NOT NULL
+                AND hba1c_atual IS NOT NULL
+                AND dias_desde_ultima_hba1c <= 180
+                AND hba1c_atual >  meta_hba1c)                          AS n_desc,
         COUNTIF(DM IS NOT NULL AND hba1c_atual IS NULL)                AS n_nunca_a1c,
         COUNTIF(DM IS NOT NULL AND lacuna_DM_sem_HbA1c_recente = TRUE) AS n_sem_a1c_180d,
         COUNTIF(DM IS NOT NULL AND lacuna_DM_descontrolado = TRUE)     AS n_lac_desc,
@@ -496,10 +505,12 @@ def carregar_diabetes_nominal(ap: str, clinica: str, esf: str) -> pd.DataFrame:
         {sql_morb_lista},
         hba1c_atual,
         dias_desde_ultima_hba1c,
+        dias_desde_ultima_medica,
         status_controle_glicemico,
         meta_hba1c,
         DM_sem_CID,
         provavel_dm1,
+        HAS, IRC, ICC, CI,
         lacuna_DM_sem_HbA1c_recente,
         lacuna_DM_descontrolado,
         lacuna_DM_sem_exame_pe_365d,
@@ -1681,6 +1692,7 @@ with tab_has:
                 options=[
                     'PA descontrolada',
                     'Sem aferição PA >180d',
+                    'Sem médico há >180d',
                     'Sem CID',
                     'Sem creatinina',
                     'Sem colesterol',
@@ -1688,6 +1700,10 @@ with tab_has:
                     'Sem ECG',
                     'Sem IMC calculável',
                     'DM + HAS com PA >135/80',
+                    'HAS + IRC',
+                    'HAS + ICC',
+                    'HAS + CI',
+                    'HAS + DM',
                 ],
                 default=[],
                 placeholder="Todos os hipertensos (default)",
@@ -1703,15 +1719,32 @@ with tab_has:
                 key="has_filtro_carga",
             )
 
+        col_fh3, _ = st.columns([2, 2])
+        with col_fh3:
+            faixa_h = st.multiselect(
+                "Faixa etária",
+                options=['<60a', '60–79a', '≥80a'],
+                default=[], placeholder="Todas",
+                key="has_filtro_faixa",
+            )
+
         df_hv = df_h.copy()
         if carga_h:
             df_hv = df_hv[df_hv['charlson_categoria'].isin(carga_h)]
+        if faixa_h:
+            mfx = pd.Series(False, index=df_hv.index)
+            if '<60a'   in faixa_h: mfx |= (df_hv['idade'] < 60)
+            if '60–79a' in faixa_h: mfx |= ((df_hv['idade'] >= 60) & (df_hv['idade'] < 80))
+            if '≥80a'   in faixa_h: mfx |= (df_hv['idade'] >= 80)
+            df_hv = df_hv[mfx]
         if sin_h:
             mask = pd.Series(False, index=df_hv.index)
             if 'PA descontrolada'  in sin_h:
                 mask |= (df_hv['status_controle_pressorio'] == 'descontrolado')
             if 'Sem aferição PA >180d' in sin_h:
                 mask |= df_hv['lacuna_PA_hipertenso_180d'].fillna(False).astype(bool)
+            if 'Sem médico há >180d' in sin_h:
+                mask |= (df_hv['dias_desde_ultima_medica'].fillna(99999) > 180)
             if 'Sem CID'           in sin_h:
                 mask |= df_hv['HAS_sem_CID'].fillna(False).astype(bool)
             if 'Sem creatinina'    in sin_h:
@@ -1726,6 +1759,14 @@ with tab_has:
                 mask |= df_hv['lacuna_IMC_HAS_DM'].fillna(False).astype(bool)
             if 'DM + HAS com PA >135/80' in sin_h:
                 mask |= df_hv['lacuna_DM_HAS_PA_descontrolada'].fillna(False).astype(bool)
+            if 'HAS + IRC' in sin_h:
+                mask |= df_hv['IRC'].notna()
+            if 'HAS + ICC' in sin_h:
+                mask |= df_hv['ICC'].notna()
+            if 'HAS + CI'  in sin_h:
+                mask |= df_hv['CI'].notna()
+            if 'HAS + DM'  in sin_h:
+                mask |= df_hv['DM'].notna()
             df_hv = df_hv[mask]
 
         st.caption(
@@ -1941,11 +1982,18 @@ with tab_dm:
                 "Mostrar pacientes com:",
                 options=[
                     'HbA1c acima da meta',
+                    'HbA1c severamente alta (≥9%)',
                     'Sem HbA1c recente (>180d)',
                     'Nunca fez HbA1c',
+                    'Sem médico há >180d',
                     'Sem exame do pé (365d)',
                     'Sem microalbuminúria',
                     'DM complicado sem SGLT-2',
+                    'DM tipo 1 provável',
+                    'DM + IRC',
+                    'DM + ICC',
+                    'DM + CI',
+                    'DM + HAS',
                     'Sem CID',
                     'Sem creatinina',
                     'Sem colesterol',
@@ -1965,23 +2013,52 @@ with tab_dm:
                 key="dm_filtro_carga",
             )
 
+        col_fd3, _ = st.columns([2, 2])
+        with col_fd3:
+            faixa_d = st.multiselect(
+                "Faixa etária",
+                options=['<60a', '60–79a', '≥80a'],
+                default=[], placeholder="Todas",
+                key="dm_filtro_faixa",
+            )
+
         df_dv = df_d.copy()
         if carga_d:
             df_dv = df_dv[df_dv['charlson_categoria'].isin(carga_d)]
+        if faixa_d:
+            mfx = pd.Series(False, index=df_dv.index)
+            if '<60a'   in faixa_d: mfx |= (df_dv['idade'] < 60)
+            if '60–79a' in faixa_d: mfx |= ((df_dv['idade'] >= 60) & (df_dv['idade'] < 80))
+            if '≥80a'   in faixa_d: mfx |= (df_dv['idade'] >= 80)
+            df_dv = df_dv[mfx]
         if sin_d:
             mask = pd.Series(False, index=df_dv.index)
             if 'HbA1c acima da meta' in sin_d:
                 mask |= df_dv['lacuna_DM_descontrolado'].fillna(False).astype(bool)
+            if 'HbA1c severamente alta (≥9%)' in sin_d:
+                mask |= (df_dv['hba1c_atual'].fillna(0) >= 9)
             if 'Sem HbA1c recente (>180d)' in sin_d:
                 mask |= df_dv['lacuna_DM_sem_HbA1c_recente'].fillna(False).astype(bool)
             if 'Nunca fez HbA1c' in sin_d:
                 mask |= df_dv['hba1c_atual'].isna()
+            if 'Sem médico há >180d' in sin_d:
+                mask |= (df_dv['dias_desde_ultima_medica'].fillna(99999) > 180)
             if 'Sem exame do pé (365d)' in sin_d:
                 mask |= df_dv['lacuna_DM_sem_exame_pe_365d'].fillna(False).astype(bool)
             if 'Sem microalbuminúria' in sin_d:
                 mask |= df_dv['lacuna_DM_microalbuminuria_nao_solicitado'].fillna(False).astype(bool)
             if 'DM complicado sem SGLT-2' in sin_d:
                 mask |= df_dv['lacuna_DM_complicado_sem_SGLT2'].fillna(False).astype(bool)
+            if 'DM tipo 1 provável' in sin_d:
+                mask |= df_dv['provavel_dm1'].fillna(False).astype(bool)
+            if 'DM + IRC' in sin_d:
+                mask |= df_dv['IRC'].notna()
+            if 'DM + ICC' in sin_d:
+                mask |= df_dv['ICC'].notna()
+            if 'DM + CI'  in sin_d:
+                mask |= df_dv['CI'].notna()
+            if 'DM + HAS' in sin_d:
+                mask |= df_dv['HAS'].notna()
             if 'Sem CID' in sin_d:
                 mask |= df_dv['DM_sem_CID'].fillna(False).astype(bool)
             if 'Sem creatinina' in sin_d:
