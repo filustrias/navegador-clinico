@@ -292,9 +292,13 @@ def carregar_criterios_idoso_nominal(ap: str, clinica: str, esf: str) -> pd.Data
         f"s.{coluna_para_codigo(c)} AS {c}"
         for c in todos_codigos
     )
+    sql_morb_lista = gerar_sql_morbidades_lista("morbidades_lista")
     sql = f"""
     SELECT
         f.cpf, f.nome, f.idade, f.genero,
+        f.acb_score_total,
+        f.nucleo_cronico_atual AS medicamentos_lista,
+        {sql_morb_lista},
         COALESCE(s.total_criterios_stopp, 0) AS total_stopp,
         COALESCE(s.total_criterios_start, 0) AS total_start,
         COALESCE(s.total_criterios_beers, 0) AS total_beers,
@@ -821,11 +825,13 @@ with tab_lacunas:
 # ABA 3 — POLIFARMÁCIA (STOPP/START/Beers)
 # ─────────────────────────────────────────────────────────────
 with tab_polif:
-    st.markdown("#### Critérios de prescrição em idosos — STOPP, START e Beers")
+    st.markdown("#### Critérios de prescrição em idosos — STOPP, START, Beers e escore ACB")
     st.caption(
         "STOPP = medicamentos potencialmente inapropriados que devem ser "
         "evitados/revistos. START = medicamentos indicados ausentes da "
         "prescrição. Beers = critérios complementares (AGS 2023). "
+        "ACB = Anticholinergic Cognitive Burden score, soma da carga "
+        "anticolinérgica dos medicamentos em uso. "
         "Cada paciente pode somar múltiplos critérios; um critério é "
         "contado uma única vez por paciente, independente de quantos "
         "medicamentos da classe estejam prescritos."
@@ -971,12 +977,14 @@ with tab_polif:
                          + todos_codigos_beers())
 
         def _linhas_paciente(row):
+            """Lista descrições dos critérios ativos, separadas por vírgula
+            e sem códigos."""
             ativos = []
             for c in todos_codigos:
                 v = row.get(c)
                 if v in [True, 1, '1', 'True', 'true', 'TRUE']:
-                    ativos.append(f"{c} ({descricao_curta(c)})")
-            return " · ".join(ativos) if ativos else "—"
+                    ativos.append(descricao_curta(c))
+            return ", ".join(ativos) if ativos else "—"
 
         df_nom = df_nom.copy()
         df_nom['criterios_ativos'] = df_nom.apply(_linhas_paciente, axis=1)
@@ -999,6 +1007,10 @@ with tab_polif:
             pd.DataFrame({
                 'Paciente':         df_nom['nome_exib'].values,
                 'Idade':            df_nom['idade'].astype('Int64').values,
+                'Morbidades':       df_nom['morbidades_lista'].fillna('—').values,
+                'Última prescrição crônica':
+                    df_nom['medicamentos_lista'].fillna('—').values,
+                'ACB':              df_nom['acb_score_total'].astype('Int64').values,
                 'STOPP':            df_nom['total_stopp'].astype('Int64').values,
                 'START':            df_nom['total_start'].astype('Int64').values,
                 'Beers':            df_nom['total_beers'].astype('Int64').values,
@@ -1007,12 +1019,17 @@ with tab_polif:
             }),
             hide_index=True, use_container_width=True, height=520,
             column_config={
-                'Paciente':  st.column_config.TextColumn('Paciente', width='medium'),
-                'Idade':     st.column_config.NumberColumn('Idade', width='small'),
-                'STOPP':     st.column_config.NumberColumn('STOPP', width='small'),
-                'START':     st.column_config.NumberColumn('START', width='small'),
-                'Beers':     st.column_config.NumberColumn('Beers', width='small'),
-                'Total':     st.column_config.NumberColumn('Total', width='small'),
+                'Paciente':   st.column_config.TextColumn('Paciente', width='medium'),
+                'Idade':      st.column_config.NumberColumn('Idade', width='small'),
+                'Morbidades': st.column_config.TextColumn('Morbidades', width='large'),
+                'Última prescrição crônica':
+                    st.column_config.TextColumn('Última prescrição crônica',
+                                                width='large'),
+                'ACB':        st.column_config.NumberColumn('ACB', width='small'),
+                'STOPP':      st.column_config.NumberColumn('STOPP', width='small'),
+                'START':      st.column_config.NumberColumn('START', width='small'),
+                'Beers':      st.column_config.NumberColumn('Beers', width='small'),
+                'Total':      st.column_config.NumberColumn('Total', width='small'),
                 'Critérios ativos':
                     st.column_config.TextColumn('Critérios ativos', width='large'),
             },
