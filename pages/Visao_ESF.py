@@ -28,6 +28,7 @@ from utils.criterios_idoso import (
     todos_codigos_stopp, todos_codigos_start, todos_codigos_beers,
     coluna_para_codigo, descricao_curta, justificativa, categoria, tipo,
 )
+from components.lista_pacientes import renderizar_lista_pacientes
 import config
 
 st.set_page_config(
@@ -666,13 +667,14 @@ else:
 # ABAS
 # ═══════════════════════════════════════════════════════════════
 (tab_resumo, tab_lacunas, tab_cont, tab_polif, tab_has, tab_dm,
- tab_analise) = st.tabs([
+ tab_pacientes, tab_analise) = st.tabs([
     "📊 Resumo da equipe",
     "⚠️ Lacunas",
     "🔄 Continuidade",
     "💊 Polifarmácia",
     "🩺 Hipertensão",
     "🩸 Diabetes",
+    "🧑‍⚕️ Meus Pacientes",
     "🔬 Análise do IPC",
 ])
 
@@ -2002,7 +2004,9 @@ with tab_dm:
     _kpi(d1, "🩸 Diabéticos na equipe",
          f"{int(ag_d.get('n_dm', 0) or 0):,}",
          f"{int(ag_d.get('n_dm', 0) or 0)/(int(ag_d.get('n_total', 0) or 1))*100:.0f}% da equipe")
-    _kpi(d2, "✅ Glicemia controlada",
+    _kpi(d2,
+         "✅ Glicemia controlada (pacientes com A1C realizado há "
+         "< 180 dias e com resultado dentro da meta)",
          f"{int(ag_d.get('n_ctrl', 0) or 0):,}",
          _pct_d(ag_d.get('n_ctrl')))
     _kpi(d3, "❌ HbA1c acima da meta",
@@ -2356,7 +2360,19 @@ with tab_dm:
 """)
 
 # ─────────────────────────────────────────────────────────────
-# ABA 7 — ANÁLISE DO IPC
+# ABA 7 — MEUS PACIENTES (lista nominal completa, embarcada)
+# ─────────────────────────────────────────────────────────────
+with tab_pacientes:
+    renderizar_lista_pacientes(
+        area=ap_sel,
+        clinica=cli_sel,
+        esf=esf_sel,
+        scope="esf",
+        incluir_sidebar=False,
+    )
+
+# ─────────────────────────────────────────────────────────────
+# ABA 8 — ANÁLISE DO IPC
 # ─────────────────────────────────────────────────────────────
 with tab_analise:
     st.markdown(
