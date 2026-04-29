@@ -22,6 +22,7 @@ from utils.ipc import (
     PESOS_DEFAULT, BONUS_DCV_SEM_PREV, CORES_IPC,
 )
 from utils.morbidades import gerar_sql_morbidades_lista
+from utils.lacunas_config import LACUNAS, GRUPOS_LACUNAS
 import config
 
 st.set_page_config(
@@ -111,6 +112,67 @@ def carregar_pacientes_ipc(ap: str, clinica: str, esf: str) -> pd.DataFrame:
       AND f.nome_esf_cadastro         = '{esf}'
     """
     return bq(sql)
+
+
+@st.cache_data(show_spinner=False, ttl=900)
+def carregar_lacunas_agregado(ap: str = None, clinica: str = None,
+                              esf: str = None) -> pd.DataFrame:
+    """
+    Para um escopo (equipe = AP+clínica+ESF, ou município = sem filtro),
+    devolve um DataFrame com uma linha por lacuna contendo:
+      lacuna, grupo, numerador, denominador, pct
+    A fórmula segue exatamente o denominador_sql definido em
+    utils/lacunas_config.py (população elegível para a lacuna).
+    """
+    clauses = []
+    if ap:      clauses.append(f"area_programatica_cadastro = '{ap}'")
+    if clinica: clauses.append(f"nome_clinica_cadastro     = '{clinica}'")
+    if esf:     clauses.append(f"nome_esf_cadastro         = '{esf}'")
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    selects = []
+    for nome, info in LACUNAS.items():
+        col   = info['coluna_fato']
+        den   = info['denominador_sql']
+        alias_n = "n_num__" + info['alias_pct'][len('pct_'):]
+        alias_d = "n_den__" + info['alias_pct'][len('pct_'):]
+        selects.append(f"COUNTIF({col} = TRUE) AS {alias_n}")
+        selects.append(f"{den}                AS {alias_d}")
+
+    sql = f"""
+    SELECT
+        {', '.join(selects)}
+    FROM `{_fqn(config.TABELA_FATO)}`
+    {where}
+    """
+    df = bq(sql)
+    if df.empty:
+        return pd.DataFrame(columns=['lacuna', 'grupo', 'numerador',
+                                     'denominador', 'pct'])
+
+    row = df.iloc[0]
+    linhas = []
+    for nome, info in LACUNAS.items():
+        sufixo = info['alias_pct'][len('pct_'):]
+        num = row.get(f"n_num__{sufixo}")
+        den = row.get(f"n_den__{sufixo}")
+        try:
+            num_f = float(num) if pd.notna(num) else 0.0
+            den_f = float(den) if pd.notna(den) and den else 0.0
+        except (TypeError, ValueError):
+            num_f, den_f = 0.0, 0.0
+        pct = (num_f / den_f * 100.0) if den_f > 0 else None
+        grupo = info['grupo']
+        if isinstance(grupo, list):
+            grupo = grupo[0]
+        linhas.append({
+            'lacuna':      nome,
+            'grupo':       grupo,
+            'numerador':   int(num_f),
+            'denominador': int(den_f),
+            'pct':         round(pct, 1) if pct is not None else None,
+        })
+    return pd.DataFrame(linhas)
 
 
 def _kpi(col, label, valor, delta=None, ajuda=None):
@@ -211,8 +273,9 @@ else:
 # ═══════════════════════════════════════════════════════════════
 # ABAS
 # ═══════════════════════════════════════════════════════════════
-tab_resumo, tab_analise = st.tabs([
+tab_resumo, tab_lacunas, tab_analise = st.tabs([
     "📊 Resumo da equipe",
+    "⚠️ Lacunas",
     "🔬 Análise do IPC",
 ])
 
@@ -417,7 +480,105 @@ cortado em 1,0.
     st.plotly_chart(fig_hist, use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────
-# ABA 2 — ANÁLISE DO IPC
+# ABA 2 — LACUNAS DA EQUIPE × MUNICÍPIO
+# ─────────────────────────────────────────────────────────────
+with tab_lacunas:
+    st.markdown(
+        "#### Lacunas de cuidado da sua equipe — comparado ao município"
+    )
+    st.caption(
+        "Cada lacuna é calculada apenas sobre a população elegível "
+        "(ex.: 'CI sem AAS' usa pacientes com CI como denominador). "
+        "Município = todos os pacientes da base. Lacunas ordenadas "
+        "da mais prevalente à menos prevalente na sua equipe."
+    )
+
+    with st.spinner("Calculando lacunas da equipe e do município..."):
+        df_eq  = carregar_lacunas_agregado(ap_sel, cli_sel, esf_sel)
+        df_mun = carregar_lacunas_agregado(None, None, None)
+
+    if df_eq.empty:
+        st.warning("Sem dados de lacunas para a equipe selecionada.")
+    else:
+        df_lac = df_eq.merge(
+            df_mun[['lacuna', 'numerador', 'denominador', 'pct']]
+                .rename(columns={'numerador':   'numerador_mun',
+                                 'denominador': 'denominador_mun',
+                                 'pct':         'pct_mun'}),
+            on='lacuna', how='left',
+        )
+        df_lac['delta'] = df_lac['pct'] - df_lac['pct_mun']
+        df_lac = df_lac.sort_values('pct', ascending=False, na_position='last')
+
+        # Tabela enxuta
+        def _fmt_pct(v):
+            return f"{v:.1f}%" if pd.notna(v) else "—"
+
+        def _fmt_delta(v):
+            if pd.isna(v):
+                return "—"
+            sinal = "+" if v >= 0 else ""
+            return f"{sinal}{v:.1f} pp"
+
+        df_show = pd.DataFrame({
+            'Lacuna':           df_lac['lacuna'].values,
+            'Grupo':            df_lac['grupo'].values,
+            '% Equipe':         df_lac['pct'].apply(_fmt_pct).values,
+            'n / N (Equipe)':   df_lac.apply(
+                lambda r: f"{int(r['numerador'])} / {int(r['denominador'])}"
+                          if r['denominador'] else "—",
+                axis=1,
+            ).values,
+            '% Município':      df_lac['pct_mun'].apply(_fmt_pct).values,
+            'Δ (Equipe − Município)': df_lac['delta'].apply(_fmt_delta).values,
+        })
+        st.dataframe(
+            df_show, hide_index=True, use_container_width=True,
+            column_config={
+                'Lacuna':                 st.column_config.TextColumn('Lacuna', width='large'),
+                'Grupo':                  st.column_config.TextColumn('Grupo',  width='medium'),
+                '% Equipe':               st.column_config.TextColumn('% Equipe',     width='small'),
+                'n / N (Equipe)':         st.column_config.TextColumn('n / N (Equipe)', width='small'),
+                '% Município':            st.column_config.TextColumn('% Município',  width='small'),
+                'Δ (Equipe − Município)': st.column_config.TextColumn('Δ vs Município', width='small'),
+            },
+        )
+
+        # Gráfico de barras horizontais — lacunas com pacientes na equipe
+        df_plot = df_lac[df_lac['denominador'] > 0].copy()
+        if not df_plot.empty:
+            st.markdown("##### Comparação visual: equipe × município")
+            df_plot = df_plot.sort_values('pct', ascending=True)  # plotly: 1ª no fim
+
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                y=df_plot['lacuna'], x=df_plot['pct_mun'],
+                name='Município', orientation='h',
+                marker=dict(color='#9CA3AF'),
+                hovertemplate='<b>%{y}</b><br>Município: %{x:.1f}%<extra></extra>',
+            ))
+            fig.add_trace(go.Bar(
+                y=df_plot['lacuna'], x=df_plot['pct'],
+                name='Equipe', orientation='h',
+                marker=dict(color='#4f8ef7'),
+                hovertemplate='<b>%{y}</b><br>Equipe: %{x:.1f}%<extra></extra>',
+            ))
+            fig.update_layout(
+                barmode='group',
+                height=max(420, 22 * len(df_plot) + 80),
+                margin=dict(l=10, r=10, t=10, b=40),
+                paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
+                xaxis=dict(title='% da população elegível',
+                           tickfont=dict(color=T.TEXT_MUTED), gridcolor=T.GRID),
+                yaxis=dict(tickfont=dict(color=T.TEXT, size=11),
+                           automargin=True),
+                legend=dict(orientation='h', x=0.5, xanchor='center',
+                            y=-0.06, yanchor='top'),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+# ─────────────────────────────────────────────────────────────
+# ABA 3 — ANÁLISE DO IPC
 # ─────────────────────────────────────────────────────────────
 with tab_analise:
     st.markdown(
