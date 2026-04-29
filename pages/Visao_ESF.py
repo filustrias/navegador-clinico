@@ -485,16 +485,20 @@ def carregar_diabetes_agregado(ap: str, clinica: str, esf: str) -> dict:
         COUNTIF(DM IS NOT NULL AND lacuna_ecg_HAS_DM = TRUE)           AS n_sem_ecg,
         COUNTIF(DM IS NOT NULL AND lacuna_IMC_HAS_DM = TRUE)           AS n_sem_imc,
         ROUND(AVG(CASE WHEN DM IS NOT NULL THEN hba1c_atual END), 2)   AS media_a1c,
-        -- Insulina e doses farmacológicas críticas
-        -- Fonte de verdade = núcleo crônico atual (última prescrição):
-        -- as flags principio_INSULINA_* podem refletir uma janela mais
-        -- ampla e ficar defasadas em relação ao que o médico prescreveu
-        -- por último.
-        COUNTIF(DM IS NOT NULL
-                AND LOWER(nucleo_cronico_atual) LIKE '%insulina%')        AS n_em_insulina,
-        COUNTIF(DM IS NOT NULL AND dose_NPH_ui_kg > 0.85
-                AND (LOWER(nucleo_cronico_atual) LIKE '%nph%'
-                     OR LOWER(nucleo_cronico_atual) LIKE '%isofana%'))    AS n_nph_alta,
+        -- Insulina e doses farmacológicas críticas — KPIs populacionais.
+        -- Aqui usamos as flags estruturais principio_INSULINA_* para
+        -- bater com a page Diabetes (mesma janela do pipeline).
+        -- Os filtros e a coluna NPH (UI/kg) na lista nominal usam um
+        -- critério mais estrito (nucleo_cronico_atual = última
+        -- prescrição), que é o que importa para ação caso a caso.
+        COUNTIF(DM IS NOT NULL AND (
+            principio_INSULINA_BASAL_HUMANA   IS NOT NULL OR
+            principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL OR
+            principio_INSULINA_BASAL_ANALOGICA IS NOT NULL OR
+            principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL OR
+            principio_INSULINA_MISTA          IS NOT NULL
+        ))                                                               AS n_em_insulina,
+        COUNTIF(DM IS NOT NULL AND dose_NPH_ui_kg > 0.85)                AS n_nph_alta,
         COUNTIF(DM IS NOT NULL AND alerta_dose_maxima_biguanida    = TRUE)
                                                                           AS n_metf_total_alta,
         COUNTIF(DM IS NOT NULL AND alerta_dose_maxima_biguanida_xr = TRUE)
