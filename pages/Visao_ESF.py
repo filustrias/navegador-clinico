@@ -483,7 +483,35 @@ def carregar_diabetes_agregado(ap: str, clinica: str, esf: str) -> dict:
         COUNTIF(DM IS NOT NULL AND lacuna_colesterol_HAS_DM = TRUE)    AS n_sem_col,
         COUNTIF(DM IS NOT NULL AND lacuna_ecg_HAS_DM = TRUE)           AS n_sem_ecg,
         COUNTIF(DM IS NOT NULL AND lacuna_IMC_HAS_DM = TRUE)           AS n_sem_imc,
-        ROUND(AVG(CASE WHEN DM IS NOT NULL THEN hba1c_atual END), 2)   AS media_a1c
+        ROUND(AVG(CASE WHEN DM IS NOT NULL THEN hba1c_atual END), 2)   AS media_a1c,
+        -- Insulina e doses farmacológicas críticas
+        COUNTIF(DM IS NOT NULL AND (
+            principio_INSULINA_BASAL_HUMANA   IS NOT NULL OR
+            principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL OR
+            principio_INSULINA_BASAL_ANALOGICA IS NOT NULL OR
+            principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL OR
+            principio_INSULINA_MISTA          IS NOT NULL
+        ))                                                               AS n_em_insulina,
+        COUNTIF(DM IS NOT NULL AND dose_NPH_ui_kg > 0.85)                AS n_nph_alta,
+        COUNTIF(DM IS NOT NULL AND alerta_dose_maxima_biguanida    = TRUE)
+                                                                          AS n_metf_total_alta,
+        COUNTIF(DM IS NOT NULL AND alerta_dose_maxima_biguanida_xr = TRUE)
+                                                                          AS n_metf_xr_alta,
+        COUNTIF(DM IS NOT NULL
+                AND principio_SULFONILUREIA          IS NOT NULL
+                AND principio_BIGUANIDA              IS NULL
+                AND principio_BIGUANIDA_XR           IS NULL
+                AND principio_iSGLT2                 IS NULL
+                AND principio_iDPP4                  IS NULL
+                AND principio_GLP1                   IS NULL
+                AND principio_TIAZOLIDINEDIONA       IS NULL
+                AND principio_GLINIDA                IS NULL
+                AND principio_ACARBOSE               IS NULL
+                AND principio_INSULINA_BASAL_HUMANA  IS NULL
+                AND principio_INSULINA_PRANDIAL_HUMANA IS NULL
+                AND principio_INSULINA_BASAL_ANALOGICA IS NULL
+                AND principio_INSULINA_PRANDIAL_ANALOGICA IS NULL
+                AND principio_INSULINA_MISTA         IS NULL)            AS n_sulfo_mono
     FROM `{_fqn(config.TABELA_FATO)}`
     WHERE area_programatica_cadastro = '{ap}'
       AND nome_clinica_cadastro     = '{clinica}'
@@ -508,6 +536,7 @@ def carregar_diabetes_nominal(ap: str, clinica: str, esf: str) -> pd.DataFrame:
         dias_desde_ultima_medica,
         status_controle_glicemico,
         meta_hba1c,
+        dose_NPH_ui_kg,
         DM_sem_CID,
         provavel_dm1,
         HAS, IRC, ICC, CI,
@@ -1967,6 +1996,26 @@ with tab_dm:
     _kpi(d12, "HbA1c média",
          f"{float(ag_d.get('media_a1c') or 0):.1f}%" if ag_d.get('media_a1c') else "—")
 
+    # Linha extra — segurança farmacológica
+    d13, d14, d15, d16 = st.columns(4)
+    _kpi(d13, "💉 Em uso de insulina (qualquer tipo)",
+         f"{int(ag_d.get('n_em_insulina', 0) or 0):,}",
+         _pct_d(ag_d.get('n_em_insulina')))
+    _kpi(d14, "🚨 NPH > 0,85 UI/kg",
+         f"{int(ag_d.get('n_nph_alta', 0) or 0):,}",
+         _pct_d(ag_d.get('n_nph_alta')))
+    _kpi(d15, "🚨 Metformina (regular+XR) > 2.550 mg/dia",
+         f"{int(ag_d.get('n_metf_total_alta', 0) or 0):,}",
+         _pct_d(ag_d.get('n_metf_total_alta')))
+    _kpi(d16, "🚨 Metformina XR > 2.000 mg/dia",
+         f"{int(ag_d.get('n_metf_xr_alta', 0) or 0):,}",
+         _pct_d(ag_d.get('n_metf_xr_alta')))
+
+    d17, _, _, _ = st.columns(4)
+    _kpi(d17, "⚠️ Sulfonilureia em monoterapia",
+         f"{int(ag_d.get('n_sulfo_mono', 0) or 0):,}",
+         _pct_d(ag_d.get('n_sulfo_mono')))
+
     st.markdown("---")
     st.markdown("##### Lista nominal de diabéticos")
 
@@ -2145,23 +2194,46 @@ with tab_dm:
                 ascending=[True, False], na_position='last',
             )
 
+            df_show_dm = pd.DataFrame({
+                'Paciente':   df_dr['nome_exib'].values,
+                'Idade':      df_dr['idade'].astype('Int64').values,
+                'Morbidades': df_dr['morbidades_lista'].fillna('—').values,
+                'Última prescrição crônica':
+                    df_dr['medicamentos_lista'].fillna('—').values,
+                'Carga de Morbidade':
+                    df_dr['charlson_categoria'].fillna('—').values,
+                'Tipo':       df_dr['tipo_dm'].values,
+                'HbA1c atual': df_dr['hba1c_atual'].apply(_fmt_a1c).values,
+                'Meta HbA1c': df_dr['meta_hba1c'].apply(_fmt_a1c).values,
+                'Dias s/ HbA1c':
+                    df_dr['dias_desde_ultima_hba1c'].apply(_fmt_dias).values,
+                'Controle':   df_dr['ctrl_str'].values,
+                # Coluna numérica para permitir formatação + destaque
+                'NPH (UI/kg)': df_dr['dose_NPH_ui_kg'].astype(float).values,
+                'Lacunas de DM': df_dr['lacunas_dm'].values,
+            })
+
+            def _cor_nph(v):
+                """Destaca em vermelho NPH > 0,85 UI/kg."""
+                if pd.isna(v):
+                    return ''
+                try:
+                    if float(v) > 0.85:
+                        return ('background-color: rgba(231,76,60,0.55); '
+                                'color: #B71C1C; font-weight: 600;')
+                except (TypeError, ValueError):
+                    pass
+                return ''
+
+            styled_dm = (
+                df_show_dm.style
+                .applymap(_cor_nph, subset=['NPH (UI/kg)'])
+                .format({'NPH (UI/kg)':
+                         lambda v: f'{v:.2f}' if pd.notna(v) and v > 0 else '—'})
+            )
+
             st.dataframe(
-                pd.DataFrame({
-                    'Paciente':   df_dr['nome_exib'].values,
-                    'Idade':      df_dr['idade'].astype('Int64').values,
-                    'Morbidades': df_dr['morbidades_lista'].fillna('—').values,
-                    'Última prescrição crônica':
-                        df_dr['medicamentos_lista'].fillna('—').values,
-                    'Carga de Morbidade':
-                        df_dr['charlson_categoria'].fillna('—').values,
-                    'Tipo':       df_dr['tipo_dm'].values,
-                    'HbA1c atual': df_dr['hba1c_atual'].apply(_fmt_a1c).values,
-                    'Meta HbA1c': df_dr['meta_hba1c'].apply(_fmt_a1c).values,
-                    'Dias s/ HbA1c':
-                        df_dr['dias_desde_ultima_hba1c'].apply(_fmt_dias).values,
-                    'Controle':   df_dr['ctrl_str'].values,
-                    'Lacunas de DM': df_dr['lacunas_dm'].values,
-                }),
+                styled_dm,
                 hide_index=True, use_container_width=True, height=540,
                 column_config={
                     'Paciente':   st.column_config.TextColumn('Paciente', width='medium'),
@@ -2177,6 +2249,7 @@ with tab_dm:
                     'Meta HbA1c':   st.column_config.TextColumn('Meta HbA1c', width='small'),
                     'Dias s/ HbA1c':st.column_config.TextColumn('Dias s/ HbA1c', width='small'),
                     'Controle':     st.column_config.TextColumn('Controle', width='small'),
+                    'NPH (UI/kg)':  st.column_config.TextColumn('NPH (UI/kg)', width='small'),
                     'Lacunas de DM':st.column_config.TextColumn('Lacunas de DM', width='large'),
                 },
             )
@@ -2194,7 +2267,11 @@ with tab_dm:
   (<60a → 7,0%; 60–69a → 7,5%; ≥70a → 8,0%).
 - **Dias s/ HbA1c** — dias desde o último resultado registrado.
 - **Controle** — 🟢 Controlado / 🔴 Descontrolado / — sem dados,
-  conforme `status_controle_glicemico`.
+  conforme HbA1c recente comparada à meta etária.
+- **NPH (UI/kg)** — dose diária de insulina NPH dividida pelo peso
+  do paciente. **Valores >0,85 UI/kg aparecem destacados em
+  vermelho** — sugerem resistência insulínica importante (ou
+  possível erro de digitação acima de 1,5).
 - **Lacunas de DM** — checagens em aberto: HbA1c acima da meta,
   HbA1c não solicitada/ausente, exame do pé ausente,
   microalbuminúria ausente, DM complicado sem SGLT-2, exames
