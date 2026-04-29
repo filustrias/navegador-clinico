@@ -510,72 +510,139 @@ with tab_lacunas:
         df_lac['delta'] = df_lac['pct'] - df_lac['pct_mun']
         df_lac = df_lac.sort_values('pct', ascending=False, na_position='last')
 
-        # Tabela enxuta
-        def _fmt_pct(v):
-            return f"{v:.1f}%" if pd.notna(v) else "—"
-
-        def _fmt_delta(v):
-            if pd.isna(v):
-                return "—"
-            sinal = "+" if v >= 0 else ""
-            return f"{sinal}{v:.1f} pp"
-
-        df_show = pd.DataFrame({
-            'Lacuna':           df_lac['lacuna'].values,
-            'Grupo':            df_lac['grupo'].values,
-            '% Equipe':         df_lac['pct'].apply(_fmt_pct).values,
-            'n / N (Equipe)':   df_lac.apply(
+        # ── Tabela com gradiente de cor + setas ─────────────────
+        df_tab = pd.DataFrame({
+            'Grupo':       df_lac['grupo'].values,
+            'Lacuna':      df_lac['lacuna'].values,
+            'n / N':       df_lac.apply(
                 lambda r: f"{int(r['numerador'])} / {int(r['denominador'])}"
                           if r['denominador'] else "—",
                 axis=1,
             ).values,
-            '% Município':      df_lac['pct_mun'].apply(_fmt_pct).values,
-            'Δ (Equipe − Município)': df_lac['delta'].apply(_fmt_delta).values,
+            '% Equipe':    df_lac['pct'].astype(float).values,
+            '% Município': df_lac['pct_mun'].astype(float).values,
+            'Variação':    df_lac['delta'].astype(float).values,
         })
-        st.dataframe(
-            df_show, hide_index=True, use_container_width=True,
-            column_config={
-                'Lacuna':                 st.column_config.TextColumn('Lacuna', width='large'),
-                'Grupo':                  st.column_config.TextColumn('Grupo',  width='medium'),
-                '% Equipe':               st.column_config.TextColumn('% Equipe',     width='small'),
-                'n / N (Equipe)':         st.column_config.TextColumn('n / N (Equipe)', width='small'),
-                '% Município':            st.column_config.TextColumn('% Município',  width='small'),
-                'Δ (Equipe − Município)': st.column_config.TextColumn('Δ vs Município', width='small'),
-            },
+
+        def _fmt_variacao(v):
+            if pd.isna(v):
+                return '—'
+            if v > 0:
+                return f'↑ +{v:.1f}%'   # equipe pior que município
+            if v < 0:
+                return f'↓ {v:.1f}%'    # equipe melhor (v já negativo)
+            return '↔ 0,0%'
+
+        def _cor_variacao(v):
+            if pd.isna(v):
+                return ''
+            if v > 0:
+                return 'color: #C0392B; font-weight: 600;'   # vermelho
+            if v < 0:
+                return 'color: #27AE60; font-weight: 600;'   # verde
+            return 'color: #6B7280;'
+
+        styled = (
+            df_tab.style
+            .background_gradient(
+                subset=['% Equipe', '% Município'],
+                cmap='RdYlGn_r', vmin=0, vmax=100,
+            )
+            .format({
+                '% Equipe':    lambda v: f'{v:.1f}%' if pd.notna(v) else '—',
+                '% Município': lambda v: f'{v:.1f}%' if pd.notna(v) else '—',
+                'Variação':    _fmt_variacao,
+            })
+            .applymap(_cor_variacao, subset=['Variação'])
         )
 
-        # Gráfico de barras horizontais — lacunas com pacientes na equipe
-        df_plot = df_lac[df_lac['denominador'] > 0].copy()
-        if not df_plot.empty:
-            st.markdown("##### Comparação visual: equipe × município")
-            df_plot = df_plot.sort_values('pct', ascending=True)  # plotly: 1ª no fim
+        st.dataframe(
+            styled, hide_index=True, use_container_width=True, height=560,
+        )
+
+        st.markdown("---")
+
+        # ── Gráfico vertical filtrado por grupo ─────────────────
+        st.markdown("##### Comparação visual por grupo: equipe × município")
+
+        grupos_disponiveis = (df_lac.dropna(subset=['grupo'])
+                                    ['grupo'].unique().tolist())
+        # Ordenar pela ordem canônica de GRUPOS_LACUNAS
+        grupos_disponiveis = [g for g in GRUPOS_LACUNAS.keys()
+                              if g in grupos_disponiveis]
+
+        grupo_sel = st.selectbox(
+            "Filtrar por grupo",
+            options=grupos_disponiveis,
+            index=0 if grupos_disponiveis else None,
+            key="lac_grupo_filter",
+        )
+
+        df_plot = df_lac[(df_lac['grupo'] == grupo_sel)
+                         & (df_lac['denominador'] > 0)].copy()
+        df_plot = df_plot.sort_values('pct', ascending=False)
+
+        if df_plot.empty:
+            st.info(f"Sem lacunas com pacientes elegíveis no grupo "
+                   f"**{grupo_sel}** para esta equipe.")
+        else:
+            # Cor da barra da equipe baseada em comparação com município:
+            # acima do município (pior) → vermelho; abaixo (melhor) → verde.
+            def _cor_barra_equipe(d):
+                if pd.isna(d):
+                    return '#9CA3AF'
+                if d > 0.5:  return '#E74C3C'
+                if d < -0.5: return '#27AE60'
+                return '#F59E0B'  # próximo ao município
+
+            cores_equipe = [_cor_barra_equipe(d) for d in df_plot['delta']]
 
             fig = go.Figure()
+            # Barra do município (cinza, atrás)
             fig.add_trace(go.Bar(
-                y=df_plot['lacuna'], x=df_plot['pct_mun'],
-                name='Município', orientation='h',
-                marker=dict(color='#9CA3AF'),
-                hovertemplate='<b>%{y}</b><br>Município: %{x:.1f}%<extra></extra>',
+                x=df_plot['lacuna'], y=df_plot['pct_mun'],
+                name='Município',
+                marker=dict(color='#D1D5DB'),
+                text=[f'{v:.0f}%' for v in df_plot['pct_mun']],
+                textposition='outside',
+                textfont=dict(color=T.TEXT_MUTED, size=10),
+                hovertemplate='<b>%{x}</b><br>Município: %{y:.1f}%<extra></extra>',
             ))
+            # Barra da equipe (cor varia por delta)
             fig.add_trace(go.Bar(
-                y=df_plot['lacuna'], x=df_plot['pct'],
-                name='Equipe', orientation='h',
-                marker=dict(color='#4f8ef7'),
-                hovertemplate='<b>%{y}</b><br>Equipe: %{x:.1f}%<extra></extra>',
+                x=df_plot['lacuna'], y=df_plot['pct'],
+                name='Equipe',
+                marker=dict(color=cores_equipe),
+                text=[f'{v:.0f}%' for v in df_plot['pct']],
+                textposition='outside',
+                textfont=dict(color=T.TEXT, size=11),
+                hovertemplate='<b>%{x}</b><br>Equipe: %{y:.1f}%<extra></extra>',
             ))
             fig.update_layout(
                 barmode='group',
-                height=max(420, 22 * len(df_plot) + 80),
-                margin=dict(l=10, r=10, t=10, b=40),
+                height=460,
+                margin=dict(l=10, r=10, t=20, b=140),
                 paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
-                xaxis=dict(title='% da população elegível',
-                           tickfont=dict(color=T.TEXT_MUTED), gridcolor=T.GRID),
-                yaxis=dict(tickfont=dict(color=T.TEXT, size=11),
-                           automargin=True),
+                xaxis=dict(
+                    tickangle=-30,
+                    tickfont=dict(color=T.TEXT, size=10),
+                    automargin=True,
+                ),
+                yaxis=dict(
+                    title='% da população elegível',
+                    tickfont=dict(color=T.TEXT_MUTED),
+                    gridcolor=T.GRID,
+                    rangemode='tozero',
+                ),
                 legend=dict(orientation='h', x=0.5, xanchor='center',
-                            y=-0.06, yanchor='top'),
+                            y=1.06, yanchor='bottom'),
             )
             st.plotly_chart(fig, use_container_width=True)
+            st.caption(
+                "🟥 acima do município (≥ +0,5 pp) · "
+                "🟧 próximo ao município · "
+                "🟩 abaixo do município (≤ −0,5 pp)"
+            )
 
 # ─────────────────────────────────────────────────────────────
 # ABA 3 — ANÁLISE DO IPC
