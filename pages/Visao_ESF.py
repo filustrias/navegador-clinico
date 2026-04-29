@@ -929,7 +929,7 @@ with tab_cont:
          _pct_int(cont.get('n_sem_consulta_365d')))
 
     c5, c6, c7, c8 = st.columns(4)
-    _kpi(c5, "🧩 Fragmentação (>50% fora)",
+    _kpi(c5, "🧩 Fragmentação (>50% das consultas fora da clínica)",
          f"{int(cont.get('n_baixa_long', 0) or 0):,}",
          _pct_int(cont.get('n_baixa_long')))
     _kpi(c6, "⚠️ Alto risco + baixo acesso",
@@ -980,7 +980,7 @@ with tab_cont:
                 options=[
                     'Sem médico há >180d',
                     'Sem consulta no ano',
-                    'Fragmentação (>50% fora)',
+                    'Fragmentação (>50% das consultas fora da clínica)',
                     'Alto risco + baixo acesso',
                     'Alto risco + intervalo longo',
                     'Uso frequente de urgência',
@@ -1012,7 +1012,7 @@ with tab_cont:
                 mask |= (df_v['dias_desde_ultima_medica'].fillna(99999) > 180)
             if 'Sem consulta no ano' in sinalizadores:
                 mask |= (df_v['consultas_365d'].fillna(0) == 0)
-            if 'Fragmentação (>50% fora)' in sinalizadores:
+            if 'Fragmentação (>50% das consultas fora da clínica)' in sinalizadores:
                 mask |= df_v['baixa_longitudinalidade'].fillna(False).astype(bool)
             if 'Alto risco + baixo acesso' in sinalizadores:
                 mask |= df_v['alto_risco_baixo_acesso'].fillna(False).astype(bool)
@@ -1074,12 +1074,23 @@ with tab_cont:
                 if flags[3]: txt.append('Urgência freq.')
                 return ' · '.join(txt) if txt else '—'
 
+            def _truthy(v):
+                """Robusto a pd.NA / None / NaN."""
+                if v is None:
+                    return False
+                try:
+                    if pd.isna(v):
+                        return False
+                except (TypeError, ValueError):
+                    pass
+                return bool(v)
+
             df_r['alertas'] = df_r.apply(
                 lambda r: _fmt_alerta(
-                    bool(r.get('baixa_longitudinalidade')),
-                    bool(r.get('alto_risco_baixo_acesso')),
-                    bool(r.get('alto_risco_intervalo_longo')),
-                    bool(r.get('usuario_frequente_urgencia')),
+                    _truthy(r.get('baixa_longitudinalidade')),
+                    _truthy(r.get('alto_risco_baixo_acesso')),
+                    _truthy(r.get('alto_risco_intervalo_longo')),
+                    _truthy(r.get('usuario_frequente_urgencia')),
                 ),
                 axis=1,
             )
