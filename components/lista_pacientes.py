@@ -1727,6 +1727,7 @@ def create_patient_card(patient_data):
 
         # ========== TAB 7: RELATAR PROBLEMA ==========
         with tab7:
+            usuario_logado = st.session_state.get('usuario_global', {})
             formulario_relato(patient_data_original, usuario_logado)
                 
         

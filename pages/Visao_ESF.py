@@ -667,7 +667,7 @@ else:
 # ABAS
 # ═══════════════════════════════════════════════════════════════
 (tab_resumo, tab_lacunas, tab_cont, tab_polif, tab_has, tab_dm,
- tab_pacientes, tab_analise) = st.tabs([
+ tab_pacientes) = st.tabs([
     "📊 Resumo da equipe",
     "⚠️ Lacunas",
     "🔄 Continuidade",
@@ -675,7 +675,6 @@ else:
     "🩺 Hipertensão",
     "🩸 Diabetes",
     "🧑‍⚕️ Meus Pacientes",
-    "🔬 Análise do IPC",
 ])
 
 # ─────────────────────────────────────────────────────────────
@@ -2371,106 +2370,3 @@ with tab_pacientes:
         incluir_sidebar=False,
     )
 
-# ─────────────────────────────────────────────────────────────
-# ABA 8 — ANÁLISE DO IPC
-# ─────────────────────────────────────────────────────────────
-with tab_analise:
-    st.markdown(
-        "Esta aba investiga **colinearidade entre as dimensões do IPC** "
-        "e a forma da distribuição de cada uma na equipe selecionada. "
-        "É esperada alguma correlação positiva entre Carga de Morbidade e total "
-        "de lacunas (mais morbidades → mais oportunidades para lacunas), "
-        "mas dimensões muito redundantes empobrecem o índice."
-    )
-
-    cols_dim = {
-        'charlson_score':           'Carga de Morbidade',
-        'acb_score_total':          'ACB',
-        'total_criterios_stopp':    'STOPP',
-        'dias_desde_ultima_medica': 'Dias s/ médico',
-        'total_lacunas':            'N° lacunas',
-        'ipc':                      'IPC final',
-    }
-
-    df_corr_src = df[list(cols_dim.keys())].copy()
-    df_corr_src.columns = list(cols_dim.values())
-    # Garante dtype float — colunas Int64 (nullable) não aceitam fillna
-    # com mediana fracionária. Pearson precisa de float de qualquer modo.
-    df_corr_src = df_corr_src.apply(pd.to_numeric, errors='coerce').astype(float)
-    # Tratamento de NaN: paciente sem consulta (NaN) é o caso mais crítico
-    # — substituir por valor alto (ex.: 9999) distorceria. Usar mediana.
-    df_corr_src = df_corr_src.fillna(df_corr_src.median(numeric_only=True))
-
-    # Matriz de correlação
-    st.markdown("#### Matriz de correlação (Pearson)")
-    corr = df_corr_src.corr(method='pearson').round(2)
-    fig_corr = px.imshow(
-        corr,
-        text_auto=True,
-        color_continuous_scale='RdBu_r',
-        zmin=-1, zmax=1,
-        aspect='auto',
-    )
-    fig_corr.update_layout(
-        height=420,
-        margin=dict(l=10, r=10, t=20, b=10),
-        paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
-        xaxis=dict(side='bottom', tickfont=dict(color=T.TEXT)),
-        yaxis=dict(tickfont=dict(color=T.TEXT)),
-        coloraxis_colorbar=dict(title='r'),
-    )
-    st.plotly_chart(fig_corr, use_container_width=True)
-
-    st.caption(
-        "Leitura prática: |r| < 0,3 = baixa correlação (dimensões "
-        "razoavelmente independentes); 0,3 ≤ |r| < 0,6 = moderada; "
-        "|r| ≥ 0,6 = alta (redundância — pode justificar reformular pesos)."
-    )
-
-    # Distribuição de cada dimensão (banda)
-    st.markdown("#### Distribuição de cada dimensão (após mapeamento em banda)")
-    bandas_cols = {
-        'ipc_charlson_band': '🦠 Carga de Morbidade',
-        'ipc_lacunas_band':  '⚠️ Lacunas',
-        'ipc_acesso_band':   '⏳ Dias s/ médico',
-        'ipc_acb_band':      '💊 ACB',
-        'ipc_stopp_band':    '🚫 STOPP',
-    }
-    cb_cols = st.columns(2)
-    for i, (col_band, label) in enumerate(bandas_cols.items()):
-        target = cb_cols[i % 2]
-        with target:
-            counts = df[col_band].value_counts().sort_index()
-            fig_b = go.Figure(go.Bar(
-                x=[f"{v:.2f}" for v in counts.index],
-                y=counts.values,
-                marker_color='#4f8ef7',
-            ))
-            fig_b.update_layout(
-                title=dict(text=label, font=dict(color=T.TEXT, size=13)),
-                height=240, bargap=0.4,
-                margin=dict(l=10, r=10, t=40, b=20),
-                paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
-                xaxis=dict(title='Banda', tickfont=dict(color=T.TEXT_MUTED)),
-                yaxis=dict(title='Pacientes', tickfont=dict(color=T.TEXT_MUTED),
-                           gridcolor=T.GRID),
-            )
-            st.plotly_chart(fig_b, use_container_width=True)
-
-    # Tabela de pares com a maior correlação (ranking)
-    st.markdown("#### Pares com correlação mais forte")
-    pairs = []
-    nomes = [v for k, v in cols_dim.items() if k != 'ipc']  # excluir IPC final
-    sub = corr.loc[nomes, nomes]
-    for i, a in enumerate(nomes):
-        for b in nomes[i+1:]:
-            pairs.append({'Par': f"{a} × {b}", 'r': sub.loc[a, b]})
-    pares_df = pd.DataFrame(pairs).sort_values('r', key=lambda s: s.abs(),
-                                               ascending=False)
-    pares_df['r'] = pares_df['r'].round(2)
-    pares_df['Magnitude'] = pares_df['r'].abs().apply(
-        lambda v: 'Alta (≥0.6)' if v >= 0.6
-                  else ('Moderada (0.3-0.6)' if v >= 0.3
-                        else 'Baixa (<0.3)')
-    )
-    st.dataframe(pares_df, hide_index=True, use_container_width=True)
