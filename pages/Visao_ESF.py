@@ -486,14 +486,15 @@ def carregar_diabetes_agregado(ap: str, clinica: str, esf: str) -> dict:
         COUNTIF(DM IS NOT NULL AND lacuna_IMC_HAS_DM = TRUE)           AS n_sem_imc,
         ROUND(AVG(CASE WHEN DM IS NOT NULL THEN hba1c_atual END), 2)   AS media_a1c,
         -- Insulina e doses farmacológicas críticas
-        COUNTIF(DM IS NOT NULL AND (
-            principio_INSULINA_BASAL_HUMANA   IS NOT NULL OR
-            principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL OR
-            principio_INSULINA_BASAL_ANALOGICA IS NOT NULL OR
-            principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL OR
-            principio_INSULINA_MISTA          IS NOT NULL
-        ))                                                               AS n_em_insulina,
-        COUNTIF(DM IS NOT NULL AND dose_NPH_ui_kg > 0.85)                AS n_nph_alta,
+        -- Fonte de verdade = núcleo crônico atual (última prescrição):
+        -- as flags principio_INSULINA_* podem refletir uma janela mais
+        -- ampla e ficar defasadas em relação ao que o médico prescreveu
+        -- por último.
+        COUNTIF(DM IS NOT NULL
+                AND LOWER(nucleo_cronico_atual) LIKE '%insulina%')        AS n_em_insulina,
+        COUNTIF(DM IS NOT NULL AND dose_NPH_ui_kg > 0.85
+                AND (LOWER(nucleo_cronico_atual) LIKE '%nph%'
+                     OR LOWER(nucleo_cronico_atual) LIKE '%isofana%'))    AS n_nph_alta,
         COUNTIF(DM IS NOT NULL AND alerta_dose_maxima_biguanida    = TRUE)
                                                                           AS n_metf_total_alta,
         COUNTIF(DM IS NOT NULL AND alerta_dose_maxima_biguanida_xr = TRUE)
@@ -2155,10 +2156,17 @@ with tab_dm:
             if 'Sem HbA1c há >730d' in sin_d: mask |= (da1c_v > 730)
             if 'Nunca fez HbA1c' in sin_d:
                 mask |= df_dv['hba1c_atual'].isna()
+            # Insulina/NPH — fonte de verdade = nucleo_cronico_atual
+            # (última prescrição). Bate com Meus Pacientes.
+            meds_low = (df_dv['medicamentos_lista'].fillna('')
+                                                  .astype(str).str.lower())
+            insulina_ativa = meds_low.str.contains('insulina', na=False)
+            nph_ativo = (meds_low.str.contains('nph', na=False)
+                         | meds_low.str.contains('isofana', na=False))
             if 'Em uso de insulina' in sin_d:
-                mask |= df_dv['usa_insulina'].fillna(False).astype(bool)
+                mask |= insulina_ativa
             if 'NPH > 0,85 UI/kg' in sin_d:
-                mask |= (df_dv['dose_NPH_ui_kg'].fillna(0) > 0.85)
+                mask |= ((df_dv['dose_NPH_ui_kg'].fillna(0) > 0.85) & nph_ativo)
             if 'Sem médico há >180d' in sin_d:
                 mask |= (df_dv['dias_desde_ultima_medica'].fillna(99999) > 180)
             if 'Exame dos pés não realizado (>365d)' in sin_d:
@@ -2274,6 +2282,16 @@ with tab_dm:
                 ascending=[True, False], na_position='last',
             )
 
+            # NPH UI/kg só faz sentido quando NPH está de fato na
+            # última prescrição (mesmo critério usado em Meus Pacientes).
+            _meds_low_dr = (df_dr['medicamentos_lista'].fillna('')
+                                                       .astype(str).str.lower())
+            _nph_no_nucleo_dr = (_meds_low_dr.str.contains('nph', na=False)
+                                 | _meds_low_dr.str.contains('isofana', na=False))
+            _nph_show = df_dr['dose_NPH_ui_kg'].astype(float).where(
+                _nph_no_nucleo_dr, other=float('nan')
+            )
+
             df_show_dm = pd.DataFrame({
                 'Paciente':   df_dr['nome_exib'].values,
                 'Idade':      df_dr['idade'].astype('Int64').values,
@@ -2288,8 +2306,8 @@ with tab_dm:
                 'Dias s/ HbA1c':
                     df_dr['dias_desde_ultima_hba1c'].apply(_fmt_dias).values,
                 'Controle':   df_dr['ctrl_str'].values,
-                # Coluna numérica para permitir formatação + destaque
-                'NPH (UI/kg)': df_dr['dose_NPH_ui_kg'].astype(float).values,
+                # Numérica — só preenchida quando NPH está na prescrição atual
+                'NPH (UI/kg)': _nph_show.values,
                 'Lacunas de DM': df_dr['lacunas_dm'].values,
             })
 
