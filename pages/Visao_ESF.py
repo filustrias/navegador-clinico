@@ -540,6 +540,11 @@ def carregar_diabetes_nominal(ap: str, clinica: str, esf: str) -> pd.DataFrame:
         DM_sem_CID,
         provavel_dm1,
         HAS, IRC, ICC, CI,
+        (principio_INSULINA_BASAL_HUMANA   IS NOT NULL OR
+         principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL OR
+         principio_INSULINA_BASAL_ANALOGICA IS NOT NULL OR
+         principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL OR
+         principio_INSULINA_MISTA          IS NOT NULL) AS usa_insulina,
         lacuna_DM_sem_HbA1c_recente,
         lacuna_DM_descontrolado,
         lacuna_DM_sem_exame_pe_365d,
@@ -1719,8 +1724,14 @@ with tab_has:
             sin_h = st.multiselect(
                 "Mostrar pacientes com:",
                 options=[
-                    'PA descontrolada',
+                    '🟢 Controlados',
+                    '🔴 Descontrolados',
+                    'PA ≥ 140/90 mmHg',
+                    'PA ≥ 180/110 mmHg (urgência)',
+                    'Sem aferição PA >30d',
+                    'Sem aferição PA >90d',
                     'Sem aferição PA >180d',
+                    'Sem aferição PA >365d',
                     'Sem médico há >180d',
                     'Sem CID',
                     'Sem creatinina',
@@ -1768,10 +1779,27 @@ with tab_has:
             df_hv = df_hv[mfx]
         if sin_h:
             mask = pd.Series(False, index=df_hv.index)
-            if 'PA descontrolada'  in sin_h:
-                mask |= (df_hv['status_controle_pressorio'] == 'descontrolado')
-            if 'Sem aferição PA >180d' in sin_h:
-                mask |= df_hv['lacuna_PA_hipertenso_180d'].fillna(False).astype(bool)
+            # Helpers calculados in-place — alguns campos vêm vazios
+            # do banco (ex.: status_controle_pressorio NULL), então
+            # derivamos o controle direto da PA recente vs meta_pas.
+            pas_h = df_hv['pressao_sistolica']
+            pad_h = df_hv['pressao_diastolica']
+            dpa_h = df_hv['dias_desde_ultima_pa'].fillna(99999)
+            meta_h = df_hv['meta_pas'].fillna(140)
+            pa_recente = (dpa_h <= 180) & pas_h.notna() & pad_h.notna()
+            controlado_h    = pa_recente & (pas_h < meta_h) & (pad_h < 90)
+            descontrolado_h = pa_recente & ((pas_h >= meta_h) | (pad_h >= 90))
+
+            if '🟢 Controlados'    in sin_h: mask |= controlado_h
+            if '🔴 Descontrolados' in sin_h: mask |= descontrolado_h
+            if 'PA ≥ 140/90 mmHg' in sin_h:
+                mask |= pa_recente & ((pas_h >= 140) | (pad_h >= 90))
+            if 'PA ≥ 180/110 mmHg (urgência)' in sin_h:
+                mask |= pa_recente & ((pas_h >= 180) | (pad_h >= 110))
+            if 'Sem aferição PA >30d'  in sin_h: mask |= (dpa_h > 30)
+            if 'Sem aferição PA >90d'  in sin_h: mask |= (dpa_h > 90)
+            if 'Sem aferição PA >180d' in sin_h: mask |= (dpa_h > 180)
+            if 'Sem aferição PA >365d' in sin_h: mask |= (dpa_h > 365)
             if 'Sem médico há >180d' in sin_h:
                 mask |= (df_hv['dias_desde_ultima_medica'].fillna(99999) > 180)
             if 'Sem CID'           in sin_h:
@@ -1857,18 +1885,33 @@ with tab_has:
 
             df_hr['pa_atual'] = df_hr.apply(_pa_str, axis=1)
 
-            def _ctrl_str(v):
-                v = str(v or '').lower()
-                return {'controlado':    '🟢 Controlado',
-                        'descontrolado': '🔴 Descontrolado'}.get(v, '— sem dados')
+            def _ctrl_pa(r):
+                """Calcula controle direto da PA recente (≤180d) vs meta."""
+                pas = r.get('pressao_sistolica')
+                pad = r.get('pressao_diastolica')
+                dias = r.get('dias_desde_ultima_pa')
+                meta = r.get('meta_pas')
+                if pd.isna(pas) or pd.isna(pad):
+                    return '— sem PA'
+                if pd.isna(dias) or dias > 180:
+                    return '— PA antiga (>180d)'
+                meta_v = float(meta) if pd.notna(meta) else 140.0
+                if pas >= meta_v or pad >= 90:
+                    return '🔴 Descontrolado'
+                return '🟢 Controlado'
 
-            df_hr['ctrl_str'] = df_hr['status_controle_pressorio'].apply(_ctrl_str)
+            df_hr['ctrl_str'] = df_hr.apply(_ctrl_pa, axis=1)
+
+            # Coluna auxiliar para ordenação (descontrolado primeiro)
+            _ord_h = {'🔴 Descontrolado': 0, '🟢 Controlado': 1,
+                       '— sem PA': 2, '— PA antiga (>180d)': 3}
+            df_hr['_ord_ctrl'] = df_hr['ctrl_str'].map(_ord_h).fillna(9)
 
             def _fmt_dias(v):
                 return f"{int(v)}" if pd.notna(v) else "—"
 
             df_hr = df_hr.sort_values(
-                ['status_controle_pressorio', 'dias_desde_ultima_pa'],
+                ['_ord_ctrl', 'dias_desde_ultima_pa'],
                 ascending=[True, False], na_position='last',
             )
 
@@ -2030,13 +2073,20 @@ with tab_dm:
             sin_d = st.multiselect(
                 "Mostrar pacientes com:",
                 options=[
+                    '🟢 Controlados',
+                    '🔴 Descontrolados',
                     'HbA1c acima da meta',
                     'HbA1c severamente alta (≥9%)',
                     'Sem HbA1c recente (>180d)',
+                    'Sem HbA1c há >365d',
+                    'Sem HbA1c há >730d',
                     'Nunca fez HbA1c',
-                    'Sem médico há >180d',
-                    'Sem exame do pé (365d)',
+                    'Em uso de insulina',
+                    'NPH > 0,85 UI/kg',
+                    'Exame dos pés não realizado (>365d)',
+                    'Nunca teve exame do pé',
                     'Sem microalbuminúria',
+                    'Sem médico há >180d',
                     'DM complicado sem SGLT-2',
                     'DM tipo 1 provável',
                     'DM + IRC',
@@ -2082,32 +2132,46 @@ with tab_dm:
             df_dv = df_dv[mfx]
         if sin_d:
             mask = pd.Series(False, index=df_dv.index)
+            # Helpers para controle glicêmico calculado direto
+            a1c_v = df_dv['hba1c_atual']
+            da1c_v = df_dv['dias_desde_ultima_hba1c'].fillna(99999)
+            meta_v = df_dv['meta_hba1c']
+            a1c_recente = (da1c_v <= 180) & a1c_v.notna() & meta_v.notna()
+            controlado_d    = a1c_recente & (a1c_v <= meta_v)
+            descontrolado_d = a1c_recente & (a1c_v >  meta_v)
+
+            if '🟢 Controlados'    in sin_d: mask |= controlado_d
+            if '🔴 Descontrolados' in sin_d: mask |= descontrolado_d
             if 'HbA1c acima da meta' in sin_d:
                 mask |= df_dv['lacuna_DM_descontrolado'].fillna(False).astype(bool)
             if 'HbA1c severamente alta (≥9%)' in sin_d:
                 mask |= (df_dv['hba1c_atual'].fillna(0) >= 9)
             if 'Sem HbA1c recente (>180d)' in sin_d:
                 mask |= df_dv['lacuna_DM_sem_HbA1c_recente'].fillna(False).astype(bool)
+            if 'Sem HbA1c há >365d' in sin_d: mask |= (da1c_v > 365)
+            if 'Sem HbA1c há >730d' in sin_d: mask |= (da1c_v > 730)
             if 'Nunca fez HbA1c' in sin_d:
                 mask |= df_dv['hba1c_atual'].isna()
+            if 'Em uso de insulina' in sin_d:
+                mask |= df_dv['usa_insulina'].fillna(False).astype(bool)
+            if 'NPH > 0,85 UI/kg' in sin_d:
+                mask |= (df_dv['dose_NPH_ui_kg'].fillna(0) > 0.85)
             if 'Sem médico há >180d' in sin_d:
                 mask |= (df_dv['dias_desde_ultima_medica'].fillna(99999) > 180)
-            if 'Sem exame do pé (365d)' in sin_d:
+            if 'Exame dos pés não realizado (>365d)' in sin_d:
                 mask |= df_dv['lacuna_DM_sem_exame_pe_365d'].fillna(False).astype(bool)
+            if 'Nunca teve exame do pé' in sin_d:
+                mask |= df_dv['lacuna_DM_nunca_teve_exame_pe'].fillna(False).astype(bool)
             if 'Sem microalbuminúria' in sin_d:
                 mask |= df_dv['lacuna_DM_microalbuminuria_nao_solicitado'].fillna(False).astype(bool)
             if 'DM complicado sem SGLT-2' in sin_d:
                 mask |= df_dv['lacuna_DM_complicado_sem_SGLT2'].fillna(False).astype(bool)
             if 'DM tipo 1 provável' in sin_d:
                 mask |= df_dv['provavel_dm1'].fillna(False).astype(bool)
-            if 'DM + IRC' in sin_d:
-                mask |= df_dv['IRC'].notna()
-            if 'DM + ICC' in sin_d:
-                mask |= df_dv['ICC'].notna()
-            if 'DM + CI'  in sin_d:
-                mask |= df_dv['CI'].notna()
-            if 'DM + HAS' in sin_d:
-                mask |= df_dv['HAS'].notna()
+            if 'DM + IRC' in sin_d: mask |= df_dv['IRC'].notna()
+            if 'DM + ICC' in sin_d: mask |= df_dv['ICC'].notna()
+            if 'DM + CI'  in sin_d: mask |= df_dv['CI'].notna()
+            if 'DM + HAS' in sin_d: mask |= df_dv['HAS'].notna()
             if 'Sem CID' in sin_d:
                 mask |= df_dv['DM_sem_CID'].fillna(False).astype(bool)
             if 'Sem creatinina' in sin_d:
@@ -2176,12 +2240,25 @@ with tab_dm:
             df_dr['lacunas_dm'] = df_dr.apply(_lacunas_dm, axis=1)
             df_dr['tipo_dm']    = df_dr['provavel_dm1'].apply(_tipo_dm)
 
-            def _ctrl_dm_str(v):
-                v = str(v or '').lower()
-                return {'controlado':    '🟢 Controlado',
-                        'descontrolado': '🔴 Descontrolado'}.get(v, '— sem dados')
+            def _ctrl_a1c(r):
+                """Calcula controle direto: HbA1c recente (≤180d) vs meta etária."""
+                a1c = r.get('hba1c_atual')
+                meta = r.get('meta_hba1c')
+                dias = r.get('dias_desde_ultima_hba1c')
+                if pd.isna(a1c):
+                    return '— sem HbA1c'
+                if pd.isna(dias) or dias > 180:
+                    return '— HbA1c antiga (>180d)'
+                if pd.isna(meta):
+                    return '— sem meta'
+                return '🔴 Descontrolado' if a1c > meta else '🟢 Controlado'
 
-            df_dr['ctrl_str'] = df_dr['status_controle_glicemico'].apply(_ctrl_dm_str)
+            df_dr['ctrl_str'] = df_dr.apply(_ctrl_a1c, axis=1)
+
+            _ord_d = {'🔴 Descontrolado': 0, '🟢 Controlado': 1,
+                       '— sem HbA1c': 2, '— HbA1c antiga (>180d)': 3,
+                       '— sem meta': 4}
+            df_dr['_ord_ctrl'] = df_dr['ctrl_str'].map(_ord_d).fillna(9)
 
             def _fmt_dias(v):
                 return f"{int(v)}" if pd.notna(v) else "—"
@@ -2190,7 +2267,7 @@ with tab_dm:
                 return f"{float(v):.1f}%" if pd.notna(v) else "—"
 
             df_dr = df_dr.sort_values(
-                ['status_controle_glicemico', 'dias_desde_ultima_hba1c'],
+                ['_ord_ctrl', 'dias_desde_ultima_hba1c'],
                 ascending=[True, False], na_position='last',
             )
 
