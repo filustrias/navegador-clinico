@@ -186,47 +186,6 @@ st.caption(
     f"· ESF **{anonimizar_esf(esf_sel)}**"
 )
 
-with st.expander("ℹ️ Sobre o IPC — Índice de Priorização de Cuidado", expanded=False):
-    st.markdown(f"""
-**O IPC é um índice composto que ordena pacientes por necessidade de
-atenção da equipe.** Combina cinco dimensões clínicas em uma única
-escala de 0 a 1, com bandas absolutas (independentes da amostra),
-permitindo comparar pacientes entre ESFs, clínicas e APs.
-
-#### Dimensões e pesos
-
-| Dimensão | Peso | Bandas |
-|---|---|---|
-| 🦠 **Carga de Morbidade** (Charlson) | {PESOS_DEFAULT['charlson']:.0%} | 0–3 → 0 · 4–6 → 0,33 · 7–9 → 0,67 · ≥10 → 1 |
-| ⚠️ **Total de lacunas de cuidado** | {PESOS_DEFAULT['lacunas']:.0%} | 0 → 0 · 1–3 → 0,33 · 4–7 → 0,67 · ≥8 → 1 |
-| ⏳ **Dias sem consulta médica** | {PESOS_DEFAULT['acesso']:.0%} | 0–180 → 0 · 181–365 → 0,5 · 366–730 → 0,85 · >730 ou nunca → 1 |
-| 💊 **ACB** (carga anticolinérgica) | {PESOS_DEFAULT['acb']:.0%} | 0 → 0 · 1 → 0,33 · 2 → 0,67 · ≥3 → 1 |
-| 🚫 **STOPP** (prescrições inapropriadas) | {PESOS_DEFAULT['stopp']:.0%} | 0 → 0 · 1 → 0,33 · 2 → 0,67 · ≥3 → 1 |
-
-**Bônus de +{BONUS_DCV_SEM_PREV:.2f}** quando o paciente tem DCV estabelecida
-(CI, AVC ou doença arterial periférica) **e** mantém lacunas de prevenção
-secundária pendentes (sem AAS ou sem estatina). O resultado final é
-cortado em 1,0.
-
-#### Como interpretar
-
-| Faixa de IPC | Categoria |
-|---|---|
-| ≥ 0,75 | 🔴 Crítico |
-| 0,50 – 0,74 | 🟠 Alto |
-| 0,25 – 0,49 | 🟡 Moderado |
-| < 0,25 | 🟢 Baixo |
-
-#### Diferença para o ICA
-
-O ICA (Índice Composto de Acesso, na page **Continuidade**) usa
-apenas Carga de Morbidade + intervalo entre consultas, e normaliza
-pelo máximo da amostra carregada — útil para ranking interno, mas
-não comparável entre territórios. O IPC adiciona ACB, STOPP e
-lacunas, e usa limiares clínicos absolutos. **Os dois coexistem** e
-podem ser contrastados conforme o uso.
-""")
-
 # ═══════════════════════════════════════════════════════════════
 # CARREGAMENTO DE DADOS
 # ═══════════════════════════════════════════════════════════════
@@ -263,80 +222,9 @@ tab_resumo, tab_analise = st.tabs([
 with tab_resumo:
     n_total = len(df)
 
-    # KPIs primários
-    st.markdown("#### 1️⃣ Indicadores da equipe")
-    k1, k2, k3, k4 = st.columns(4)
-    n_multi = int((df['total_morbidades'] >= 2).sum()) if 'total_morbidades' in df.columns else 0
-    n_poli  = int(df['polifarmacia'].fillna(False).astype(bool).sum()) if 'polifarmacia' in df.columns else 0
-    n_dcv   = int(((df['CI'].notna()) | (df['stroke'].notna())
-                   | (df['vascular_periferica'].notna())).sum())
-    _kpi(k1, "👥 Pacientes da equipe", f"{n_total:,}")
-    _kpi(k2, "🦠 Multimórbidos (≥2)", f"{n_multi:,}",
-         f"{n_multi/n_total*100:.0f}%" if n_total else None)
-    _kpi(k3, "💊 Em polifarmácia", f"{n_poli:,}",
-         f"{n_poli/n_total*100:.0f}%" if n_total else None)
-    _kpi(k4, "❤️ DCV estabelecida", f"{n_dcv:,}",
-         f"{n_dcv/n_total*100:.0f}%" if n_total else None)
-
-    # Distribuição de IPC por categoria
-    st.markdown("#### 2️⃣ Distribuição do IPC")
-    dist = df['ipc_categoria'].value_counts().reindex(
-        ['Crítico', 'Alto', 'Moderado', 'Baixo']
-    ).fillna(0).astype(int)
-
-    cd1, cd2, cd3, cd4 = st.columns(4)
-    for col_w, cat in zip([cd1, cd2, cd3, cd4], ['Crítico', 'Alto', 'Moderado', 'Baixo']):
-        n = int(dist.get(cat, 0))
-        cor = CORES_IPC[cat]
-        with col_w:
-            st.markdown(
-                f"<div style='background:{cor}20; border-left:6px solid {cor}; "
-                f"padding:14px 16px; border-radius:8px;'>"
-                f"<div style='color:{cor}; font-weight:600; font-size:0.9em;'>{cat}</div>"
-                f"<div style='font-size:1.8em; font-weight:600; color:{T.TEXT};'>{n:,}</div>"
-                f"<div style='color:{T.TEXT_MUTED}; font-size:0.85em;'>"
-                f"{n/n_total*100:.1f}% da equipe</div>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-
-    # Histograma do IPC — bins curtos coloridos pela faixa de IPC
-    st.markdown("##### Histograma do IPC")
-    n_bins = 80
-    bins = np.linspace(0, 1.0, n_bins + 1)
-    counts, edges = np.histogram(df['ipc'].clip(0, 1.0), bins=bins)
-    centros = (edges[:-1] + edges[1:]) / 2
-
-    def _cor_para_centro(c):
-        if c >= 0.75: return CORES_IPC['Crítico']
-        if c >= 0.50: return CORES_IPC['Alto']
-        if c >= 0.25: return CORES_IPC['Moderado']
-        return CORES_IPC['Baixo']
-
-    cores_bins = [_cor_para_centro(c) for c in centros]
-
-    fig_hist = go.Figure(
-        go.Bar(
-            x=centros, y=counts,
-            marker=dict(color=cores_bins, line=dict(width=0)),
-            width=(1.0 / n_bins) * 0.95,
-            hovertemplate='IPC %{x:.2f}<br>%{y} pacientes<extra></extra>',
-        )
-    )
-    for limiar in (0.25, 0.50, 0.75):
-        fig_hist.add_vline(x=limiar, line_dash='dash', line_color='#888888')
-    fig_hist.update_layout(
-        height=320, bargap=0.0,
-        margin=dict(l=10, r=10, t=20, b=40),
-        paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
-        xaxis=dict(range=[0, 1.05], title='IPC',
-                   tickfont=dict(color=T.TEXT_MUTED), gridcolor=T.GRID),
-        yaxis=dict(title='Pacientes',
-                   tickfont=dict(color=T.TEXT_MUTED), gridcolor=T.GRID),
-    )
-    st.plotly_chart(fig_hist, use_container_width=True)
-
-    # Top-10 mais críticos
+    # ─────────────────────────────────────────────────────────
+    # 3️⃣ Top-10 mais críticos (PRIMEIRA INFORMAÇÃO)
+    # ─────────────────────────────────────────────────────────
     st.markdown("#### 3️⃣ Aqui estão os 10 pacientes mais críticos da sua equipe (pacientes com maior IPC)")
     st.caption(
         "Ranking pelo IPC. Empates são desempatados pela Carga de "
@@ -410,6 +298,123 @@ with tab_resumo:
                     f"</div>",
                     unsafe_allow_html=True,
                 )
+
+    st.markdown("---")
+
+    # ─────────────────────────────────────────────────────────
+    # Sobre o IPC — sem sanfona, sem "Diferença para o ICA"
+    # ─────────────────────────────────────────────────────────
+    st.markdown("### ℹ️ Sobre o IPC — Índice de Priorização de Cuidado")
+    st.markdown(f"""
+**O IPC é um índice composto que ordena pacientes por necessidade de
+atenção da equipe.** Combina cinco dimensões clínicas em uma única
+escala de 0 a 1, com bandas absolutas (independentes da amostra),
+permitindo comparar pacientes entre ESFs, clínicas e APs.
+
+#### Dimensões e pesos
+
+| Dimensão | Peso | Bandas |
+|---|---|---|
+| 🦠 **Carga de Morbidade** (Charlson) | {PESOS_DEFAULT['charlson']:.0%} | 0–3 → 0 · 4–6 → 0,33 · 7–9 → 0,67 · ≥10 → 1 |
+| ⚠️ **Total de lacunas de cuidado** | {PESOS_DEFAULT['lacunas']:.0%} | 0 → 0 · 1–3 → 0,33 · 4–7 → 0,67 · ≥8 → 1 |
+| ⏳ **Dias sem consulta médica** | {PESOS_DEFAULT['acesso']:.0%} | 0–180 → 0 · 181–365 → 0,5 · 366–730 → 0,85 · >730 ou nunca → 1 |
+| 💊 **ACB** (carga anticolinérgica) | {PESOS_DEFAULT['acb']:.0%} | 0 → 0 · 1 → 0,33 · 2 → 0,67 · ≥3 → 1 |
+| 🚫 **STOPP** (prescrições inapropriadas) | {PESOS_DEFAULT['stopp']:.0%} | 0 → 0 · 1 → 0,33 · 2 → 0,67 · ≥3 → 1 |
+
+**Bônus de +{BONUS_DCV_SEM_PREV:.2f}** quando o paciente tem DCV estabelecida
+(CI, AVC ou doença arterial periférica) **e** mantém lacunas de prevenção
+secundária pendentes (sem AAS ou sem estatina). O resultado final é
+cortado em 1,0.
+
+#### Como interpretar
+
+| Faixa de IPC | Categoria |
+|---|---|
+| ≥ 0,75 | 🔴 Crítico |
+| 0,50 – 0,74 | 🟠 Alto |
+| 0,25 – 0,49 | 🟡 Moderado |
+| < 0,25 | 🟢 Baixo |
+""")
+
+    st.markdown("---")
+
+    # ─────────────────────────────────────────────────────────
+    # 1️⃣ Indicadores da equipe (KPIs)
+    # ─────────────────────────────────────────────────────────
+    st.markdown("#### 1️⃣ Indicadores da equipe")
+    k1, k2, k3, k4 = st.columns(4)
+    n_multi = int((df['total_morbidades'] >= 2).sum()) if 'total_morbidades' in df.columns else 0
+    n_poli  = int(df['polifarmacia'].fillna(False).astype(bool).sum()) if 'polifarmacia' in df.columns else 0
+    n_dcv   = int(((df['CI'].notna()) | (df['stroke'].notna())
+                   | (df['vascular_periferica'].notna())).sum())
+    _kpi(k1, "👥 Pacientes da equipe", f"{n_total:,}")
+    _kpi(k2, "🦠 Multimórbidos (≥2)", f"{n_multi:,}",
+         f"{n_multi/n_total*100:.0f}%" if n_total else None)
+    _kpi(k3, "💊 Em polifarmácia", f"{n_poli:,}",
+         f"{n_poli/n_total*100:.0f}%" if n_total else None)
+    _kpi(k4, "❤️ DCV estabelecida", f"{n_dcv:,}",
+         f"{n_dcv/n_total*100:.0f}%" if n_total else None)
+
+    # ─────────────────────────────────────────────────────────
+    # 2️⃣ Distribuição do IPC — caixas alinhadas com o histograma
+    # (Baixo → Crítico, ordem visual da esquerda para a direita)
+    # ─────────────────────────────────────────────────────────
+    st.markdown("#### 2️⃣ Distribuição do IPC (Índice de Priorização de Cuidado)")
+    dist = df['ipc_categoria'].value_counts().reindex(
+        ['Baixo', 'Moderado', 'Alto', 'Crítico']
+    ).fillna(0).astype(int)
+
+    cd1, cd2, cd3, cd4 = st.columns(4)
+    for col_w, cat in zip([cd1, cd2, cd3, cd4], ['Baixo', 'Moderado', 'Alto', 'Crítico']):
+        n = int(dist.get(cat, 0))
+        cor = CORES_IPC[cat]
+        with col_w:
+            st.markdown(
+                f"<div style='background:{cor}20; border-left:6px solid {cor}; "
+                f"padding:14px 16px; border-radius:8px;'>"
+                f"<div style='color:{cor}; font-weight:600; font-size:0.9em;'>{cat}</div>"
+                f"<div style='font-size:1.8em; font-weight:600; color:{T.TEXT};'>{n:,}</div>"
+                f"<div style='color:{T.TEXT_MUTED}; font-size:0.85em;'>"
+                f"{n/n_total*100:.1f}% da equipe</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+    # Histograma do IPC — bins curtos coloridos pela faixa de IPC
+    st.markdown("##### Histograma do IPC (Índice de Priorização de Cuidado)")
+    n_bins = 80
+    bins = np.linspace(0, 1.0, n_bins + 1)
+    counts, edges = np.histogram(df['ipc'].clip(0, 1.0), bins=bins)
+    centros = (edges[:-1] + edges[1:]) / 2
+
+    def _cor_para_centro(c):
+        if c >= 0.75: return CORES_IPC['Crítico']
+        if c >= 0.50: return CORES_IPC['Alto']
+        if c >= 0.25: return CORES_IPC['Moderado']
+        return CORES_IPC['Baixo']
+
+    cores_bins = [_cor_para_centro(c) for c in centros]
+
+    fig_hist = go.Figure(
+        go.Bar(
+            x=centros, y=counts,
+            marker=dict(color=cores_bins, line=dict(width=0)),
+            width=(1.0 / n_bins) * 0.95,
+            hovertemplate='IPC %{x:.2f}<br>%{y} pacientes<extra></extra>',
+        )
+    )
+    for limiar in (0.25, 0.50, 0.75):
+        fig_hist.add_vline(x=limiar, line_dash='dash', line_color='#888888')
+    fig_hist.update_layout(
+        height=320, bargap=0.0,
+        margin=dict(l=10, r=10, t=20, b=40),
+        paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
+        xaxis=dict(range=[0, 1.05], title='IPC',
+                   tickfont=dict(color=T.TEXT_MUTED), gridcolor=T.GRID),
+        yaxis=dict(title='Pacientes',
+                   tickfont=dict(color=T.TEXT_MUTED), gridcolor=T.GRID),
+    )
+    st.plotly_chart(fig_hist, use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────
 # ABA 2 — ANÁLISE DO IPC
