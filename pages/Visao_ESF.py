@@ -568,6 +568,21 @@ with tab_lacunas:
                 'Variação':    _fmt_variacao,
             })
             .applymap(_cor_variacao, subset=['Variação'])
+            .set_properties(
+                subset=['Grupo', 'Lacuna'],
+                **{'text-align': 'left'},
+            )
+            .set_properties(
+                subset=['n / N', '% Equipe', '% Município', 'Variação'],
+                **{'text-align': 'center'},
+            )
+            .set_table_styles([
+                {'selector': 'th.col_heading.level0',
+                 'props': [('text-align', 'center')]},
+                {'selector': 'th.col_heading.level0:nth-child(1), '
+                             'th.col_heading.level0:nth-child(2)',
+                 'props': [('text-align', 'left')]},
+            ])
         )
 
         st.dataframe(
@@ -619,7 +634,7 @@ with tab_lacunas:
                 marker=dict(color='#D1D5DB'),
                 text=[f'{v:.0f}%' for v in df_plot['pct_mun']],
                 textposition='outside',
-                textfont=dict(color=T.TEXT_MUTED, size=10),
+                textfont=dict(color=T.TEXT_MUTED, size=14),
                 hovertemplate='<b>%{x}</b><br>Município: %{y:.1f}%<extra></extra>',
             ))
             # Barra da equipe (cor varia por delta)
@@ -629,27 +644,33 @@ with tab_lacunas:
                 marker=dict(color=cores_equipe),
                 text=[f'{v:.0f}%' for v in df_plot['pct']],
                 textposition='outside',
-                textfont=dict(color=T.TEXT, size=11),
+                textfont=dict(color=T.TEXT, size=15, family='Arial Black'),
                 hovertemplate='<b>%{x}</b><br>Equipe: %{y:.1f}%<extra></extra>',
             ))
             fig.update_layout(
                 barmode='group',
-                height=460,
-                margin=dict(l=10, r=10, t=20, b=140),
+                height=520,
+                margin=dict(l=10, r=10, t=40, b=160),
                 paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
                 xaxis=dict(
-                    tickangle=-30,
-                    tickfont=dict(color=T.TEXT, size=10),
+                    tickangle=-25,
+                    tickfont=dict(color=T.TEXT, size=14),
                     automargin=True,
                 ),
                 yaxis=dict(
-                    title='% da população elegível',
-                    tickfont=dict(color=T.TEXT_MUTED),
+                    title=dict(
+                        text='% da população elegível',
+                        font=dict(color=T.TEXT, size=14),
+                    ),
+                    tickfont=dict(color=T.TEXT_MUTED, size=13),
                     gridcolor=T.GRID,
                     rangemode='tozero',
                 ),
-                legend=dict(orientation='h', x=0.5, xanchor='center',
-                            y=1.06, yanchor='bottom'),
+                legend=dict(
+                    orientation='h', x=0.5, xanchor='center',
+                    y=1.08, yanchor='bottom',
+                    font=dict(color=T.TEXT, size=14),
+                ),
             )
             st.plotly_chart(fig, use_container_width=True)
             st.caption(
