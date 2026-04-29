@@ -225,7 +225,7 @@ with tab_resumo:
     # ─────────────────────────────────────────────────────────
     # 3️⃣ Top-10 mais críticos (PRIMEIRA INFORMAÇÃO)
     # ─────────────────────────────────────────────────────────
-    st.markdown("#### 3️⃣ Aqui estão os 10 pacientes mais críticos da sua equipe (pacientes com maior IPC)")
+    st.markdown("#### 1️⃣ Aqui estão os 10 pacientes mais críticos da sua equipe (pacientes com maior IPC)")
     st.caption(
         "Ranking pelo IPC. Empates são desempatados pela Carga de "
         "Morbidade. Use como ponto de partida para discussão "
@@ -341,7 +341,7 @@ cortado em 1,0.
     # ─────────────────────────────────────────────────────────
     # 1️⃣ Indicadores da equipe (KPIs)
     # ─────────────────────────────────────────────────────────
-    st.markdown("#### 1️⃣ Indicadores da equipe")
+    st.markdown("#### 2️⃣ Indicadores da equipe")
     k1, k2, k3, k4 = st.columns(4)
     n_multi = int((df['total_morbidades'] >= 2).sum()) if 'total_morbidades' in df.columns else 0
     n_poli  = int(df['polifarmacia'].fillna(False).astype(bool).sum()) if 'polifarmacia' in df.columns else 0
@@ -359,7 +359,7 @@ cortado em 1,0.
     # 2️⃣ Distribuição do IPC — caixas alinhadas com o histograma
     # (Baixo → Crítico, ordem visual da esquerda para a direita)
     # ─────────────────────────────────────────────────────────
-    st.markdown("#### 2️⃣ Distribuição do IPC (Índice de Priorização de Cuidado)")
+    st.markdown("#### 3️⃣ Distribuição do IPC (Índice de Priorização de Cuidado)")
     dist = df['ipc_categoria'].value_counts().reindex(
         ['Baixo', 'Moderado', 'Alto', 'Crítico']
     ).fillna(0).astype(int)
@@ -439,6 +439,9 @@ with tab_analise:
 
     df_corr_src = df[list(cols_dim.keys())].copy()
     df_corr_src.columns = list(cols_dim.values())
+    # Garante dtype float — colunas Int64 (nullable) não aceitam fillna
+    # com mediana fracionária. Pearson precisa de float de qualquer modo.
+    df_corr_src = df_corr_src.apply(pd.to_numeric, errors='coerce').astype(float)
     # Tratamento de NaN: paciente sem consulta (NaN) é o caso mais crítico
     # — substituir por valor alto (ex.: 9999) distorceria. Usar mediana.
     df_corr_src = df_corr_src.fillna(df_corr_src.median(numeric_only=True))
