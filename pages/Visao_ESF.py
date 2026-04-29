@@ -485,6 +485,13 @@ def carregar_diabetes_agregado(ap: str, clinica: str, esf: str) -> dict:
         COUNTIF(DM IS NOT NULL AND lacuna_ecg_HAS_DM = TRUE)           AS n_sem_ecg,
         COUNTIF(DM IS NOT NULL AND lacuna_IMC_HAS_DM = TRUE)           AS n_sem_imc,
         ROUND(AVG(CASE WHEN DM IS NOT NULL THEN hba1c_atual END), 2)   AS media_a1c,
+        -- Pré-diabetes e complicações detectadas
+        COUNTIF(pre_DM IS NOT NULL)                                    AS n_pre_dm,
+        COUNTIF(DM IS NOT NULL AND dm_retinopatia    IS NOT NULL)      AS n_dm_retino,
+        COUNTIF(DM IS NOT NULL AND dm_nefropatia     IS NOT NULL)      AS n_dm_nefro,
+        COUNTIF(DM IS NOT NULL AND dm_neuropatia     IS NOT NULL)      AS n_dm_neuro,
+        COUNTIF(DM IS NOT NULL AND dm_pe_diabetico_cid IS NOT NULL)    AS n_dm_pe,
+        COUNTIF(DM IS NOT NULL AND dm_complicacao_cv IS NOT NULL)      AS n_dm_complic_cv,
         -- Insulina e doses farmacológicas críticas — KPIs populacionais.
         -- Aqui usamos as flags estruturais principio_INSULINA_* para
         -- bater com a page Diabetes (mesma janela do pipeline).
@@ -574,9 +581,27 @@ def carregar_diabetes_nominal(ap: str, clinica: str, esf: str) -> pd.DataFrame:
 
 
 def _kpi(col, label, valor, delta=None, ajuda=None):
+    """Card KPI com label que quebra linha (não trunca como st.metric)."""
     with col:
-        with st.container(border=True):
-            st.metric(label, valor, delta, help=ajuda)
+        delta_html = ""
+        if delta:
+            delta_html = (
+                f"<div style='color:#09ab3b; font-size:0.85em; "
+                f"margin-top:4px;'>↑ {delta}</div>"
+            )
+        ajuda_attr = f' title="{ajuda}"' if ajuda else ""
+        st.markdown(
+            f"<div{ajuda_attr} style='border:1px solid {T.BORDER}; "
+            f"border-radius:8px; padding:12px 14px; height:100%; "
+            f"box-sizing:border-box; background:{T.CARD_BG};'>"
+            f"<div style='color:{T.TEXT_SECONDARY}; font-size:0.85em; "
+            f"line-height:1.25; word-wrap:break-word;'>{label}</div>"
+            f"<div style='font-size:1.8em; font-weight:600; "
+            f"line-height:1.2; margin-top:6px; color:{T.TEXT};'>{valor}</div>"
+            f"{delta_html}"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2066,6 +2091,39 @@ with tab_dm:
     _kpi(d17, "⚠️ Sulfonilureia em monoterapia",
          f"{int(ag_d.get('n_sulfo_mono', 0) or 0):,}",
          _pct_d(ag_d.get('n_sulfo_mono')))
+
+    # Pré-diabetes (denominador = total da equipe, não diabéticos)
+    n_total_equipe = int(ag_d.get('n_total', 0) or 0) or 1
+    d18, d19, _, _ = st.columns(4)
+    n_pre = int(ag_d.get('n_pre_dm', 0) or 0)
+    _kpi(d18, "🟡 Pré-diabéticos na equipe",
+         f"{n_pre:,}",
+         f"{n_pre/n_total_equipe*100:.0f}% da equipe")
+    n_dm = int(ag_d.get('n_dm', 0) or 0)
+    _kpi(d19, "📈 Pré-DM + DM (carga total)",
+         f"{(n_pre + n_dm):,}",
+         f"{(n_pre + n_dm)/n_total_equipe*100:.0f}% da equipe")
+
+    # Complicações do diabetes detectadas (denominador = diabéticos)
+    st.markdown("##### Complicações do diabetes detectadas")
+    cd1, cd2, cd3 = st.columns(3)
+    _kpi(cd1, "👁️ Retinopatia diabética",
+         f"{int(ag_d.get('n_dm_retino', 0) or 0):,}",
+         _pct_d(ag_d.get('n_dm_retino')))
+    _kpi(cd2, "🫘 Nefropatia diabética",
+         f"{int(ag_d.get('n_dm_nefro', 0) or 0):,}",
+         _pct_d(ag_d.get('n_dm_nefro')))
+    _kpi(cd3, "🧠 Neuropatia diabética",
+         f"{int(ag_d.get('n_dm_neuro', 0) or 0):,}",
+         _pct_d(ag_d.get('n_dm_neuro')))
+
+    cd4, cd5, _ = st.columns(3)
+    _kpi(cd4, "🦶 Pé diabético (CID)",
+         f"{int(ag_d.get('n_dm_pe', 0) or 0):,}",
+         _pct_d(ag_d.get('n_dm_pe')))
+    _kpi(cd5, "❤️ Complicação cardiovascular do DM",
+         f"{int(ag_d.get('n_dm_complic_cv', 0) or 0):,}",
+         _pct_d(ag_d.get('n_dm_complic_cv')))
 
     st.markdown("---")
     st.markdown("##### Lista nominal de diabéticos")
