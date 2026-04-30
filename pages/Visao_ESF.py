@@ -716,11 +716,11 @@ with tab_resumo:
     # ─────────────────────────────────────────────────────────
     # 3️⃣ Top-10 mais críticos (PRIMEIRA INFORMAÇÃO)
     # ─────────────────────────────────────────────────────────
-    st.markdown("#### 1️⃣ Aqui estão os 10 pacientes mais críticos da sua equipe (pacientes com maior IPC)")
+    st.markdown("#### 1️⃣ Aqui estão os 10 pacientes mais críticos da sua equipe (pacientes com maior [Indice de Priorização do Cuidado - IPC)")
     st.caption(
         "Ranking pelo IPC. Empates são desempatados pela Carga de "
-        "Morbidade. Use como ponto de partida para discussão "
-        "clínica em equipe."
+        "Morbidade. Use esta lista como ponto de partida "
+        "para discussão em equipe e planejamento do cuidado."
     )
     top = df.sort_values(['ipc', 'charlson_score'],
                         ascending=[False, False]).head(10).copy()
@@ -806,7 +806,7 @@ permitindo comparar pacientes entre ESFs, clínicas e APs.
 
 | Dimensão | Peso | Bandas |
 |---|---|---|
-| 🦠 **Carga de Morbidade** (Charlson) | {PESOS_DEFAULT['charlson']:.0%} | 0–3 → 0 · 4–6 → 0,33 · 7–9 → 0,67 · ≥10 → 1 |
+| 🦠 **Carga de Morbidade** | {PESOS_DEFAULT['charlson']:.0%} | 0–3 → 0 · 4–6 → 0,33 · 7–9 → 0,67 · ≥10 → 1 |
 | ⚠️ **Total de lacunas de cuidado** | {PESOS_DEFAULT['lacunas']:.0%} | 0 → 0 · 1–3 → 0,33 · 4–7 → 0,67 · ≥8 → 1 |
 | ⏳ **Dias sem consulta médica** | {PESOS_DEFAULT['acesso']:.0%} | 0–180 → 0 · 181–365 → 0,5 · 366–730 → 0,85 · >730 ou nunca → 1 |
 | 💊 **ACB** (carga anticolinérgica) | {PESOS_DEFAULT['acb']:.0%} | 0 → 0 · 1 → 0,33 · 2 → 0,67 · ≥3 → 1 |
@@ -2218,17 +2218,15 @@ with tab_dm:
             if 'Sem HbA1c há >730d' in sin_d: mask |= (da1c_v > 730)
             if 'Nunca fez HbA1c' in sin_d:
                 mask |= df_dv['hba1c_atual'].isna()
-            # Insulina/NPH — fonte de verdade = nucleo_cronico_atual
-            # (última prescrição). Bate com Meus Pacientes.
-            meds_low = (df_dv['medicamentos_lista'].fillna('')
-                                                  .astype(str).str.lower())
-            insulina_ativa = meds_low.str.contains('insulina', na=False)
-            nph_ativo = (meds_low.str.contains('nph', na=False)
-                         | meds_low.str.contains('isofana', na=False))
+            # Insulina/NPH — alinhados com os KPIs populacionais
+            # (flags principio_INSULINA_* / dose_NPH_ui_kg, janela ampla).
+            # Antes o filtro usava critério mais estrito (texto na
+            # última prescrição) e ficava com 0 enquanto o KPI mostrava
+            # 4. O usuário não conseguia abrir a lista dos alertados.
             if 'Em uso de insulina' in sin_d:
-                mask |= insulina_ativa
+                mask |= df_dv['usa_insulina'].fillna(False).astype(bool)
             if 'NPH > 0,85 UI/kg' in sin_d:
-                mask |= ((df_dv['dose_NPH_ui_kg'].fillna(0) > 0.85) & nph_ativo)
+                mask |= (df_dv['dose_NPH_ui_kg'].fillna(0) > 0.85)
             if 'Sem médico há >180d' in sin_d:
                 mask |= (df_dv['dias_desde_ultima_medica'].fillna(99999) > 180)
             if 'Exame dos pés não realizado (>365d)' in sin_d:
@@ -2344,15 +2342,14 @@ with tab_dm:
                 ascending=[True, False], na_position='last',
             )
 
-            # NPH UI/kg só faz sentido quando NPH está de fato na
-            # última prescrição (mesmo critério usado em Meus Pacientes).
-            _meds_low_dr = (df_dr['medicamentos_lista'].fillna('')
-                                                       .astype(str).str.lower())
-            _nph_no_nucleo_dr = (_meds_low_dr.str.contains('nph', na=False)
-                                 | _meds_low_dr.str.contains('isofana', na=False))
-            _nph_show = df_dr['dose_NPH_ui_kg'].astype(float).where(
-                _nph_no_nucleo_dr, other=float('nan')
-            )
+            # NPH UI/kg — mostra a dose sempre que ela existe na flag
+            # estrutural, alinhado com o KPI populacional. Antes a coluna
+            # era suprimida quando 'nph'/'isofana' não estava na última
+            # prescrição, mas isso fazia desaparecer justamente os
+            # pacientes alertados por dose alta. Critério estrito
+            # (núcleo crônico atual) continua valendo no card do paciente
+            # em Meus Pacientes — aqui a visão é populacional.
+            _nph_show = df_dr['dose_NPH_ui_kg'].astype(float)
 
             df_show_dm = pd.DataFrame({
                 'Paciente':   df_dr['nome_exib'].values,
