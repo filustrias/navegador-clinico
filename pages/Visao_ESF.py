@@ -935,6 +935,17 @@ with tab_abertura_teste:
                 return "—"
             return f"{float(v):.2f}"
 
+        def _faixa_etaria(idade):
+            """Faixas usadas para calcular medianas de referência."""
+            if pd.isna(idade):
+                return None
+            i = int(idade)
+            if i < 30:  return "<30"
+            if i < 45:  return "30-44"
+            if i < 60:  return "45-59"
+            if i < 75:  return "60-74"
+            return "75+"
+
         top_show_at = pd.DataFrame({
             '#': range(1, len(top_at) + 1),
             'Paciente': top_at['nome_exib'].values,
@@ -1029,13 +1040,29 @@ with tab_abertura_teste:
                     unsafe_allow_html=True,
                 )
             with c2:
+                charlson_val = (int(paciente['charlson_score'])
+                                if pd.notna(paciente['charlson_score']) else 0)
+                faixa = _faixa_etaria(paciente['idade'])
+                mediana_faixa = None
+                if faixa is not None:
+                    mask_faixa = df['idade'].apply(_faixa_etaria) == faixa
+                    serie = df.loc[mask_faixa, 'charlson_score'].dropna()
+                    if not serie.empty:
+                        mediana_faixa = float(serie.median())
+                valor_carga = (
+                    f"{charlson_val} (mediana {mediana_faixa:.0f})"
+                    if mediana_faixa is not None else str(charlson_val)
+                )
                 st.metric(
                     "Carga de Morbidade",
-                    int(paciente['charlson_score'])
-                        if pd.notna(paciente['charlson_score']) else 0,
-                    help="Charlson score",
+                    valor_carga,
+                    help=("Charlson score do paciente. Mediana é da equipe "
+                          "selecionada na mesma faixa etária."),
                 )
-                st.caption(paciente.get('charlson_categoria', '—') or '—')
+                cap_faixa = f" · faixa {faixa} anos" if faixa else ""
+                st.caption(
+                    f"{paciente.get('charlson_categoria') or '—'}{cap_faixa}"
+                )
             with c3:
                 st.metric(
                     "Total de morbidades",
