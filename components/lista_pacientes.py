@@ -345,22 +345,33 @@ def load_patient_data_paginated(
         lac_conditions = [f"{lac} = TRUE" for lac in lacunas_filtro]
         where_clauses.append(f"({' OR '.join(lac_conditions)})")
 
-    # Filtro de risco cardiovascular (WHO simplificada — padrão PAHO/HEARTS)
-    # "Não calculado" = elegível (40-80a), sem reclassificação SBC (sem DM/IRC/CI/AVC/DAP)
-    # e sem dados suficientes para score WHO (sem colesterol E sem IMC).
+    # Filtro de risco cardiovascular (categoria efetiva — espelha o cabeçalho do card).
+    # Aplica primeiro a reclassificação SBC direta:
+    #   DCV estabelecida (CI/AVC/DAP) → 'Muito alto'
+    #   DM ou IRC                     → 'Alto'
+    #   Caso contrário                → who_categoria_risco_simplificada
+    # "Não calculado" = a categoria efetiva é NULL (nenhuma reclass + WHO não calculável)
+    # e o paciente é elegível (40-80a, sem colesterol e sem IMC).
+    rcv_efetivo_sql = (
+        "CASE "
+        "WHEN CI IS NOT NULL OR stroke IS NOT NULL OR vascular_periferica IS NOT NULL "
+        "THEN 'Muito alto' "
+        "WHEN DM IS NOT NULL OR IRC IS NOT NULL "
+        "THEN 'Alto' "
+        "ELSE who_categoria_risco_simplificada "
+        "END"
+    )
     if rcv_filtro and len(rcv_filtro) > 0:
         rcv_conds = []
         cats_validas = [c for c in rcv_filtro if c != "Não calculado"]
         if cats_validas:
             cats_sql = ", ".join(f"'{c}'" for c in cats_validas)
-            rcv_conds.append(f"who_categoria_risco_simplificada IN ({cats_sql})")
+            rcv_conds.append(f"{rcv_efetivo_sql} IN ({cats_sql})")
         if "Não calculado" in rcv_filtro:
             rcv_conds.append(
-                "(who_categoria_risco_simplificada IS NULL "
-                "AND idade BETWEEN 40 AND 80 "
-                "AND DM IS NULL AND IRC IS NULL "
-                "AND CI IS NULL AND stroke IS NULL AND vascular_periferica IS NULL "
-                "AND colesterol_total IS NULL AND IMC IS NULL)"
+                f"({rcv_efetivo_sql} IS NULL "
+                f"AND idade BETWEEN 40 AND 80 "
+                f"AND colesterol_total IS NULL AND IMC IS NULL)"
             )
         where_clauses.append(f"({' OR '.join(rcv_conds)})")
 
@@ -680,22 +691,33 @@ def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idad
         lac_conditions = [f"{lac} = TRUE" for lac in lacunas_filtro]
         where_clauses.append(f"({' OR '.join(lac_conditions)})")
 
-    # Filtro de risco cardiovascular (WHO simplificada — padrão PAHO/HEARTS)
-    # "Não calculado" = elegível (40-80a), sem reclassificação SBC (sem DM/IRC/CI/AVC/DAP)
-    # e sem dados suficientes para score WHO (sem colesterol E sem IMC).
+    # Filtro de risco cardiovascular (categoria efetiva — espelha o cabeçalho do card).
+    # Aplica primeiro a reclassificação SBC direta:
+    #   DCV estabelecida (CI/AVC/DAP) → 'Muito alto'
+    #   DM ou IRC                     → 'Alto'
+    #   Caso contrário                → who_categoria_risco_simplificada
+    # "Não calculado" = a categoria efetiva é NULL (nenhuma reclass + WHO não calculável)
+    # e o paciente é elegível (40-80a, sem colesterol e sem IMC).
+    rcv_efetivo_sql = (
+        "CASE "
+        "WHEN CI IS NOT NULL OR stroke IS NOT NULL OR vascular_periferica IS NOT NULL "
+        "THEN 'Muito alto' "
+        "WHEN DM IS NOT NULL OR IRC IS NOT NULL "
+        "THEN 'Alto' "
+        "ELSE who_categoria_risco_simplificada "
+        "END"
+    )
     if rcv_filtro and len(rcv_filtro) > 0:
         rcv_conds = []
         cats_validas = [c for c in rcv_filtro if c != "Não calculado"]
         if cats_validas:
             cats_sql = ", ".join(f"'{c}'" for c in cats_validas)
-            rcv_conds.append(f"who_categoria_risco_simplificada IN ({cats_sql})")
+            rcv_conds.append(f"{rcv_efetivo_sql} IN ({cats_sql})")
         if "Não calculado" in rcv_filtro:
             rcv_conds.append(
-                "(who_categoria_risco_simplificada IS NULL "
-                "AND idade BETWEEN 40 AND 80 "
-                "AND DM IS NULL AND IRC IS NULL "
-                "AND CI IS NULL AND stroke IS NULL AND vascular_periferica IS NULL "
-                "AND colesterol_total IS NULL AND IMC IS NULL)"
+                f"({rcv_efetivo_sql} IS NULL "
+                f"AND idade BETWEEN 40 AND 80 "
+                f"AND colesterol_total IS NULL AND IMC IS NULL)"
             )
         where_clauses.append(f"({' OR '.join(rcv_conds)})")
 
@@ -1200,17 +1222,16 @@ def create_patient_card(patient_data):
                     if reclass_direto:
                         _mostrar_resultado_rcv(reclass_direto)
 
-                    # Mostrar WHO do banco se disponível (usa categoria simplificada PAHO/HEARTS)
+                    # Mostrar WHO do banco se disponível (usa categoria simplificada PAHO/HEARTS).
+                    # Quando há reclassificação direta (DCV/DM/IRC), o score WHO
+                    # NÃO é exibido — pode confundir, pois não é o risco final.
                     cat_badge = who_cat_simpl if pd.notna(who_cat_simpl) and who_cat_simpl else None
-                    if cat_badge:
+                    if cat_badge and not reclass_direto:
                         who_res = {'risco_pct': who_risco if pd.notna(who_risco) else None,
                                    'categoria': cat_badge,
                                    'modelo': "Lab-based" if who_modelo == 'lab' else "Non-lab"}
-                        if not reclass_direto:
-                            _mostrar_resultado_rcv(who_res)
-                        else:
-                            risco_txt = f"{who_risco:.1f}% " if pd.notna(who_risco) else ""
-                            st.caption(f"Score WHO calculado: {risco_txt}({cat_badge})")
+                        _mostrar_resultado_rcv(who_res)
+                    if cat_badge:
                         if pac_idade and pac_idade >= 70:
                             st.caption(
                                 "**Nota ≥70 anos:** a idade domina o cálculo. "
