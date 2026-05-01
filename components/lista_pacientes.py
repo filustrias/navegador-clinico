@@ -13,6 +13,15 @@ from utils.anonimizador import (
 from components.cabecalho import renderizar_cabecalho
 from utils.auth import exibir_usuario_logado
 from utils import theme as T
+from utils.ipc import calcular_ipc
+
+# Ícones para o cabeçalho do card — alinhados com CORES_IPC
+ICONES_IPC = {
+    'Crítico':  '🔴',
+    'Alto':     '🟠',
+    'Moderado': '🟡',
+    'Baixo':    '🟢',
+}
 
 # ═══════════════════════════════════════════════════════════════
 
@@ -282,11 +291,21 @@ def load_patient_data_paginated(
     ordenar_por="morbidades",
     lacunas_filtro=None,
     rcv_filtro=None,
-    apenas_insulina=False
+    apenas_insulina=False,
+    cpfs=None,
 ):
-    """Carrega pacientes com paginação e filtros"""
+    """Carrega pacientes com paginação e filtros.
+
+    Quando ``cpfs`` é uma tupla/lista não vazia, restringe o resultado
+    àqueles CPFs (usado por chamadas que já têm uma seleção pronta —
+    ex.: Top-10 da Visão ESF).
+    """
 
     where_clauses = ["area_programatica_cadastro IS NOT NULL"]
+
+    if cpfs:
+        cpfs_sql = ", ".join(f"'{str(c)}'" for c in cpfs)
+        where_clauses.append(f"cpf IN ({cpfs_sql})")
 
     if area is not None:
         where_clauses.append(f"area_programatica_cadastro = '{str(area)}'")
@@ -476,6 +495,13 @@ def load_patient_data_paginated(
       ultimas_tres_PA,
       ultimas_tres_glicemias,
       ultimas_tres_A1C,
+      -- STOPP (insumo do IPC) — scalar subquery para evitar JOIN
+      COALESCE(
+        (SELECT s.total_criterios_stopp
+         FROM `rj-sms-sandbox.sub_pav_us.MM_stopp_start` s
+         WHERE s.cpf = `{_fqn(config.TABELA_FATO)}`.cpf),
+        0
+      ) AS total_criterios_stopp,
       -- TODAS as morbidades
       {', '.join(morbidades_select)},
       -- TODAS as lacunas e flags
@@ -485,8 +511,23 @@ def load_patient_data_paginated(
     ORDER BY {order_col} {order_sql}
     LIMIT {limit} OFFSET {offset}
     """
-    
-    return bq_query(sql)
+
+    df_pac = bq_query(sql)
+
+    # IPC — calculado após o load para que cada card tenha o índice
+    # disponível no cabeçalho. Requer total_lacunas (soma das lacunas
+    # individuais) e total_criterios_stopp (já vem da scalar subquery).
+    if not df_pac.empty:
+        bool_lac_cols = [c for c in LACUNAS_COMPLETO.keys() if c in df_pac.columns]
+        if bool_lac_cols:
+            df_pac['total_lacunas'] = (
+                df_pac[bool_lac_cols].fillna(False).astype(bool).sum(axis=1)
+            )
+        else:
+            df_pac['total_lacunas'] = 0
+        df_pac = calcular_ipc(df_pac)
+
+    return df_pac
 
 @st.cache_data(show_spinner=False, ttl=900)
 def get_statistics_summary(area=None, clinica=None, esf=None, idade_min=None, idade_max=None):
@@ -875,7 +916,28 @@ def create_patient_card(patient_data):
     else:
         nph_texto = ""
 
-    titulo_card = f"👤 **{nome}** - {idade} anos | 🏥 {morbidades_texto} | 💊 {medicamentos_texto}{acb_texto}{rcv_texto}{nph_texto} | ⚠️ {lacunas_texto}"
+    # IPC no cabeçalho — sinal unificado de priorização
+    ipc_val = patient_data.get('ipc')
+    ipc_cat = patient_data.get('ipc_categoria')
+    if pd.notna(ipc_val) and ipc_cat:
+        icone_ipc = ICONES_IPC.get(ipc_cat, '⚪')
+        ipc_texto = f"{icone_ipc} **IPC {float(ipc_val):.2f}** {ipc_cat} | "
+    else:
+        ipc_texto = ""
+
+    # Carga de Morbidade no cabeçalho (sem mediana — mediana só no corpo)
+    carga_val = patient_data.get('charlson_score')
+    if pd.notna(carga_val):
+        carga_int = int(carga_val)
+        carga_texto = f" | ⚖️ Carga {carga_int}"
+    else:
+        carga_texto = ""
+
+    titulo_card = (
+        f"{ipc_texto}👤 **{nome}** - {idade} anos{carga_texto} "
+        f"| 🏥 {morbidades_texto} | 💊 {medicamentos_texto}"
+        f"{acb_texto}{rcv_texto}{nph_texto} | ⚠️ {lacunas_texto}"
+    )
     
     with st.expander(titulo_card, expanded=False):
         
