@@ -696,9 +696,10 @@ else:
 # ═══════════════════════════════════════════════════════════════
 # ABAS
 # ═══════════════════════════════════════════════════════════════
-(tab_resumo, tab_lacunas, tab_cont, tab_polif, tab_has, tab_dm,
- tab_pacientes) = st.tabs([
+(tab_resumo, tab_abertura_teste, tab_lacunas, tab_cont, tab_polif,
+ tab_has, tab_dm, tab_pacientes) = st.tabs([
     "📊 Resumo da equipe",
+    "🧪 Abertura - teste",
     "⚠️ Lacunas",
     "🔄 Continuidade",
     "💊 Polifarmácia",
@@ -716,7 +717,7 @@ with tab_resumo:
     # ─────────────────────────────────────────────────────────
     # 3️⃣ Top-10 mais críticos (PRIMEIRA INFORMAÇÃO)
     # ─────────────────────────────────────────────────────────
-    st.markdown("#### 1️⃣ Aqui estão os 10 pacientes mais críticos da sua equipe (pacientes com maior [Indice de Priorização do Cuidado - IPC)")
+    st.markdown("#### 1️⃣ Aqui estão os 10 pacientes mais críticos da sua equipe (pacientes com maior Índice de Priorização do Cuidado - IPC)")
     st.caption(
         "Ranking pelo IPC. Empates são desempatados pela Carga de "
         "Morbidade. Use esta lista como ponto de partida "
@@ -906,6 +907,225 @@ cortado em 1,0.
                    tickfont=dict(color=T.TEXT_MUTED), gridcolor=T.GRID),
     )
     st.plotly_chart(fig_hist, use_container_width=True)
+
+# ─────────────────────────────────────────────────────────────
+# ABA — ABERTURA (TESTE) · clique na linha → card sumário
+# ─────────────────────────────────────────────────────────────
+with tab_abertura_teste:
+    st.markdown(
+        "#### 🧪 Abertura — versão de teste com card sumário por paciente"
+    )
+    st.caption(
+        "Mesma Top-10 da aba Resumo. Clique numa linha da tabela para "
+        "ver um card sumário do paciente abaixo."
+    )
+
+    top_at = df.sort_values(['ipc', 'charlson_score'],
+                            ascending=[False, False]).head(10).copy()
+    top_at = top_at.reset_index(drop=True)
+
+    if top_at.empty:
+        st.info("Sem pacientes para listar.")
+    else:
+        def _fmt_int_or_dash_at(v):
+            return f"{int(v)}" if pd.notna(v) else "—"
+
+        def _fmt_nph_at(v):
+            if pd.isna(v) or v is None or v == 0:
+                return "—"
+            return f"{float(v):.2f}"
+
+        top_show_at = pd.DataFrame({
+            '#': range(1, len(top_at) + 1),
+            'Paciente': top_at['nome_exib'].values,
+            'Idade': top_at['idade'].astype('Int64').values,
+            'IPC': top_at['ipc'].round(2).values,
+            'Categoria': top_at['ipc_categoria'].values,
+            'Carga de Morbidade': top_at['charlson_score'].astype('Int64').values,
+            'Morbidades': top_at['morbidades_lista'].fillna('—').values,
+            'ACB': top_at['acb_score_total'].astype('Int64').values,
+            'STOPP': top_at['total_criterios_stopp'].astype('Int64').values,
+            'Dias s/ médico': top_at['dias_desde_ultima_medica'].apply(
+                _fmt_int_or_dash_at
+            ).values,
+            'Lacunas': top_at['total_lacunas'].astype('Int64').values,
+            'Medicamentos (última prescrição)':
+                top_at['medicamentos_lista'].fillna('—').values,
+            'NPH (UI/kg)': top_at['dose_NPH_ui_kg'].apply(_fmt_nph_at).values,
+            'DCV s/ prev': top_at['ipc_dcv_sem_prev'].apply(
+                lambda v: '⚠️' if v else ''
+            ).values,
+        })
+
+        evento = st.dataframe(
+            top_show_at,
+            hide_index=True,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key="abertura_teste_top10",
+            column_config={
+                'Morbidades':   st.column_config.TextColumn('Morbidades',   width='large'),
+                'Medicamentos (última prescrição)':
+                    st.column_config.TextColumn('Medicamentos (última prescrição)',
+                                                width='large'),
+                'IPC':          st.column_config.NumberColumn('IPC', format='%.2f'),
+                'Carga de Morbidade':
+                    st.column_config.NumberColumn('Carga de Morbidade', width='small'),
+                'ACB':          st.column_config.NumberColumn('ACB',     width='small'),
+                'STOPP':        st.column_config.NumberColumn('STOPP',   width='small'),
+                'Lacunas':      st.column_config.NumberColumn('Lacunas', width='small'),
+                'Dias s/ médico': st.column_config.TextColumn('Dias s/ médico', width='small'),
+                'NPH (UI/kg)':  st.column_config.TextColumn('NPH (UI/kg)', width='small'),
+                'DCV s/ prev':  st.column_config.TextColumn('DCV s/ prev', width='small'),
+            },
+        )
+
+        # ─────────────────────────────────────────────────────
+        # Card sumário do paciente selecionado
+        # ─────────────────────────────────────────────────────
+        linhas_sel = (
+            evento.selection.rows if hasattr(evento, 'selection') else []
+        )
+        if not linhas_sel:
+            st.info(
+                "👆 Clique numa linha acima para abrir o card sumário do "
+                "paciente."
+            )
+        else:
+            idx = linhas_sel[0]
+            paciente = top_at.iloc[idx]
+
+            cor_ipc = CORES_IPC.get(paciente['ipc_categoria'], '#999')
+
+            # Cabeçalho do card
+            st.markdown(
+                f"<div style='border-left:6px solid {cor_ipc}; "
+                f"padding:14px 18px; margin:12px 0 6px 0; "
+                f"background:{cor_ipc}12; border-radius:6px;'>"
+                f"<div style='font-size:1.25em; font-weight:600;'>"
+                f"{paciente['nome_exib']}</div>"
+                f"<div style='color:{T.TEXT_MUTED}; font-size:0.92em; "
+                f"margin-top:2px;'>"
+                f"{int(paciente['idade']) if pd.notna(paciente['idade']) else '—'} anos · "
+                f"{paciente.get('genero', '—') or '—'} · "
+                f"ESF {anonimizar_esf(paciente.get('esf', '—'))} · "
+                f"Clínica {anonimizar_clinica(paciente.get('clinica', '—'))}"
+                f"</div></div>",
+                unsafe_allow_html=True,
+            )
+
+            # Linha 1: IPC + Carga + Morbidades
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric(
+                    "IPC",
+                    f"{paciente['ipc']:.2f}",
+                    help="Índice de Priorização do Cuidado (0 a 1)",
+                )
+                st.markdown(
+                    f"<span style='color:{cor_ipc}; font-weight:600;'>"
+                    f"{paciente['ipc_categoria']}</span>",
+                    unsafe_allow_html=True,
+                )
+            with c2:
+                st.metric(
+                    "Carga de Morbidade",
+                    int(paciente['charlson_score'])
+                        if pd.notna(paciente['charlson_score']) else 0,
+                    help="Charlson score",
+                )
+                st.caption(paciente.get('charlson_categoria', '—') or '—')
+            with c3:
+                st.metric(
+                    "Total de morbidades",
+                    int(paciente['total_morbidades'])
+                        if pd.notna(paciente['total_morbidades']) else 0,
+                )
+                st.metric(
+                    "Total de lacunas",
+                    int(paciente['total_lacunas'])
+                        if pd.notna(paciente['total_lacunas']) else 0,
+                )
+
+            # Linha 2: Risco farmacológico
+            st.markdown("**💊 Risco farmacológico**")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                polif_label = (
+                    "Hiperpolifarmácia" if paciente.get('hiperpolifarmacia')
+                    else ("Polifarmácia" if paciente.get('polifarmacia')
+                          else "Sem polifarmácia")
+                )
+                st.metric("Polifarmácia", polif_label)
+            with c2:
+                st.metric(
+                    "ACB",
+                    int(paciente['acb_score_total'])
+                        if pd.notna(paciente['acb_score_total']) else 0,
+                    help="Anticholinergic Cognitive Burden",
+                )
+                st.caption(paciente.get('categoria_acb', '—') or '—')
+            with c3:
+                st.metric(
+                    "Critérios STOPP",
+                    int(paciente['total_criterios_stopp'])
+                        if pd.notna(paciente['total_criterios_stopp']) else 0,
+                )
+            with c4:
+                st.metric("NPH (UI/kg)", _fmt_nph_at(paciente['dose_NPH_ui_kg']))
+
+            # Linha 3: Continuidade
+            st.markdown("**🔄 Continuidade do cuidado**")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.metric(
+                    "Dias sem médico",
+                    _fmt_int_or_dash_at(paciente['dias_desde_ultima_medica']),
+                )
+            with c2:
+                st.metric(
+                    "Consultas médicas (365d)",
+                    int(paciente['consultas_medicas_365d'])
+                        if pd.notna(paciente['consultas_medicas_365d']) else 0,
+                )
+
+            # Sinalizadores
+            sinalizadores = []
+            if paciente.get('ipc_dcv_sem_prev'):
+                sinalizadores.append(
+                    "⚠️ **DCV estabelecida sem prevenção secundária** "
+                    "(falta AAS e/ou estatina)"
+                )
+            if paciente.get('hiperpolifarmacia'):
+                sinalizadores.append("⚠️ **Hiperpolifarmácia** (≥10 medicamentos)")
+            if sinalizadores:
+                st.markdown("**🚩 Sinalizadores críticos**")
+                for s in sinalizadores:
+                    st.markdown(f"- {s}")
+
+            # Listas detalhadas
+            with st.expander("Morbidades ativas", expanded=True):
+                st.write(paciente.get('morbidades_lista') or '—')
+
+            with st.expander("Medicamentos (última prescrição)", expanded=False):
+                st.write(paciente.get('medicamentos_lista') or '—')
+
+            # Decomposição do IPC
+            with st.expander("Decomposição do IPC", expanded=False):
+                st.markdown(
+                    f"<div style='color:{T.TEXT_MUTED}; font-size:0.92em;'>"
+                    f"{explicar_ipc_paciente(paciente)}"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+            # Orientação final
+            st.info(
+                "📂 Para o **card clínico completo** deste paciente — com "
+                "histórico, lacunas detalhadas, prescrições e relatos — "
+                "abra a aba **🧑‍⚕️ Meus Pacientes** e busque pelo nome."
+            )
 
 # ─────────────────────────────────────────────────────────────
 # ABA 2 — LACUNAS DA EQUIPE × MUNICÍPIO
