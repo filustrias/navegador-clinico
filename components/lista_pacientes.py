@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -22,6 +23,77 @@ ICONES_IPC = {
     'Moderado': '🟡',
     'Baixo':    '🟢',
 }
+
+
+# Parser de historico_medicamentos_730d.
+# Formato esperado por item, separados por ';':
+#   Medicamento Xmg | posologia [TIPO, Nx, primeira há Yd, recente há Zd]
+# Sufixo opcional ', sem prescrição recente' aparece quando
+# tipo_medicamento = 'CRONICO' AND dias_recente > 180.
+_HIST_BRACKET_RE = re.compile(r'^(.*?)\s*\[([^\]]+)\]\s*$')
+_HIST_INT_RE     = re.compile(r'(\d+)')
+
+
+def parse_historico_medicamentos(historico_str):
+    """Parsea historico_medicamentos_730d em lista de dicts.
+
+    Cada dict tem: Medicamento, Posologia, Tipo, N, '1ª há (d)',
+    'Recente há (d)', Status. Linhas que não casam o padrão entram
+    como fallback com Medicamento = texto bruto.
+    """
+    if historico_str is None or historico_str == '' or pd.isna(historico_str):
+        return []
+
+    def _int_or_none(s):
+        if not s:
+            return None
+        m = _HIST_INT_RE.search(s)
+        return int(m.group(1)) if m else None
+
+    items = []
+    for raw in str(historico_str).split(';'):
+        raw = raw.strip()
+        if not raw:
+            continue
+        m = _HIST_BRACKET_RE.match(raw)
+        if not m:
+            items.append({
+                'Medicamento': raw, 'Posologia': '—',
+                'Tipo': '—', 'N': None,
+                '1ª há (d)': None, 'Recente há (d)': None,
+                'Status': '—',
+            })
+            continue
+
+        head = m.group(1).strip()
+        meta = m.group(2).strip()
+
+        if '|' in head:
+            med, posologia = [p.strip() for p in head.split('|', 1)]
+        else:
+            med, posologia = head, '—'
+
+        partes = [p.strip() for p in meta.split(',')]
+        tipo     = partes[0] if len(partes) >= 1 else '—'
+        n_rx     = _int_or_none(partes[1]) if len(partes) >= 2 else None
+        primeira = _int_or_none(partes[2]) if len(partes) >= 3 else None
+        recente  = _int_or_none(partes[3]) if len(partes) >= 4 else None
+        sem_recente = (
+            len(partes) >= 5
+            and 'sem prescrição recente' in partes[4].lower()
+        )
+
+        items.append({
+            'Medicamento':    med,
+            'Posologia':      posologia,
+            'Tipo':           tipo,
+            'N':              n_rx,
+            '1ª há (d)':      primeira,
+            'Recente há (d)': recente,
+            'Status':         'Sem prescrição recente' if sem_recente else 'Ativo',
+        })
+
+    return items
 
 # ═══════════════════════════════════════════════════════════════
 
@@ -492,6 +564,11 @@ def load_patient_data_paginated(
       dias_desde_ultima_prescricao_cronica,
       polifarmacia,
       hiperpolifarmacia,
+      -- Histórico farmacológico estendido (730d) e agudos recorrentes
+      historico_medicamentos_730d,
+      n_meds_distintos_730d,
+      n_agudos_recorrentes,
+      lista_agudos_recorrentes,
       -- Insulinas
       (principio_INSULINA_BASAL_HUMANA IS NOT NULL
        OR principio_INSULINA_PRANDIAL_HUMANA IS NOT NULL
@@ -1082,12 +1159,13 @@ def create_patient_card(patient_data):
         # SUB-ABAS DETALHADAS
         # ============================================
 
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab_hist, tab6, tab7 = st.tabs([
             "📊 Carga de Morbidade",
             "❤️ Risco Cardiovascular",
             "🔄 Continuidade do Cuidado",
             "⚠️ Lacunas de Cuidado",
             "💊 Polifarmácia e STOPP-START",
+            "📜 Histórico farmacológico",
             "📈 Inércia Terapêutica",
             "📝 Relatar Problemas"
         ])
@@ -1805,6 +1883,84 @@ def create_patient_card(patient_data):
                         st.success("Sem carga anticolinérgica significativa.")
                 else:
                     st.info("Sem dados ACB.")
+
+        # ========== TAB HISTÓRICO FARMACOLÓGICO (730d) ==========
+        with tab_hist:
+            st.markdown("#### 📜 Histórico farmacológico — últimos 730 dias")
+
+            n_dist_730 = patient_data.get('n_meds_distintos_730d')
+            if pd.notna(n_dist_730):
+                st.caption(
+                    f"**{int(n_dist_730)} medicamentos distintos** "
+                    f"prescritos nos últimos 730 dias."
+                )
+
+            n_agudos_rec = patient_data.get('n_agudos_recorrentes')
+            lista_agudos_rec = patient_data.get('lista_agudos_recorrentes')
+            if pd.notna(n_agudos_rec) and int(n_agudos_rec) >= 2:
+                st.warning(
+                    f"⚠️ **{int(n_agudos_rec)} agudos recorrentes** "
+                    f"(≥2 prescrições em 180 dias — possível "
+                    f"'agudo virando crônico')"
+                )
+                if lista_agudos_rec and pd.notna(lista_agudos_rec):
+                    st.markdown(f"**Lista:** {lista_agudos_rec}")
+
+            historico_730 = patient_data.get('historico_medicamentos_730d')
+            if not historico_730 or pd.isna(historico_730):
+                st.info(
+                    "Sem histórico de prescrições registrado nos últimos "
+                    "730 dias."
+                )
+            else:
+                items_hist = parse_historico_medicamentos(historico_730)
+                if not items_hist:
+                    st.info("Não foi possível parsear o histórico.")
+                    with st.expander("Ver texto bruto"):
+                        st.text(historico_730)
+                else:
+                    df_hist = pd.DataFrame(items_hist)
+
+                    # Converte colunas numéricas para Int64 nullable
+                    # (None vira pd.NA — evita TypeError no sort).
+                    for _col_num in ('N', '1ª há (d)', 'Recente há (d)'):
+                        df_hist[_col_num] = pd.to_numeric(
+                            df_hist[_col_num], errors='coerce'
+                        ).astype('Int64')
+
+                    # Ordena por "Recente há (d)" asc (mais recentes primeiro);
+                    # NaN no fim.
+                    df_hist = df_hist.sort_values(
+                        'Recente há (d)', ascending=True, na_position='last'
+                    ).reset_index(drop=True)
+
+                    # Highlights:
+                    #   CRONICO sem prescrição recente → vermelho-claro
+                    #   AGUDO com N >= 2               → laranja-claro
+                    def _row_color(row):
+                        tipo = row.get('Tipo', '')
+                        status = row.get('Status', '')
+                        n_val = row.get('N')
+                        if tipo == 'CRONICO' and status == 'Sem prescrição recente':
+                            return ['background-color: #fde2e2'] * len(row)
+                        if (tipo == 'AGUDO' and n_val is not None
+                                and not pd.isna(n_val) and int(n_val) >= 2):
+                            return ['background-color: #ffe9d2'] * len(row)
+                        return [''] * len(row)
+
+                    styled = df_hist.style.apply(_row_color, axis=1)
+                    st.dataframe(
+                        styled, hide_index=True, use_container_width=True
+                    )
+
+                    st.caption(
+                        "🔴 Linha vermelha: medicamento crônico sem prescrição "
+                        "recente (>180d). 🟠 Linha laranja: medicamento agudo "
+                        "com prescrições recorrentes (≥2 em 180d)."
+                    )
+
+                    with st.expander("Ver texto bruto"):
+                        st.text(historico_730)
 
         # ========== TAB 6: INÉRCIA TERAPÊUTICA (PLACEHOLDER) ==========
         with tab6:
