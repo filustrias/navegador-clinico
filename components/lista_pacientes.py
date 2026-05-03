@@ -919,7 +919,14 @@ def extrair_lacunas_paciente(patient_data):
     
     return lacunas_por_grupo, flags_ativos
 
-def create_patient_card(patient_data):
+def create_patient_card(patient_data, key_prefix: str = ''):
+    """Renderiza o card expansível do paciente.
+
+    ``key_prefix`` evita colisão de keys quando o mesmo paciente é
+    renderizado em mais de um lugar na mesma page (ex.: aba 'Abertura
+    - teste' e aba 'Meus Pacientes' da Visão ESF, que renderizam
+    simultaneamente porque o Streamlit instancia ambas as abas).
+    """
 
     # Preserva original (não-anonimizado) para formulário de relato —
     # precisamos do território real ao registrar o problema.
@@ -1342,13 +1349,13 @@ def create_patient_card(patient_data):
                         if falta_pas:
                             input_pas = st.number_input(
                                 "PAS (mmHg)", min_value=80, max_value=250, value=130, step=1,
-                                key=f"rcv_pas_{cpk}")
+                                key=f"{key_prefix}rcv_pas_{cpk}")
 
                         if falta_col:
                             input_col = st.number_input(
                                 "Colesterol total (mg/dL) — 0 se não souber",
                                 min_value=0, max_value=500, value=0, step=1,
-                                key=f"rcv_col_{cpk}")
+                                key=f"{key_prefix}rcv_col_{cpk}")
 
                         if falta_imc:
                             st.markdown("**Peso e altura:**")
@@ -1361,12 +1368,12 @@ def create_patient_card(patient_data):
                                 input_peso = st.number_input(
                                     "Peso (kg)", min_value=30.0, max_value=300.0,
                                     value=peso_clamp,
-                                    step=0.1, format="%.1f", key=f"rcv_peso_{cpk}")
+                                    step=0.1, format="%.1f", key=f"{key_prefix}rcv_peso_{cpk}")
                             with ic2:
                                 input_altura = st.number_input(
                                     "Altura (cm)", min_value=100, max_value=230,
                                     value=alt_clamp,
-                                    step=1, key=f"rcv_alt_{cpk}")
+                                    step=1, key=f"{key_prefix}rcv_alt_{cpk}")
                             input_imc = round(input_peso / ((input_altura/100)**2), 1)
                             st.caption(f"IMC calculado: **{input_imc:.1f} kg/m²**")
 
@@ -1374,9 +1381,9 @@ def create_patient_card(patient_data):
                             input_tabaco = st.radio(
                                 f"{genero_pronome} é tabagista?",
                                 options=["Não", "Sim"], index=0,
-                                key=f"rcv_tab_{cpk}", horizontal=True)
+                                key=f"{key_prefix}rcv_tab_{cpk}", horizontal=True)
 
-                        if st.button("🧮 Calcular risco", key=f"rcv_btn_{cpk}", type="primary"):
+                        if st.button("🧮 Calcular risco", key=f"{key_prefix}rcv_btn_{cpk}", type="primary"):
                             genero_c = pac_genero.lower() if pac_genero else ''
                             tab_c = (input_tabaco == "Sim") if input_tabaco else False
                             col_val = input_col if input_col and input_col > 0 else None
@@ -1977,7 +1984,7 @@ def create_patient_card(patient_data):
         # ========== TAB 7: RELATAR PROBLEMA ==========
         with tab7:
             usuario_logado = st.session_state.get('usuario_global', {})
-            formulario_relato(patient_data_original, usuario_logado)
+            formulario_relato(patient_data_original, usuario_logado, key_prefix=key_prefix)
                 
         
 
@@ -2461,7 +2468,7 @@ def renderizar_lista_pacientes(
     st.markdown("### 👥 Pacientes")
     for idx, (_, paciente) in enumerate(df_pacientes.iterrows()):
         paciente_dict = paciente.to_dict()
-        create_patient_card(paciente_dict)
+        create_patient_card(paciente_dict, key_prefix=f"{scope}_")
 
     # Botões de navegação (rodapé)
     st.markdown("---")

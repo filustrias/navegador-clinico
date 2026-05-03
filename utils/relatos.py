@@ -67,11 +67,18 @@ def salvar_relato(
         st.error(f"Erro ao salvar relato: {e}")
         return False
 
-def formulario_relato(patient_data: dict, usuario: dict):
-    """Exibe formulário de relato dentro do card do paciente"""
-    
+def formulario_relato(patient_data: dict, usuario: dict, key_prefix: str = ''):
+    """Exibe formulário de relato dentro do card do paciente.
+
+    O ``key_prefix`` evita colisão de keys quando o mesmo paciente é
+    renderizado em mais de um lugar da mesma page (ex.: aba Top-10 da
+    Visão ESF + lista de Meus Pacientes na mesma sessão).
+    """
+
+    cpk = patient_data.get('cpf', 'unknown')
+
     st.markdown("### 📝 Relatar Problema de Informação")
-    
+
     st.info("""
     Use este formulário para relatar problemas com as informações deste paciente:
     - Informações incorretas no navegador
@@ -79,7 +86,7 @@ def formulario_relato(patient_data: dict, usuario: dict):
     - Mudança de situação cadastral
     - Óbito do paciente
     """)
-    
+
     # Tipo de relato
     tipo_relato = st.radio(
         "Que tipo de informação você quer relatar?",
@@ -89,9 +96,9 @@ def formulario_relato(patient_data: dict, usuario: dict):
             "3 - Paciente não pertence mais à ESF",
             "4 - Informar óbito"
         ],
-        key=f"tipo_relato_{patient_data.get('cpf', 'unknown')}"
+        key=f"{key_prefix}tipo_relato_{cpk}"
     )
-    
+
     # Campos condicionais
     campo_errado = None
     valor_correto = None
@@ -99,52 +106,52 @@ def formulario_relato(patient_data: dict, usuario: dict):
     data_desvinculacao = None
     data_obito = None
     observacoes = None
-    
+
     if tipo_relato.startswith("1"):
         campo_errado = st.text_input(
             "Qual informação está errada?",
             placeholder="Ex: Data de nascimento, Nome, Diagnóstico...",
-            key=f"campo_errado_{patient_data.get('cpf', 'unknown')}"
+            key=f"{key_prefix}campo_errado_{cpk}"
         )
         valor_correto = st.text_input(
             "Qual é a informação correta?",
             placeholder="Digite o valor correto...",
-            key=f"valor_correto_{patient_data.get('cpf', 'unknown')}"
+            key=f"{key_prefix}valor_correto_{cpk}"
         )
-        
+
     elif tipo_relato.startswith("2"):
         informacao_ausente = st.text_area(
             "Qual informação está ausente?",
             placeholder="Descreva a informação que deveria aparecer...",
-            key=f"info_ausente_{patient_data.get('cpf', 'unknown')}"
+            key=f"{key_prefix}info_ausente_{cpk}"
         )
-        
+
     elif tipo_relato.startswith("3"):
         data_desvinculacao = st.date_input(
             "Em que data o paciente deixou de ser vinculado a esta ESF?",
             value=None,
-            key=f"data_desvinc_{patient_data.get('cpf', 'unknown')}"
+            key=f"{key_prefix}data_desvinc_{cpk}"
         )
-        
+
     elif tipo_relato.startswith("4"):
         data_obito = st.date_input(
             "Em que data o paciente faleceu?",
             value=None,
-            key=f"data_obito_{patient_data.get('cpf', 'unknown')}"
+            key=f"{key_prefix}data_obito_{cpk}"
         )
-    
+
     # Observações adicionais (sempre visível)
     observacoes = st.text_area(
         "Observações adicionais (opcional)",
         placeholder="Informações complementares...",
-        key=f"obs_{patient_data.get('cpf', 'unknown')}"
+        key=f"{key_prefix}obs_{cpk}"
     )
-    
+
     # Botão de envio
     col1, col2 = st.columns([3, 1])
     with col2:
         if st.button("📤 Enviar Relato", type="primary", use_container_width=True,
-                     key=f"btn_relato_{patient_data.get('cpf', 'unknown')}"):
+                     key=f"{key_prefix}btn_relato_{cpk}"):
             
             # Validações
             if tipo_relato.startswith("1") and (not campo_errado or not valor_correto):

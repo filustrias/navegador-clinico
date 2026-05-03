@@ -950,7 +950,7 @@ with tab_abertura_teste:
                 ['ipc', 'charlson_score'], ascending=[False, False]
             )
             for _, paciente in df_top10.iterrows():
-                create_patient_card(paciente.to_dict())
+                create_patient_card(paciente.to_dict(), key_prefix='abertura_')
 
 # ─────────────────────────────────────────────────────────────
 # ABA 2 — LACUNAS DA EQUIPE × MUNICÍPIO
