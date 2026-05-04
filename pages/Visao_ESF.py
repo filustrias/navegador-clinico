@@ -319,18 +319,36 @@ def carregar_criterios_idoso_nominal(ap: str, clinica: str, esf: str) -> pd.Data
 
 
 @st.cache_data(show_spinner=False, ttl=900)
-def carregar_continuidade_agregado(ap: str, clinica: str, esf: str) -> dict:
-    """Estatísticas de continuidade do cuidado para a equipe."""
+def carregar_continuidade_agregado(ap: str = None, clinica: str = None,
+                                   esf: str = None) -> dict:
+    """Estatísticas de continuidade do cuidado.
+    - Aceita None nos filtros para escopo do município (sem WHERE).
+    - Inclui contagens estratificadas por charlson_categoria
+      ('Baixo'/'Moderado'/'Alto'/'Muito Alto') para os 4 indicadores
+      estruturais e as 6 médias de consultas/intervalo/% na unidade
+      (12 meses)."""
+    clauses = []
+    if ap:      clauses.append(f"area_programatica_cadastro = '{ap}'")
+    if clinica: clauses.append(f"nome_clinica_cadastro     = '{clinica}'")
+    if esf:     clauses.append(f"nome_esf_cadastro         = '{esf}'")
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
     sql = f"""
     SELECT
         COUNT(*) AS n_total,
-        COUNTIF(dias_desde_ultima_medica > 180)                     AS n_sem_medico_180d,
+        -- Denominadores por carga (Charlson)
+        COUNTIF(charlson_categoria = 'Baixo')      AS n_carga_baixo,
+        COUNTIF(charlson_categoria = 'Moderado')   AS n_carga_mod,
+        COUNTIF(charlson_categoria = 'Alto')       AS n_carga_alto,
+        COUNTIF(charlson_categoria = 'Muito Alto') AS n_carga_ma,
+        -- KPIs totais (originais)
+        COUNTIF(dias_desde_ultima_medica > 180)                      AS n_sem_medico_180d,
         COUNTIF(consultas_365d = 0)                                  AS n_sem_consulta_365d,
         COUNTIF(regularidade_acompanhamento = 'regular')             AS n_regular,
         COUNTIF(regularidade_acompanhamento = 'irregular')           AS n_irregular,
         COUNTIF(regularidade_acompanhamento = 'esporadico')          AS n_esporadico,
         COUNTIF(regularidade_acompanhamento = 'sem_acompanhamento')  AS n_sem_acomp,
-        COUNTIF(baixa_longitudinalidade   = TRUE)                   AS n_baixa_long,
+        COUNTIF(baixa_longitudinalidade   = TRUE)                    AS n_baixa_long,
         COUNTIF(usuario_frequente_urgencia = TRUE)                   AS n_freq_urg,
         COUNTIF(alto_risco_baixo_acesso    = TRUE)                   AS n_alto_baixo_acesso,
         COUNTIF(alto_risco_intervalo_longo = TRUE)                   AS n_alto_intv_longo,
@@ -340,52 +358,58 @@ def carregar_continuidade_agregado(ap: str, clinica: str, esf: str) -> dict:
         ROUND(AVG(consultas_tecnico_enfermagem_365d), 1)             AS media_consultas_tec,
         ROUND(AVG(intervalo_mediano_dias), 1)                        AS media_intv_mediano,
         ROUND(AVG(pct_consultas_medicas_na_unidade_365d), 1)         AS media_pct_na_unidade,
-        ROUND(AVG(pct_consultas_medicas_fora_365d), 1)               AS media_pct_fora
+        ROUND(AVG(pct_consultas_medicas_fora_365d), 1)               AS media_pct_fora,
+        -- ── Estratificação por carga: indicadores estruturais ──
+        -- Sem médico há >180 dias
+        COUNTIF(dias_desde_ultima_medica > 180 AND charlson_categoria = 'Baixo')      AS n_sm180_baixo,
+        COUNTIF(dias_desde_ultima_medica > 180 AND charlson_categoria = 'Moderado')   AS n_sm180_mod,
+        COUNTIF(dias_desde_ultima_medica > 180 AND charlson_categoria = 'Alto')       AS n_sm180_alto,
+        COUNTIF(dias_desde_ultima_medica > 180 AND charlson_categoria = 'Muito Alto') AS n_sm180_ma,
+        -- Acompanhamento regular
+        COUNTIF(regularidade_acompanhamento = 'regular' AND charlson_categoria = 'Baixo')      AS n_reg_baixo,
+        COUNTIF(regularidade_acompanhamento = 'regular' AND charlson_categoria = 'Moderado')   AS n_reg_mod,
+        COUNTIF(regularidade_acompanhamento = 'regular' AND charlson_categoria = 'Alto')       AS n_reg_alto,
+        COUNTIF(regularidade_acompanhamento = 'regular' AND charlson_categoria = 'Muito Alto') AS n_reg_ma,
+        -- Sem nenhuma consulta no ano
+        COUNTIF(consultas_365d = 0 AND charlson_categoria = 'Baixo')      AS n_sc_baixo,
+        COUNTIF(consultas_365d = 0 AND charlson_categoria = 'Moderado')   AS n_sc_mod,
+        COUNTIF(consultas_365d = 0 AND charlson_categoria = 'Alto')       AS n_sc_alto,
+        COUNTIF(consultas_365d = 0 AND charlson_categoria = 'Muito Alto') AS n_sc_ma,
+        -- Fragmentação (>50% das consultas fora da clínica)
+        COUNTIF(baixa_longitudinalidade = TRUE AND charlson_categoria = 'Baixo')      AS n_bl_baixo,
+        COUNTIF(baixa_longitudinalidade = TRUE AND charlson_categoria = 'Moderado')   AS n_bl_mod,
+        COUNTIF(baixa_longitudinalidade = TRUE AND charlson_categoria = 'Alto')       AS n_bl_alto,
+        COUNTIF(baixa_longitudinalidade = TRUE AND charlson_categoria = 'Muito Alto') AS n_bl_ma,
+        -- ── Médias de consultas (12 meses) por carga ──
+        ROUND(AVG(IF(charlson_categoria = 'Baixo',      consultas_365d, NULL)), 1) AS m_ct_baixo,
+        ROUND(AVG(IF(charlson_categoria = 'Moderado',   consultas_365d, NULL)), 1) AS m_ct_mod,
+        ROUND(AVG(IF(charlson_categoria = 'Alto',       consultas_365d, NULL)), 1) AS m_ct_alto,
+        ROUND(AVG(IF(charlson_categoria = 'Muito Alto', consultas_365d, NULL)), 1) AS m_ct_ma,
+        ROUND(AVG(IF(charlson_categoria = 'Baixo',      consultas_medicas_365d, NULL)), 1) AS m_med_baixo,
+        ROUND(AVG(IF(charlson_categoria = 'Moderado',   consultas_medicas_365d, NULL)), 1) AS m_med_mod,
+        ROUND(AVG(IF(charlson_categoria = 'Alto',       consultas_medicas_365d, NULL)), 1) AS m_med_alto,
+        ROUND(AVG(IF(charlson_categoria = 'Muito Alto', consultas_medicas_365d, NULL)), 1) AS m_med_ma,
+        ROUND(AVG(IF(charlson_categoria = 'Baixo',      consultas_enfermagem_365d, NULL)), 1) AS m_enf_baixo,
+        ROUND(AVG(IF(charlson_categoria = 'Moderado',   consultas_enfermagem_365d, NULL)), 1) AS m_enf_mod,
+        ROUND(AVG(IF(charlson_categoria = 'Alto',       consultas_enfermagem_365d, NULL)), 1) AS m_enf_alto,
+        ROUND(AVG(IF(charlson_categoria = 'Muito Alto', consultas_enfermagem_365d, NULL)), 1) AS m_enf_ma,
+        ROUND(AVG(IF(charlson_categoria = 'Baixo',      consultas_tecnico_enfermagem_365d, NULL)), 1) AS m_tec_baixo,
+        ROUND(AVG(IF(charlson_categoria = 'Moderado',   consultas_tecnico_enfermagem_365d, NULL)), 1) AS m_tec_mod,
+        ROUND(AVG(IF(charlson_categoria = 'Alto',       consultas_tecnico_enfermagem_365d, NULL)), 1) AS m_tec_alto,
+        ROUND(AVG(IF(charlson_categoria = 'Muito Alto', consultas_tecnico_enfermagem_365d, NULL)), 1) AS m_tec_ma,
+        ROUND(AVG(IF(charlson_categoria = 'Baixo',      intervalo_mediano_dias, NULL)), 1) AS m_iv_baixo,
+        ROUND(AVG(IF(charlson_categoria = 'Moderado',   intervalo_mediano_dias, NULL)), 1) AS m_iv_mod,
+        ROUND(AVG(IF(charlson_categoria = 'Alto',       intervalo_mediano_dias, NULL)), 1) AS m_iv_alto,
+        ROUND(AVG(IF(charlson_categoria = 'Muito Alto', intervalo_mediano_dias, NULL)), 1) AS m_iv_ma,
+        ROUND(AVG(IF(charlson_categoria = 'Baixo',      pct_consultas_medicas_na_unidade_365d, NULL)), 1) AS m_pu_baixo,
+        ROUND(AVG(IF(charlson_categoria = 'Moderado',   pct_consultas_medicas_na_unidade_365d, NULL)), 1) AS m_pu_mod,
+        ROUND(AVG(IF(charlson_categoria = 'Alto',       pct_consultas_medicas_na_unidade_365d, NULL)), 1) AS m_pu_alto,
+        ROUND(AVG(IF(charlson_categoria = 'Muito Alto', pct_consultas_medicas_na_unidade_365d, NULL)), 1) AS m_pu_ma
     FROM `{_fqn(config.TABELA_FATO)}`
-    WHERE area_programatica_cadastro = '{ap}'
-      AND nome_clinica_cadastro     = '{clinica}'
-      AND nome_esf_cadastro         = '{esf}'
+    {where}
     """
     df = bq(sql)
     return df.iloc[0].to_dict() if not df.empty else {}
-
-
-@st.cache_data(show_spinner=False, ttl=900)
-def carregar_continuidade_nominal(ap: str, clinica: str, esf: str) -> pd.DataFrame:
-    """
-    Lista paciente-a-paciente para a aba de continuidade. Inclui
-    morbidades, prescrição crônica e indicadores de acesso.
-    """
-    sql_morb_lista = gerar_sql_morbidades_lista("morbidades_lista")
-    sql = f"""
-    SELECT
-        cpf, nome, idade, genero,
-        charlson_score,
-        charlson_categoria,
-        nucleo_cronico_atual                  AS medicamentos_lista,
-        {sql_morb_lista},
-        consultas_365d,
-        consultas_medicas_365d,
-        consultas_enfermagem_365d,
-        consultas_tecnico_enfermagem_365d,
-        pct_consultas_medicas_na_unidade_365d,
-        pct_consultas_medicas_fora_365d,
-        dias_desde_ultima_medica,
-        dias_desde_ultima_enfermagem,
-        intervalo_mediano_dias,
-        meses_com_consulta_12m,
-        regularidade_acompanhamento,
-        baixa_longitudinalidade,
-        usuario_frequente_urgencia,
-        alto_risco_baixo_acesso,
-        alto_risco_intervalo_longo,
-        perfil_cuidado_365d
-    FROM `{_fqn(config.TABELA_FATO)}`
-    WHERE area_programatica_cadastro = '{ap}'
-      AND nome_clinica_cadastro     = '{clinica}'
-      AND nome_esf_cadastro         = '{esf}'
-    """
-    return bq(sql)
 
 
 @st.cache_data(show_spinner=False, ttl=900)
@@ -812,6 +836,116 @@ def _card_lacuna(col, row):
             f"</div>",
             unsafe_allow_html=True,
         )
+
+
+# ─── Card mini para indicadores estratificados por carga ──────
+def _card_carga_strat(col, carga_label, emoji, n_eq, den_eq,
+                      n_mun, den_mun, indicador_ruim_se_alto=True,
+                      formato_valor='%'):
+    """Mini-card por carga (Baixo/Moderado/Alto/Muito Alto) usado na
+    aba 'Continuidade do cuidado'. Mostra valor da equipe + benchmark
+    município + delta colorido.
+
+    formato_valor:
+      '%'   → exibe pct_eq como '12%' (n/N implícito); usa contagem
+              estratificada (n_eq) sobre o denominador da carga (den_eq).
+      'avg' → exibe média numérica direta (n_eq é a média já calculada,
+              den_eq é ignorado).
+
+    indicador_ruim_se_alto:
+      True  → equipe acima do município = vermelho (ex.: sem médico,
+              sem consulta, fragmentação).
+      False → equipe acima do município = verde (ex.: regulares,
+              consultas/ano, % na unidade).
+    """
+    if formato_valor == '%':
+        pct_eq  = (n_eq / den_eq * 100) if den_eq else None
+        pct_mun = (n_mun / den_mun * 100) if den_mun else None
+        valor_eq_str  = f"{pct_eq:.0f}%"  if pct_eq  is not None else "—"
+        valor_mun_str = f"{pct_mun:.0f}%" if pct_mun is not None else "—"
+        delta = ((pct_eq - pct_mun)
+                 if (pct_eq is not None and pct_mun is not None)
+                 else None)
+        unidade = "pp"
+    else:  # 'avg'
+        v_eq  = float(n_eq)  if pd.notna(n_eq)  else None
+        v_mun = float(n_mun) if pd.notna(n_mun) else None
+        valor_eq_str  = f"{v_eq:.1f}"  if v_eq  is not None else "—"
+        valor_mun_str = f"{v_mun:.1f}" if v_mun is not None else "—"
+        delta = (v_eq - v_mun) if (v_eq is not None and v_mun is not None) else None
+        unidade = ""
+        pct_eq = v_eq
+
+    if delta is None or pd.isna(delta):
+        delta_color = "#6B7280"
+        delta_str   = "vs município —"
+    elif abs(delta) < (0.5 if formato_valor == '%' else 0.1):
+        delta_color = "#6B7280"
+        delta_str   = f"≈ {valor_mun_str} no município"
+    else:
+        equipe_pior = (delta > 0) == indicador_ruim_se_alto
+        delta_color = "#C0392B" if equipe_pior else "#27AE60"
+        seta  = "↑" if delta > 0 else "↓"
+        sinal = "+" if delta > 0 else ""
+        if formato_valor == '%':
+            delta_str = (f"{seta} {sinal}{delta:.1f} {unidade} "
+                         f"vs {valor_mun_str}")
+        else:
+            delta_str = (f"{seta} {sinal}{delta:.1f} "
+                         f"vs {valor_mun_str}")
+
+    n_eq_int = int(n_eq) if (formato_valor == '%' and pd.notna(n_eq)) else None
+    den_int  = int(den_eq) if (formato_valor == '%' and pd.notna(den_eq)) else None
+    n_str = (f"<div style='font-size:0.7em; color:{T.TEXT_MUTED}; "
+             f"margin-top:2px;'>n = {n_eq_int:,} de {den_int:,}</div>"
+             if n_eq_int is not None and den_int is not None
+             else "")
+
+    with col:
+        st.markdown(
+            f"<div style='border:1px solid {T.BORDER}; "
+            f"border-radius:8px; padding:10px 12px; height:100%; "
+            f"box-sizing:border-box; background:{T.CARD_BG};'>"
+            f"<div style='color:{T.TEXT_SECONDARY}; font-size:0.82em; "
+            f"line-height:1.25;'>{emoji} {carga_label}</div>"
+            f"<div style='font-size:1.55em; font-weight:600; "
+            f"color:{T.TEXT}; line-height:1.2; margin-top:4px;'>"
+            f"{valor_eq_str}</div>"
+            f"<div style='font-size:0.78em; color:{delta_color}; "
+            f"margin-top:4px; font-weight:500;'>{delta_str}</div>"
+            f"{n_str}"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+
+def _detecta_inversao_gradiente(valores, esperado_crescente):
+    """Compara extremos (Baixo vs Muito Alto). Retorna mensagem se há
+    inversão clara (≥5 pp ou unidades), None caso contrário.
+    valores = [v_baixo, v_mod, v_alto, v_ma]
+    esperado_crescente: True quando bom = crescer com a carga
+                        (ex.: regulares, consultas/ano, % na unidade)."""
+    v_bx, _, _, v_ma = valores
+    if v_bx is None or v_ma is None:
+        return None
+    try:
+        v_bx_f, v_ma_f = float(v_bx), float(v_ma)
+    except (TypeError, ValueError):
+        return None
+    diff = v_ma_f - v_bx_f
+    if esperado_crescente and diff <= -5:
+        return ("⚠️ <b>Gradiente invertido</b>: pacientes Muito Alto "
+                f"({v_ma_f:.0f}) estão <b>abaixo</b> dos Baixo "
+                f"({v_bx_f:.0f}) — o esperado seria o oposto, dado "
+                "que cargas mais altas demandam acompanhamento "
+                "mais regular.")
+    if (not esperado_crescente) and diff >= 5:
+        return ("⚠️ <b>Gradiente invertido</b>: pacientes Muito Alto "
+                f"({v_ma_f:.0f}) estão <b>acima</b> dos Baixo "
+                f"({v_bx_f:.0f}) — o esperado seria o oposto, dado "
+                "que cargas mais altas deveriam ter acesso e "
+                "longitudinalidade melhores.")
+    return None
 
 
 # Texto contextual narrativo por grupo de lacunas. Mostrado à esquerda
@@ -1353,309 +1487,236 @@ with tab_lacunas:
 # ABA 3 — CONTINUIDADE DO CUIDADO
 # ─────────────────────────────────────────────────────────────
 with tab_cont:
-    st.markdown("#### Continuidade do cuidado — panorama da equipe")
+    st.markdown(
+        "#### Continuidade do cuidado — narrativa por carga de morbidade"
+    )
     st.caption(
-        "Indicadores de acesso, regularidade e fragmentação do cuidado, "
-        "com base nas consultas dos últimos 365 dias. Pacientes com "
-        "maior carga de morbidade deveriam ter intervalos menores e "
-        "maior regularidade — quando isso não acontece, há iniquidade "
+        "Indicadores de acesso, regularidade e fragmentação dos últimos "
+        "365 dias, comparados com a média do município. Pacientes com "
+        "maior carga de morbidade deveriam ter mais consultas e "
+        "intervalos menores — quando isso não acontece, há iniquidade "
         "no cuidado."
     )
 
     with st.spinner("Carregando indicadores de continuidade..."):
-        cont = carregar_continuidade_agregado(ap_sel, cli_sel, esf_sel)
+        cont     = carregar_continuidade_agregado(ap_sel, cli_sel, esf_sel)
+        cont_mun = carregar_continuidade_agregado(None, None, None)
 
-    n_total_c = int(cont.get('n_total', 0) or 0) or 1
+    n_total_c     = int(cont.get('n_total', 0) or 0) or 1
+    n_total_c_mun = int(cont_mun.get('n_total', 0) or 0) or 1
 
     def _pct_int(num):
         return f"{int(num or 0)/n_total_c*100:.0f}%" if n_total_c else "0%"
 
-    # ─── Bloco 1: KPIs panorâmicos (inspirado em INDICADORES_VIOLIN) ───
-    st.markdown("##### Indicadores populacionais")
-    c1, c2, c3, c4 = st.columns(4)
-    _kpi(c1, "👥 Pacientes da equipe", f"{int(cont.get('n_total', 0) or 0):,}")
-    _kpi(c2, "🩺 Sem médico há >180d",
-         f"{int(cont.get('n_sem_medico_180d', 0) or 0):,}",
-         _pct_int(cont.get('n_sem_medico_180d')))
-    _kpi(c3, "📅 Regulares (≥6m com consulta)",
-         f"{int(cont.get('n_regular', 0) or 0):,}",
-         _pct_int(cont.get('n_regular')))
-    _kpi(c4, "🚫 Sem nenhuma consulta no ano",
-         f"{int(cont.get('n_sem_consulta_365d', 0) or 0):,}",
-         _pct_int(cont.get('n_sem_consulta_365d')))
-
-    c5, c6, c7, c8 = st.columns(4)
-    _kpi(c5, "🧩 Fragmentação (>50% das consultas fora da clínica)",
-         f"{int(cont.get('n_baixa_long', 0) or 0):,}",
-         _pct_int(cont.get('n_baixa_long')))
-    _kpi(c6, "⚠️ Alto risco + baixo acesso",
-         f"{int(cont.get('n_alto_baixo_acesso', 0) or 0):,}",
-         _pct_int(cont.get('n_alto_baixo_acesso')))
-    _kpi(c7, "⏱️ Alto risco + intervalo longo",
-         f"{int(cont.get('n_alto_intv_longo', 0) or 0):,}",
-         _pct_int(cont.get('n_alto_intv_longo')))
-    _kpi(c8, "🚑 Uso frequente de urgência",
-         f"{int(cont.get('n_freq_urg', 0) or 0):,}",
-         _pct_int(cont.get('n_freq_urg')))
-
-    # Médias de consultas
-    st.markdown("##### Médias por paciente (últimos 365 dias)")
-    m1, m2, m3, m4 = st.columns(4)
-    def _f(v):
-        return f"{float(v or 0):.1f}" if v is not None else "—"
-    _kpi(m1, "Consultas no total", _f(cont.get('media_consultas_total')))
-    _kpi(m2, "Consultas médicas",  _f(cont.get('media_consultas_med')))
-    _kpi(m3, "Consultas de enfermagem", _f(cont.get('media_consultas_enf')))
-    _kpi(m4, "Consultas de técnico de enfermagem",
-         _f(cont.get('media_consultas_tec')))
-
-    m5, m6, m7, _m8 = st.columns(4)
-    _kpi(m5, "Intervalo mediano entre consultas",
-         f"{_f(cont.get('media_intv_mediano'))} dias")
-    _kpi(m6, "% médicas na unidade",
-         f"{_f(cont.get('media_pct_na_unidade'))}%")
-    _kpi(m7, "% médicas fora da unidade",
-         f"{_f(cont.get('media_pct_fora'))}%")
-
-    st.markdown("---")
-
-    # ─── Bloco 2: lista nominal ───
-    st.markdown("##### Lista nominal de pacientes — continuidade do cuidado")
-
-    with st.spinner("Carregando lista de pacientes..."):
-        df_c = carregar_continuidade_nominal(ap_sel, cli_sel, esf_sel)
-
-    if df_c.empty:
-        st.warning("Sem pacientes para a equipe selecionada.")
-    else:
-        # Filtros — multiselect OR
-        col_f1, col_f2 = st.columns([2, 1])
-        with col_f1:
-            sinalizadores = st.multiselect(
-                "Mostrar pacientes com:",
-                options=[
-                    'Sem médico há >180d',
-                    'Sem consulta no ano',
-                    'Fragmentação (>50% das consultas fora da clínica)',
-                    'Alto risco + baixo acesso',
-                    'Alto risco + intervalo longo',
-                    'Uso frequente de urgência',
-                ],
-                default=[],
-                placeholder="Todos os pacientes (default)",
-                help="Sem filtro: mostra todos. Selecione um ou mais para "
-                     "restringir — lógica OR (paciente aparece se atender "
-                     "a qualquer um dos sinalizadores marcados).",
-                key="cont_filtro_sinaliz",
-            )
-        with col_f2:
-            cargas_disp = ['Muito Alto', 'Alto', 'Moderado', 'Baixo']
-            carga_sel = st.multiselect(
-                "Carga de morbidade",
-                options=cargas_disp,
-                default=[],
-                placeholder="Todas",
-                key="cont_filtro_carga",
-            )
-
-        df_v = df_c.copy()
-        if carga_sel:
-            df_v = df_v[df_v['charlson_categoria'].isin(carga_sel)]
-
-        if sinalizadores:
-            mask = pd.Series(False, index=df_v.index)
-            if 'Sem médico há >180d' in sinalizadores:
-                mask |= (df_v['dias_desde_ultima_medica'].fillna(99999) > 180)
-            if 'Sem consulta no ano' in sinalizadores:
-                mask |= (df_v['consultas_365d'].fillna(0) == 0)
-            if 'Fragmentação (>50% das consultas fora da clínica)' in sinalizadores:
-                mask |= df_v['baixa_longitudinalidade'].fillna(False).astype(bool)
-            if 'Alto risco + baixo acesso' in sinalizadores:
-                mask |= df_v['alto_risco_baixo_acesso'].fillna(False).astype(bool)
-            if 'Alto risco + intervalo longo' in sinalizadores:
-                mask |= df_v['alto_risco_intervalo_longo'].fillna(False).astype(bool)
-            if 'Uso frequente de urgência' in sinalizadores:
-                mask |= df_v['usuario_frequente_urgencia'].fillna(False).astype(bool)
-            df_v = df_v[mask]
-
-        st.caption(
-            f"**{len(df_v):,} pacientes** sendo apresentados "
-            f"(de {len(df_c):,} pacientes da equipe)."
+    # ═════════════════════════════════════════════════════════════
+    # 1. PACIENTES EM ALTO RISCO — pontos críticos
+    # ═════════════════════════════════════════════════════════════
+    st.markdown("##### 1. Pacientes em alto risco — pontos críticos")
+    e1, d1 = st.columns([1, 1.3])
+    with e1:
+        st.markdown(
+            "<div style='line-height:1.6; font-size:0.95em;'>"
+            "Estes três indicadores apontam pacientes que combinam "
+            "<b>alta carga de morbidade</b> com <b>acesso insuficiente</b>. "
+            "São prioridade absoluta para busca ativa e revisão do "
+            "plano de cuidado.<br><br>"
+            "A comparação com o município ajuda a calibrar a leitura: "
+            "equipes em territórios mais vulneráveis tendem a ter % "
+            "mais alto em todos os indicadores. O que importa é "
+            "identificar onde sua equipe está acima da média e priorizar "
+            "esses pacientes."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with d1:
+        sub = st.columns(3)
+        _card_carga_strat(
+            sub[0], "Alto risco + baixo acesso", "⚠️",
+            cont.get('n_alto_baixo_acesso'), n_total_c,
+            cont_mun.get('n_alto_baixo_acesso'), n_total_c_mun,
+            indicador_ruim_se_alto=True,
+        )
+        _card_carga_strat(
+            sub[1], "Alto risco + intervalo longo", "⏱️",
+            cont.get('n_alto_intv_longo'), n_total_c,
+            cont_mun.get('n_alto_intv_longo'), n_total_c_mun,
+            indicador_ruim_se_alto=True,
+        )
+        _card_carga_strat(
+            sub[2], "Uso frequente de urgência", "🚑",
+            cont.get('n_freq_urg'), n_total_c,
+            cont_mun.get('n_freq_urg'), n_total_c_mun,
+            indicador_ruim_se_alto=True,
         )
 
-        if df_v.empty:
-            st.info("Nenhum paciente bate com a combinação de filtros selecionada.")
-        else:
-            df_r = df_v.copy()
+    # ═════════════════════════════════════════════════════════════
+    # 2. ACESSO E REGULARIDADE — estratificado por carga
+    # ═════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown(
+        "##### 2. Acesso e regularidade — estratificado por Carga de Morbidade"
+    )
+    st.caption(
+        "Para cada indicador, comparamos as 4 cargas (🟢 Baixa, 🟡 "
+        "Moderada, 🟠 Alta, 🔴 Muito Alta) com a média do município "
+        "naquela mesma carga. A leitura clínica esperada é descrita "
+        "no texto à esquerda; quando o gradiente está invertido, há "
+        "alerta automático."
+    )
 
-            if MODO_ANONIMO:
-                df_r['nome_exib'] = df_r.apply(
-                    lambda r: anonimizar_nome(
-                        str(r.get('cpf') or r.get('nome', '')),
-                        r.get('genero', '')),
-                    axis=1,
+    # (chave_total, sufixo, label, emoji, ruim_se_alto, esperado_crescente,
+    #  texto_esquerda)
+    _SUB_ATOS = [
+        (
+            "n_sem_medico_180d", "sm180",
+            "Sem médico há mais de 180 dias", "🩺",
+            True, False,
+            "Pacientes com maior carga de morbidade <b>deveriam estar "
+            "entre os mais bem acompanhados</b>: o esperado é que o "
+            "% sem médico recente diminua conforme a carga aumenta. "
+            "Quando isso não acontece, é sinal de <b>iniquidade no "
+            "acesso</b> — quem mais precisa, menos vê o médico.",
+        ),
+        (
+            "n_regular", "reg",
+            "Acompanhamento regular (≥6 meses com consulta)", "📅",
+            False, True,
+            "<b>Regularidade aumenta com a carga</b> é o gradiente "
+            "esperado: pacientes mais complexos exigem retornos mais "
+            "frequentes. Equipes maduras costumam ter Muito Alto e "
+            "Alto bem acima de Baixo neste indicador.",
+        ),
+        (
+            "n_sem_consulta_365d", "sc",
+            "Sem nenhuma consulta no ano", "🚫",
+            True, False,
+            "Esperamos % cada vez <b>menor</b> conforme a carga "
+            "aumenta. Pacientes Muito Alto sem nenhuma consulta no "
+            "ano são <b>prioridade absoluta</b> para busca ativa — "
+            "alto risco clínico desconhecido.",
+        ),
+        (
+            "n_baixa_long", "bl",
+            "Fragmentação (>50% das consultas fora da clínica)", "🧩",
+            True, False,
+            "Pacientes mais complexos <b>deveriam ter cuidado "
+            "centrado na equipe de referência</b> — esperamos "
+            "fragmentação cair com a carga. Alta fragmentação em "
+            "Muito Alto sugere falha de vínculo: o paciente busca "
+            "cuidado em outras unidades porque não encontra "
+            "regularidade na sua.",
+        ),
+    ]
+
+    for chave_total, suf, label, emoji, ruim_alto, cresc, texto in _SUB_ATOS:
+        st.markdown(f"###### {emoji} {label}")
+        e, d = st.columns([1, 1.3])
+        with e:
+            # Detecta inversão de gradiente
+            pcts = []
+            for suf_carga in ('baixo', 'mod', 'alto', 'ma'):
+                n  = cont.get(f'n_{suf}_{suf_carga}', 0)
+                dn = cont.get(f'n_carga_{suf_carga}', 0)
+                pcts.append((n / dn * 100) if dn else None)
+            inversao = _detecta_inversao_gradiente(pcts, cresc)
+
+            html = (f"<div style='line-height:1.6; font-size:0.92em;'>"
+                    f"{texto}</div>")
+            if inversao:
+                html += (
+                    f"<div style='margin-top:10px; padding:8px 10px; "
+                    f"border-left:3px solid #C0392B; "
+                    f"background:rgba(192,57,43,0.08); border-radius:4px; "
+                    f"font-size:0.88em;'>{inversao}</div>"
                 )
-            else:
-                df_r['nome_exib'] = df_r['nome']
+            st.markdown(html, unsafe_allow_html=True)
+        with d:
+            sub = st.columns(4)
+            for i, (carga_lbl, em, suf_carga) in enumerate([
+                ("Baixa",      "🟢", "baixo"),
+                ("Moderada",   "🟡", "mod"),
+                ("Alta",       "🟠", "alto"),
+                ("Muito Alta", "🔴", "ma"),
+            ]):
+                _card_carga_strat(
+                    sub[i], carga_lbl, em,
+                    cont.get(f'n_{suf}_{suf_carga}'),
+                    cont.get(f'n_carga_{suf_carga}'),
+                    cont_mun.get(f'n_{suf}_{suf_carga}'),
+                    cont_mun.get(f'n_carga_{suf_carga}'),
+                    indicador_ruim_se_alto=ruim_alto,
+                )
 
-            # Calcular consultas médicas FORA da unidade (n_int)
-            def _fora(row):
-                med = row.get('consultas_medicas_365d')
-                pct = row.get('pct_consultas_medicas_fora_365d')
-                if pd.isna(med) or pd.isna(pct):
-                    return None
-                return int(round(float(med) * float(pct) / 100.0))
-            df_r['n_med_fora'] = df_r.apply(_fora, axis=1)
+    # ═════════════════════════════════════════════════════════════
+    # 3. MÉDIAS DE CONSULTAS (12 meses) — estratificado por carga
+    # ═════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown(
+        "##### 3. Médias por paciente nos últimos 12 meses — por Carga"
+    )
+    st.caption(
+        "Médias absolutas (consultas/ano, intervalo em dias, % na "
+        "unidade) por carga de morbidade, comparadas com a média do "
+        "município. <b>Mais consultas e intervalos menores são bons "
+        "sinais</b> em cargas altas. Inversões nesse padrão "
+        "(carga alta com poucas consultas / intervalo grande) "
+        "indicam iniquidade.",
+        unsafe_allow_html=False,
+    )
 
-            def _fmt_dias(v):
-                return f"{int(v)}" if pd.notna(v) else "—"
+    # (sufixo, label, emoji, ruim_se_alto, esperado_crescente)
+    _MEDIAS_STRAT = [
+        ("ct",  "Consultas no total / ano",         "👥", False, True),
+        ("med", "Consultas médicas / ano",          "🩺", False, True),
+        ("enf", "Consultas de enfermagem / ano",    "📋", False, True),
+        ("tec", "Consultas de técnico / ano",       "💉", False, True),
+        ("iv",  "Intervalo mediano entre consultas (dias)",
+                                                    "⏱️", True,  False),
+        ("pu",  "% de consultas médicas na unidade",
+                                                    "🏥", False, True),
+    ]
 
-            def _fmt_reg(v):
-                if pd.isna(v) or v is None:
-                    return '—'
-                v = str(v).lower()
-                return {
-                    'regular':            '🟢 Regular',
-                    'irregular':          '🟡 Irregular',
-                    'esporadico':         '🟠 Esporádico',
-                    'sem_acompanhamento': '🔴 Sem acompanhamento',
-                }.get(v, v)
-
-            def _fmt_alerta(*flags):
-                """Concatena ⚠️ por flag positiva."""
-                txt = []
-                if flags[0]: txt.append('Fragmentação')
-                if flags[1]: txt.append('Risco↑/Acesso↓')
-                if flags[2]: txt.append('Risco↑/Intervalo')
-                if flags[3]: txt.append('Urgência freq.')
-                return ' · '.join(txt) if txt else '—'
-
-            def _truthy(v):
-                """Robusto a pd.NA / None / NaN."""
-                if v is None:
-                    return False
-                try:
-                    if pd.isna(v):
-                        return False
-                except (TypeError, ValueError):
-                    pass
-                return bool(v)
-
-            df_r['alertas'] = df_r.apply(
-                lambda r: _fmt_alerta(
-                    _truthy(r.get('baixa_longitudinalidade')),
-                    _truthy(r.get('alto_risco_baixo_acesso')),
-                    _truthy(r.get('alto_risco_intervalo_longo')),
-                    _truthy(r.get('usuario_frequente_urgencia')),
-                ),
-                axis=1,
+    for suf, label, emoji, ruim_alto, cresc in _MEDIAS_STRAT:
+        st.markdown(f"###### {emoji} {label}")
+        # Detecta inversão usando médias diretas
+        valores = [cont.get(f'm_{suf}_{c}')
+                   for c in ('baixo', 'mod', 'alto', 'ma')]
+        inversao = _detecta_inversao_gradiente(valores, cresc)
+        if inversao:
+            st.markdown(
+                f"<div style='margin:6px 0 10px 0; padding:8px 10px; "
+                f"border-left:3px solid #C0392B; "
+                f"background:rgba(192,57,43,0.08); border-radius:4px; "
+                f"font-size:0.88em;'>{inversao}</div>",
+                unsafe_allow_html=True,
+            )
+        sub = st.columns(4)
+        for i, (carga_lbl, em, suf_carga) in enumerate([
+            ("Baixa",      "🟢", "baixo"),
+            ("Moderada",   "🟡", "mod"),
+            ("Alta",       "🟠", "alto"),
+            ("Muito Alta", "🔴", "ma"),
+        ]):
+            _card_carga_strat(
+                sub[i], carga_lbl, em,
+                cont.get(f'm_{suf}_{suf_carga}'), None,
+                cont_mun.get(f'm_{suf}_{suf_carga}'), None,
+                indicador_ruim_se_alto=ruim_alto,
+                formato_valor='avg',
             )
 
-            df_r = df_r.sort_values(
-                ['alto_risco_baixo_acesso', 'dias_desde_ultima_medica'],
-                ascending=[False, False], na_position='last',
-            )
-
-            st.dataframe(
-                pd.DataFrame({
-                    'Paciente':   df_r['nome_exib'].values,
-                    'Idade':      df_r['idade'].astype('Int64').values,
-                    'Morbidades': df_r['morbidades_lista'].fillna('—').values,
-                    'Última prescrição crônica':
-                        df_r['medicamentos_lista'].fillna('—').values,
-                    'Carga de Morbidade':
-                        df_r['charlson_categoria'].fillna('—').values,
-                    'Consultas/ano':
-                        df_r['consultas_365d'].astype('Int64').values,
-                    'Médicas/ano':
-                        df_r['consultas_medicas_365d'].astype('Int64').values,
-                    'Enfermagem/ano':
-                        df_r['consultas_enfermagem_365d'].astype('Int64').values,
-                    'Técnico/ano':
-                        df_r['consultas_tecnico_enfermagem_365d'].astype('Int64').values,
-                    'Médicas fora':
-                        df_r['n_med_fora'].astype('Int64').values,
-                    '% fora':
-                        df_r['pct_consultas_medicas_fora_365d'].astype(float).values,
-                    'Dias s/ médico':
-                        df_r['dias_desde_ultima_medica'].apply(_fmt_dias).values,
-                    'Dias s/ enfermagem':
-                        df_r['dias_desde_ultima_enfermagem'].apply(_fmt_dias).values,
-                    'Intervalo mediano':
-                        df_r['intervalo_mediano_dias'].apply(_fmt_dias).values,
-                    'Regularidade':
-                        df_r['regularidade_acompanhamento'].apply(_fmt_reg).values,
-                    'Sinalizadores':
-                        df_r['alertas'].values,
-                }),
-                hide_index=True, use_container_width=True, height=540,
-                column_config={
-                    'Paciente':   st.column_config.TextColumn('Paciente', width='medium'),
-                    'Idade':      st.column_config.NumberColumn('Idade', width='small'),
-                    'Morbidades': st.column_config.TextColumn('Morbidades', width='large'),
-                    'Última prescrição crônica':
-                        st.column_config.TextColumn('Última prescrição crônica',
-                                                    width='large'),
-                    'Carga de Morbidade':
-                        st.column_config.TextColumn('Carga de Morbidade', width='small'),
-                    'Consultas/ano':
-                        st.column_config.NumberColumn('Consultas/ano', width='small'),
-                    'Médicas/ano':
-                        st.column_config.NumberColumn('Médicas/ano', width='small'),
-                    'Enfermagem/ano':
-                        st.column_config.NumberColumn('Enfermagem/ano', width='small'),
-                    'Técnico/ano':
-                        st.column_config.NumberColumn('Técnico/ano', width='small'),
-                    'Médicas fora':
-                        st.column_config.NumberColumn('Médicas fora', width='small'),
-                    '% fora':
-                        st.column_config.NumberColumn('% fora', format='%.0f%%',
-                                                      width='small'),
-                    'Dias s/ médico':
-                        st.column_config.TextColumn('Dias s/ médico', width='small'),
-                    'Dias s/ enfermagem':
-                        st.column_config.TextColumn('Dias s/ enfermagem', width='small'),
-                    'Intervalo mediano':
-                        st.column_config.TextColumn('Intervalo mediano (d)',
-                                                    width='small'),
-                    'Regularidade':
-                        st.column_config.TextColumn('Regularidade', width='small'),
-                    'Sinalizadores':
-                        st.column_config.TextColumn('Sinalizadores', width='medium'),
-                },
-            )
-
-            with st.expander("ℹ️ O que significa cada coluna"):
-                st.markdown("""
-- **Paciente** — nome (anonimizado quando o modo está ativo).
-- **Idade** — em anos.
-- **Morbidades** — diagnósticos crônicos ativos no prontuário.
-- **Última prescrição crônica** — medicamentos da prescrição mais recente.
-- **Carga de Morbidade** — Baixo / Moderado / Alto / Muito Alto,
-  conforme a complexidade clínica do paciente.
-- **Consultas/ano** — total de consultas do paciente nos últimos
-  365 dias (todas as categorias profissionais somadas).
-- **Médicas/ano**, **Enfermagem/ano**, **Técnico/ano** — número de
-  consultas em cada categoria nos últimos 365 dias.
-- **Médicas fora** — número de consultas médicas realizadas em
-  unidade diferente da de cadastro.
-- **% fora** — proporção das consultas médicas do paciente que
-  ocorreram fora da unidade de cadastro.
-- **Dias s/ médico** / **Dias s/ enfermagem** — dias decorridos
-  desde a última consulta de cada profissional.
-- **Intervalo mediano (d)** — mediana dos intervalos entre
-  consultas consecutivas. Reflete o ritmo habitual de acesso.
-- **Regularidade** — 🟢 Regular (≥6 meses com consulta), 🟡
-  Irregular, 🟠 Esporádico, 🔴 Sem acompanhamento.
-- **Sinalizadores** — alertas combinados:
-  *Fragmentação* = >50% das consultas fora da unidade;
-  *Risco↑/Acesso↓* = carga muito alta (≥7) com consultas abaixo
-  do P25 dos pares (iniquidade);
-  *Risco↑/Intervalo* = carga alta com intervalo entre consultas
-  acima do esperado;
-  *Urgência freq.* = ≥3 atendimentos em UPA/CER/hospital de
-  urgência nos últimos 365 dias.
-""")
+    # ═════════════════════════════════════════════════════════════
+    # Final: nota remetendo a Meus Pacientes
+    # ═════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.info(
+        "🧑‍⚕️ **Para abrir os pacientes individualmente**, vá para a "
+        "aba **Meus Pacientes**. Lá é possível filtrar a lista "
+        "nominal por **Carga de Morbidade** e por **sinalizadores de "
+        "continuidade** (sem médico há >180d, alto risco com baixo "
+        "acesso, alto risco com intervalo longo, uso frequente de "
+        "urgência) e abrir o card completo de cada paciente."
+    )
 
 # ─────────────────────────────────────────────────────────────
 # ABA 4 — POLIFARMÁCIA (STOPP/START/Beers)
