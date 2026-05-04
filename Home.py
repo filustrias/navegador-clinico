@@ -499,7 +499,7 @@ if conexao_ok:
     <div class="pcard-num" style="color:#9B59B6">{pct_acb:.1f}%</div>
     <div class="pcard-sub">ACB ≥ 3 — risco cognitivo relevante<br>🧓 Alerta em idosos: {pct_acbi:.1f}% ({n_acb_idoso:,})</div>
     <hr class="pcard-divider">
-    <div class="pcard-sub">Distribuição por carga de morbidade (Charlson)</div>
+    <div class="pcard-sub">Distribuição por Carga de Morbidade</div>
     <div class="pchart-wrap"><canvas id="c-ch"></canvas></div>
   </div>
 </div>

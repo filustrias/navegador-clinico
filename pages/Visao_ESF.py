@@ -1562,8 +1562,8 @@ with tab_cont:
 - **Idade** — em anos.
 - **Morbidades** — diagnósticos crônicos ativos no prontuário.
 - **Última prescrição crônica** — medicamentos da prescrição mais recente.
-- **Carga de Morbidade** — categoria do escore de Charlson
-  (Baixo / Moderado / Alto / Muito Alto).
+- **Carga de Morbidade** — Baixo / Moderado / Alto / Muito Alto,
+  conforme a complexidade clínica do paciente.
 - **Consultas/ano** — total de consultas do paciente nos últimos
   365 dias (todas as categorias profissionais somadas).
 - **Médicas/ano**, **Enfermagem/ano**, **Técnico/ano** — número de
@@ -2620,7 +2620,7 @@ with tab_has_narr:
         st.markdown(
             f"<div style='font-size:1.0em; line-height:1.65;'>"
             f"Olhando para a <b>complexidade clínica</b> dos "
-            f"{_bh(n_has_total)} hipertensos pelo escore de Charlson:"
+            f"{_bh(n_has_total)} hipertensos pela Carga de Morbidade:"
             f"<br>"
             f"• 🟢 {_bh_green(n_chb)} têm <b>carga baixa</b>;<br>"
             f"• 🟡 {_bh(n_chm)} têm <b>carga moderada</b>;<br>"
@@ -2644,8 +2644,7 @@ with tab_has_narr:
     with a6d:
         st.markdown(
             f"<div style='font-size:0.85em; color:#555555; "
-            f"margin-bottom:6px;'><b>Carga de morbidade</b> "
-            f"(Charlson)</div>",
+            f"margin-bottom:6px;'><b>Carga de Morbidade</b></div>",
             unsafe_allow_html=True,
         )
         c1, c2, c3, c4 = st.columns(4)
@@ -3594,7 +3593,7 @@ with tab_dm_narr:
         st.markdown(
             f"<div style='font-size:1.0em; line-height:1.65;'>"
             f"Olhando para a <b>complexidade clínica</b> dos "
-            f"{_b(n_dm_total)} diabéticos pelo escore de Charlson:<br>"
+            f"{_b(n_dm_total)} diabéticos pela Carga de Morbidade:<br>"
             f"• 🟢 {_bgreen(n_chb_d)} têm <b>carga baixa</b>;<br>"
             f"• 🟡 {_b(n_chm_d)} têm <b>carga moderada</b>;<br>"
             f"• 🟠 {_borange(n_cha_d)} têm <b>carga alta</b>;<br>"
@@ -3617,8 +3616,7 @@ with tab_dm_narr:
     with a6d_d:
         st.markdown(
             f"<div style='font-size:0.85em; color:#555555; "
-            f"margin-bottom:6px;'><b>Carga de morbidade</b> "
-            f"(Charlson)</div>",
+            f"margin-bottom:6px;'><b>Carga de Morbidade</b></div>",
             unsafe_allow_html=True,
         )
         c1, c2, c3, c4 = st.columns(4)
