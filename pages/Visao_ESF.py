@@ -553,7 +553,16 @@ def carregar_hipertensao_narrativa_agregado(ap: str, clinica: str, esf: str) -> 
         COUNTIF(HAS IS NOT NULL AND intensidade_tratamento_has = 'DUPLA_TERAPIA')      AS n_int_dupla,
         COUNTIF(HAS IS NOT NULL AND intensidade_tratamento_has = 'TRIPLA_TERAPIA')     AS n_int_tripla,
         COUNTIF(HAS IS NOT NULL AND intensidade_tratamento_has = 'QUADRUPLA_TERAPIA')  AS n_int_quadrupla,
-        COUNTIF(HAS IS NOT NULL AND intensidade_tratamento_has IS NULL)                AS n_int_sem_med
+        COUNTIF(HAS IS NOT NULL AND intensidade_tratamento_has IS NULL)                AS n_int_sem_med,
+        -- Complexidade clínica e farmacológica
+        COUNTIF(HAS IS NOT NULL AND charlson_categoria = 'Baixo')        AS n_charl_baixo,
+        COUNTIF(HAS IS NOT NULL AND charlson_categoria = 'Moderado')     AS n_charl_moderado,
+        COUNTIF(HAS IS NOT NULL AND charlson_categoria = 'Alto')         AS n_charl_alto,
+        COUNTIF(HAS IS NOT NULL AND charlson_categoria = 'Muito Alto')   AS n_charl_muito_alto,
+        COUNTIF(HAS IS NOT NULL AND total_morbidades >= 2)               AS n_multimorb,
+        COUNTIF(HAS IS NOT NULL AND polifarmacia = TRUE)                 AS n_polifarm,
+        COUNTIF(HAS IS NOT NULL AND hiperpolifarmacia = TRUE)            AS n_hiperpoli,
+        COUNTIF(HAS IS NOT NULL AND acb_score_total >= 3)                AS n_acb_alto
     FROM `{_fqn(config.TABELA_FATO)}`
     WHERE area_programatica_cadastro = '{ap}'
       AND nome_clinica_cadastro     = '{clinica}'
@@ -632,7 +641,16 @@ def carregar_diabetes_agregado(ap: str, clinica: str, esf: str) -> dict:
                 AND principio_INSULINA_PRANDIAL_HUMANA IS NULL
                 AND principio_INSULINA_BASAL_ANALOGICA IS NULL
                 AND principio_INSULINA_PRANDIAL_ANALOGICA IS NULL
-                AND principio_INSULINA_MISTA         IS NULL)            AS n_sulfo_mono
+                AND principio_INSULINA_MISTA         IS NULL)            AS n_sulfo_mono,
+        -- Complexidade clínica e farmacológica (denominador = diabéticos)
+        COUNTIF(DM IS NOT NULL AND charlson_categoria = 'Baixo')         AS n_charl_baixo,
+        COUNTIF(DM IS NOT NULL AND charlson_categoria = 'Moderado')      AS n_charl_moderado,
+        COUNTIF(DM IS NOT NULL AND charlson_categoria = 'Alto')          AS n_charl_alto,
+        COUNTIF(DM IS NOT NULL AND charlson_categoria = 'Muito Alto')    AS n_charl_muito_alto,
+        COUNTIF(DM IS NOT NULL AND total_morbidades >= 2)                AS n_multimorb,
+        COUNTIF(DM IS NOT NULL AND polifarmacia = TRUE)                  AS n_polifarm,
+        COUNTIF(DM IS NOT NULL AND hiperpolifarmacia = TRUE)             AS n_hiperpoli,
+        COUNTIF(DM IS NOT NULL AND acb_score_total >= 3)                 AS n_acb_alto
     FROM `{_fqn(config.TABELA_FATO)}`
     WHERE area_programatica_cadastro = '{ap}'
       AND nome_clinica_cadastro     = '{clinica}'
@@ -2585,6 +2603,73 @@ with tab_has_narr:
         _kpi(c12, "❔ Sem variáveis p/ calcular",
              f"{n_who_nc:,}", _pct_hn(n_who_nc))
 
+    # ───────── ATO 6 — COMPLEXIDADE CLÍNICA E FARMACOLÓGICA ─────────
+    n_chb     = _vh('n_charl_baixo')
+    n_chm     = _vh('n_charl_moderado')
+    n_cha     = _vh('n_charl_alto')
+    n_chma    = _vh('n_charl_muito_alto')
+    n_multi   = _vh('n_multimorb')
+    n_poli    = _vh('n_polifarm')
+    n_hpoli   = _vh('n_hiperpoli')
+    n_acb     = _vh('n_acb_alto')
+
+    st.markdown("---")
+    st.markdown("##### 6. Complexidade clínica e farmacológica")
+    a6e, a6d = st.columns([1, 1.1])
+    with a6e:
+        st.markdown(
+            f"<div style='font-size:1.0em; line-height:1.65;'>"
+            f"Olhando para a <b>complexidade clínica</b> dos "
+            f"{_bh(n_has_total)} hipertensos pelo escore de Charlson:"
+            f"<br>"
+            f"• 🟢 {_bh_green(n_chb)} têm <b>carga baixa</b>;<br>"
+            f"• 🟡 {_bh(n_chm)} têm <b>carga moderada</b>;<br>"
+            f"• 🟠 {_bh_orange(n_cha)} têm <b>carga alta</b>;<br>"
+            f"• 🔴 {_bh_red(n_chma)} têm <b>carga muito alta</b>.<br><br>"
+            f"{_bh_orange(n_multi)} são <b>multimórbidos</b> "
+            f"(≥2 morbidades crônicas) — pacientes que precisam de "
+            f"abordagem coordenada e priorização clínica.<br><br>"
+            f"<b>Carga farmacológica:</b><br>"
+            f"• 💊 {_bh_orange(n_poli)} em <b>polifarmácia</b> "
+            f"(≥5 medicamentos crônicos);<br>"
+            f"• 💊💊 {_bh_red(n_hpoli)} em <b>hiperpolifarmácia</b> "
+            f"(≥10 medicamentos crônicos);<br>"
+            f"• 🧠 {_bh_red(n_acb)} com <b>alta carga "
+            f"anticolinérgica</b> (ACB ≥3) — fator de risco "
+            f"importante para queda, declínio cognitivo e delírio, "
+            f"sobretudo em idosos."
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    with a6d:
+        st.markdown(
+            f"<div style='font-size:0.85em; color:#555555; "
+            f"margin-bottom:6px;'><b>Carga de morbidade</b> "
+            f"(Charlson)</div>",
+            unsafe_allow_html=True,
+        )
+        c1, c2, c3, c4 = st.columns(4)
+        _kpi(c1, "🟢 Baixa",       f"{n_chb:,}",  _pct_hn(n_chb))
+        _kpi(c2, "🟡 Moderada",    f"{n_chm:,}",  _pct_hn(n_chm))
+        _kpi(c3, "🟠 Alta",        f"{n_cha:,}",  _pct_hn(n_cha))
+        _kpi(c4, "🔴 Muito alta",  f"{n_chma:,}", _pct_hn(n_chma))
+        st.markdown(
+            f"<div style='font-size:0.85em; color:#555555; "
+            f"margin-top:10px; margin-bottom:6px;'>"
+            f"<b>Multimorbidade e carga farmacológica</b></div>",
+            unsafe_allow_html=True,
+        )
+        c5, c6 = st.columns(2)
+        _kpi(c5, "🧬 Multimórbidos (≥2 morbidades)",
+             f"{n_multi:,}", _pct_hn(n_multi))
+        _kpi(c6, "💊 Polifarmácia (≥5 meds)",
+             f"{n_poli:,}", _pct_hn(n_poli))
+        c7, c8 = st.columns(2)
+        _kpi(c7, "💊💊 Hiperpolifarmácia (≥10 meds)",
+             f"{n_hpoli:,}", _pct_hn(n_hpoli))
+        _kpi(c8, "🧠 Alta carga anticolinérgica (ACB ≥3)",
+             f"{n_acb:,}", _pct_hn(n_acb))
+
     # ───────── LISTA NOMINAL (mesma da aba "🩺 Hipertensão") ─────────
     st.markdown("---")
     st.markdown("##### Lista nominal de hipertensos")
@@ -3491,6 +3576,72 @@ with tab_dm_narr:
              f"{n_nefro:,}", _pct_dn(n_nefro))
         _kpi(c5, "❤️ Complicação CV do DM",
              f"{n_cv:,}", _pct_dn(n_cv))
+
+    # ───────── ATO 6 — COMPLEXIDADE CLÍNICA E FARMACOLÓGICA ─────────
+    n_chb_d   = _val('n_charl_baixo')
+    n_chm_d   = _val('n_charl_moderado')
+    n_cha_d   = _val('n_charl_alto')
+    n_chma_d  = _val('n_charl_muito_alto')
+    n_multi_d = _val('n_multimorb')
+    n_poli_d  = _val('n_polifarm')
+    n_hpoli_d = _val('n_hiperpoli')
+    n_acb_d   = _val('n_acb_alto')
+
+    st.markdown("---")
+    st.markdown("##### 6. Complexidade clínica e farmacológica")
+    a6e_d, a6d_d = st.columns([1, 1.1])
+    with a6e_d:
+        st.markdown(
+            f"<div style='font-size:1.0em; line-height:1.65;'>"
+            f"Olhando para a <b>complexidade clínica</b> dos "
+            f"{_b(n_dm_total)} diabéticos pelo escore de Charlson:<br>"
+            f"• 🟢 {_bgreen(n_chb_d)} têm <b>carga baixa</b>;<br>"
+            f"• 🟡 {_b(n_chm_d)} têm <b>carga moderada</b>;<br>"
+            f"• 🟠 {_borange(n_cha_d)} têm <b>carga alta</b>;<br>"
+            f"• 🔴 {_bred(n_chma_d)} têm <b>carga muito alta</b>.<br><br>"
+            f"{_borange(n_multi_d)} são <b>multimórbidos</b> "
+            f"(≥2 morbidades crônicas) — pacientes que precisam de "
+            f"abordagem coordenada e priorização clínica.<br><br>"
+            f"<b>Carga farmacológica:</b><br>"
+            f"• 💊 {_borange(n_poli_d)} em <b>polifarmácia</b> "
+            f"(≥5 medicamentos crônicos);<br>"
+            f"• 💊💊 {_bred(n_hpoli_d)} em <b>hiperpolifarmácia</b> "
+            f"(≥10 medicamentos crônicos);<br>"
+            f"• 🧠 {_bred(n_acb_d)} com <b>alta carga "
+            f"anticolinérgica</b> (ACB ≥3) — fator de risco "
+            f"importante para queda, declínio cognitivo e delírio, "
+            f"sobretudo em idosos."
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    with a6d_d:
+        st.markdown(
+            f"<div style='font-size:0.85em; color:#555555; "
+            f"margin-bottom:6px;'><b>Carga de morbidade</b> "
+            f"(Charlson)</div>",
+            unsafe_allow_html=True,
+        )
+        c1, c2, c3, c4 = st.columns(4)
+        _kpi(c1, "🟢 Baixa",       f"{n_chb_d:,}",  _pct_dn(n_chb_d))
+        _kpi(c2, "🟡 Moderada",    f"{n_chm_d:,}",  _pct_dn(n_chm_d))
+        _kpi(c3, "🟠 Alta",        f"{n_cha_d:,}",  _pct_dn(n_cha_d))
+        _kpi(c4, "🔴 Muito alta",  f"{n_chma_d:,}", _pct_dn(n_chma_d))
+        st.markdown(
+            f"<div style='font-size:0.85em; color:#555555; "
+            f"margin-top:10px; margin-bottom:6px;'>"
+            f"<b>Multimorbidade e carga farmacológica</b></div>",
+            unsafe_allow_html=True,
+        )
+        c5, c6 = st.columns(2)
+        _kpi(c5, "🧬 Multimórbidos (≥2 morbidades)",
+             f"{n_multi_d:,}", _pct_dn(n_multi_d))
+        _kpi(c6, "💊 Polifarmácia (≥5 meds)",
+             f"{n_poli_d:,}", _pct_dn(n_poli_d))
+        c7, c8 = st.columns(2)
+        _kpi(c7, "💊💊 Hiperpolifarmácia (≥10 meds)",
+             f"{n_hpoli_d:,}", _pct_dn(n_hpoli_d))
+        _kpi(c8, "🧠 Alta carga anticolinérgica (ACB ≥3)",
+             f"{n_acb_d:,}", _pct_dn(n_acb_d))
 
     # ───────── LISTA NOMINAL (mesma da aba "🩸 Diabetes") ─────────
     st.markdown("---")
