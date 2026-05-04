@@ -515,11 +515,13 @@ def carregar_hipertensao_narrativa_agregado(ap: str, clinica: str, esf: str) -> 
         COUNTIF(HAS IS NOT NULL AND CI IS NOT NULL)                    AS n_has_ci,
         COUNTIF(HAS IS NOT NULL AND ICC IS NOT NULL)                   AS n_has_icc,
         COUNTIF(HAS IS NOT NULL AND stroke IS NOT NULL)                AS n_has_avc,
-        -- Risco cardiovascular
-        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'MUITO ALTO')    AS n_risco_muito_alto,
-        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'ALTO')          AS n_risco_alto,
-        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'INTERMEDIÁRIO') AS n_risco_intermediario,
-        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'BAIXO')         AS n_risco_baixo,
+        -- Risco cardiovascular (HEARTS / OMS / OPAS — who_categoria_risco_simplificada)
+        COUNTIF(HAS IS NOT NULL AND who_categoria_risco_simplificada = 'Crítico')    AS n_who_critico,
+        COUNTIF(HAS IS NOT NULL AND who_categoria_risco_simplificada = 'Muito alto') AS n_who_muito_alto,
+        COUNTIF(HAS IS NOT NULL AND who_categoria_risco_simplificada = 'Alto')       AS n_who_alto,
+        COUNTIF(HAS IS NOT NULL AND who_categoria_risco_simplificada = 'Moderado')   AS n_who_moderado,
+        COUNTIF(HAS IS NOT NULL AND who_categoria_risco_simplificada = 'Baixo')      AS n_who_baixo,
+        COUNTIF(HAS IS NOT NULL AND who_categoria_risco_simplificada IS NULL)        AS n_who_nao_calc,
         -- Prescrições por classe de anti-hipertensivo
         COUNTIF(HAS IS NOT NULL AND principio_IECA IS NOT NULL)          AS n_rx_ieca,
         COUNTIF(HAS IS NOT NULL AND principio_BRA IS NOT NULL)           AS n_rx_bra,
@@ -2237,10 +2239,12 @@ with tab_has_narr:
     n_has_ci    = _vh('n_has_ci')
     n_has_icc   = _vh('n_has_icc')
     n_has_avc   = _vh('n_has_avc')
-    n_rcv_ma    = _vh('n_risco_muito_alto')
-    n_rcv_a     = _vh('n_risco_alto')
-    n_rcv_int   = _vh('n_risco_intermediario')
-    n_rcv_b     = _vh('n_risco_baixo')
+    n_who_crit  = _vh('n_who_critico')
+    n_who_ma    = _vh('n_who_muito_alto')
+    n_who_a     = _vh('n_who_alto')
+    n_who_mod   = _vh('n_who_moderado')
+    n_who_b     = _vh('n_who_baixo')
+    n_who_nc    = _vh('n_who_nao_calc')
 
     n_ieca      = _vh('n_rx_ieca')
     n_bra       = _vh('n_rx_bra')
@@ -2324,7 +2328,7 @@ with tab_has_narr:
             f"<div style='font-size:1.0em; line-height:1.65;'>"
             f"Dos {_bh(n_has_total)} hipertensos, {_bh_green(n_ctrl_h)} "
             f"estão <b>controlados</b> (PA dentro da meta), "
-            f"{_bh_red(n_desc_h)} <b>descontrolados</b> e "
+            f"{_bh_red(n_desc_h)} <b>não-controlados</b> e "
             f"{_bh_orange(n_sem_info)} sem informação suficiente.<br><br>"
             f"<b>Por faixa etária:</b><br>"
             f"• Menores de 80a (meta &lt;140/90): {_bh_green(n_ctrl_m80)} "
@@ -2335,10 +2339,13 @@ with tab_has_narr:
             f"≤90 dias, {_bh(n_pa_180)} entre 91–180d, "
             f"{_bh_orange(n_pa_365)} entre 181–365d, "
             f"{_bh_red(n_pa_old)} <b>há mais de 365 dias ou nunca</b>.<br><br>"
-            f"<b>Tendência:</b> 📈 {_bh_green(n_melh)} melhorando, "
-            f"➡️ {_bh(n_est_h)} estáveis, 📉 {_bh_red(n_pio_h)} piorando. "
-            f"PA média da equipe: {_bh(media_pa_str)}; "
-            f"<b>% dias controlado/ano</b>: {_bh(media_pct_str)}."
+            f"<b>Tendência de controle da AP:</b> 📈 "
+            f"{_bh_green(n_melh)} estão melhorando, ➡️ {_bh(n_est_h)} "
+            f"estão estáveis, 📉 {_bh_red(n_pio_h)} estão piorando.<br><br>"
+            f"O <b>valor médio de PA da equipe</b> é {_bh(media_pa_str)} "
+            f"e seus pacientes têm passado, em média, "
+            f"{_bh(media_pct_str)} dos dias do ano com a PA dentro dos "
+            f"valores desejados."
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -2390,9 +2397,8 @@ with tab_has_narr:
             f"• {_bh_red(n_sem_eas)} <b>sem EAS</b>;<br>"
             f"• {_bh_red(n_sem_ecg)} <b>sem ECG</b>;<br>"
             f"• {_bh_red(n_sem_imc)} <b>sem IMC calculável</b> "
-            f"(peso e/ou altura ausentes).<br><br>"
-            f"Todo hipertenso deve realizar este conjunto de exames "
-            f"ao menos uma vez por ano."
+            f"(está faltando aferição de peso e/ou altura para "
+            f"calcularmos o IMC)."
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -2537,12 +2543,17 @@ with tab_has_narr:
             f"(IECA/BRA/INRA + BB + ARM + SGLT-2);<br>"
             f"• 🧠 {_bh(n_has_avc)} com <b>AVC prévio</b> "
             f"(controle rigoroso de PA reduz reincidência).<br><br>"
-            f"<b>Risco cardiovascular (Framingham + SBC):</b><br>"
-            f"🔴 {_bh_red(n_rcv_ma)} muito alto · "
-            f"🟠 {_bh_orange(n_rcv_a)} alto · "
-            f"🟡 {_bh(n_rcv_int)} intermediário · "
-            f"🟢 {_bh_green(n_rcv_b)} baixo."
-            f"</div>",
+            f"<b>Risco Cardiovascular (HEARTS / OMS / OPAS):</b><br>"
+            f"🚨 {_bh_red(n_who_crit)} crítico (≥30%) · "
+            f"🔴 {_bh_red(n_who_ma)} muito alto (20–30%) · "
+            f"🟠 {_bh_orange(n_who_a)} alto (10–20%) · "
+            f"🟡 {_bh(n_who_mod)} moderado (5–10%) · "
+            f"🟢 {_bh_green(n_who_b)} baixo (&lt;5%)."
+            + (f"<br><span style='color:#777777;'>"
+               f"({_bh(n_who_nc)} sem variáveis suficientes para "
+               f"calcular o risco — modelos lab e non-lab não "
+               f"calculáveis)</span>" if n_who_nc > 0 else "")
+            + f"</div>",
             unsafe_allow_html=True,
         )
     with a5d:
@@ -2561,14 +2572,18 @@ with tab_has_narr:
         st.markdown(
             f"<div style='font-size:0.85em; color:#555555; "
             f"margin-top:10px; margin-bottom:6px;'>"
-            f"<b>Risco cardiovascular</b> (Framingham + SBC)</div>",
+            f"<b>Risco Cardiovascular</b> (HEARTS / OMS / OPAS)</div>",
             unsafe_allow_html=True,
         )
-        c7, c8, c9, c10 = st.columns(4)
-        _kpi(c7,  "🔴 Muito alto",      f"{n_rcv_ma:,}",  _pct_hn(n_rcv_ma))
-        _kpi(c8,  "🟠 Alto",            f"{n_rcv_a:,}",   _pct_hn(n_rcv_a))
-        _kpi(c9,  "🟡 Intermediário",   f"{n_rcv_int:,}", _pct_hn(n_rcv_int))
-        _kpi(c10, "🟢 Baixo",           f"{n_rcv_b:,}",   _pct_hn(n_rcv_b))
+        c7, c8, c9 = st.columns(3)
+        _kpi(c7,  "🚨 Crítico (≥30%)",       f"{n_who_crit:,}", _pct_hn(n_who_crit))
+        _kpi(c8,  "🔴 Muito alto (20–30%)",  f"{n_who_ma:,}",   _pct_hn(n_who_ma))
+        _kpi(c9,  "🟠 Alto (10–20%)",        f"{n_who_a:,}",    _pct_hn(n_who_a))
+        c10, c11, c12 = st.columns(3)
+        _kpi(c10, "🟡 Moderado (5–10%)",     f"{n_who_mod:,}",  _pct_hn(n_who_mod))
+        _kpi(c11, "🟢 Baixo (<5%)",          f"{n_who_b:,}",    _pct_hn(n_who_b))
+        _kpi(c12, "❔ Sem variáveis p/ calcular",
+             f"{n_who_nc:,}", _pct_hn(n_who_nc))
 
     # ───────── LISTA NOMINAL (mesma da aba "🩺 Hipertensão") ─────────
     st.markdown("---")
