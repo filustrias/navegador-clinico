@@ -731,6 +731,132 @@ def _kpi(col, label, valor, delta=None, ajuda=None):
 
 
 # ═══════════════════════════════════════════════════════════════
+# HELPERS — CARD DE LACUNA (aba "Lacunas" narrativa)
+# ═══════════════════════════════════════════════════════════════
+def _gradiente_bg_pct(v, alpha=0.25):
+    """Gradiente verde→amarelo→vermelho conforme % (0–100)."""
+    if pd.isna(v):
+        return f"rgba(229,231,235,{alpha})"
+    norm = max(0.0, min(1.0, float(v) / 100.0))
+    if norm <= 0.5:
+        t = norm * 2
+        r = int(round(76  + (255 - 76)  * t))
+        g = int(round(175 + (235 - 175) * t))
+        b = int(round( 80 + ( 59 -  80) * t))
+    else:
+        t = (norm - 0.5) * 2
+        r = int(round(255 + (231 - 255) * t))
+        g = int(round(235 + ( 76 - 235) * t))
+        b = int(round( 59 + ( 60 -  59) * t))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _cor_borda_delta(delta):
+    """Cor da borda do card de lacuna conforme comparação com município.
+    Vermelho = pior; verde = melhor; cinza = ~similar."""
+    if delta is None or pd.isna(delta):
+        return "#9CA3AF"
+    if delta > 0.5:
+        return "#C0392B"
+    if delta < -0.5:
+        return "#27AE60"
+    return "#9CA3AF"
+
+
+def _card_lacuna(col, row):
+    """Card de uma lacuna: número absoluto + n/N (%) + delta vs município.
+    Fundo com gradiente pela %; borda esquerda colorida pelo delta."""
+    nome    = row['lacuna']
+    num     = int(row['numerador']) if pd.notna(row.get('numerador')) else 0
+    den     = int(row['denominador']) if pd.notna(row.get('denominador')) else 0
+    pct     = float(row['pct']) if pd.notna(row.get('pct')) else 0.0
+    pct_mun = row.get('pct_mun')
+    delta   = row.get('delta')
+
+    bg     = _gradiente_bg_pct(pct, alpha=0.20)
+    border = _cor_borda_delta(delta)
+
+    if pct_mun is None or pd.isna(pct_mun):
+        delta_txt = ("<span style='color:#6B7280;'>"
+                     "vs município —</span>")
+    elif delta is None or pd.isna(delta):
+        delta_txt = ("<span style='color:#6B7280;'>"
+                     "vs município —</span>")
+    elif delta > 0.5:
+        delta_txt = (f"<span style='color:#C0392B; font-weight:600;'>"
+                     f"↑ +{delta:.1f} pp vs município "
+                     f"({float(pct_mun):.0f}%)</span>")
+    elif delta < -0.5:
+        delta_txt = (f"<span style='color:#27AE60; font-weight:600;'>"
+                     f"↓ {delta:.1f} pp vs município "
+                     f"({float(pct_mun):.0f}%)</span>")
+    else:
+        delta_txt = (f"<span style='color:#6B7280;'>"
+                     f"≈ vs município ({float(pct_mun):.0f}%)</span>")
+
+    with col:
+        st.markdown(
+            f"<div style='border:1px solid {T.BORDER}; "
+            f"border-left:5px solid {border}; border-radius:8px; "
+            f"padding:10px 12px; height:100%; box-sizing:border-box; "
+            f"background:{bg};'>"
+            f"<div style='color:{T.TEXT_SECONDARY}; font-size:0.82em; "
+            f"line-height:1.3; min-height:34px; word-wrap:break-word;'>"
+            f"{nome}</div>"
+            f"<div style='font-size:1.5em; font-weight:600; "
+            f"color:{T.TEXT}; line-height:1.2; margin-top:6px;'>"
+            f"{num:,} <span style='font-size:0.6em; "
+            f"color:{T.TEXT_MUTED}; font-weight:500;'>/ {den:,} "
+            f"({pct:.0f}%)</span></div>"
+            f"<div style='font-size:0.78em; margin-top:4px;'>{delta_txt}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+
+# Texto contextual narrativo por grupo de lacunas. Mostrado à esquerda
+# antes da listagem das lacunas piores/melhores em comparação com o
+# município. Só descreve o RACIONAL CLÍNICO do grupo, deixando os
+# números para os cards.
+NARRATIVA_GRUPO_LACUNAS = {
+    "Cardiopatia Isquêmica (CI)":
+        "Avalia se pacientes com CI estão em <b>prevenção secundária</b> "
+        "adequada — antiagregação plaquetária, estatina de alta "
+        "intensidade e betabloqueador quando apropriado. O efeito "
+        "destas medidas sobre mortalidade e recorrência de eventos é "
+        "maior que qualquer outra intervenção isolada.",
+    "ICC e IRC (manejo clínico)":
+        "Avalia se pacientes com <b>insuficiência cardíaca</b> ou "
+        "<b>doença renal crônica</b> recebem o pacote farmacológico "
+        "que reduz mortalidade e progressão da doença "
+        "(IECA/BRA/INRA, betabloqueador, ARM, SGLT-2). Inclui também "
+        "combinações inadequadas a evitar.",
+    "Fibrilação Atrial (FA)":
+        "Avalia <b>anticoagulação</b> e <b>controle da frequência "
+        "cardíaca</b> em pacientes com FA — duas medidas que reduzem "
+        "drasticamente AVC isquêmico e cardiomiopatia "
+        "taquicardia-induzida.",
+    "Diabetes Mellitus (DM)":
+        "Avalia <b>monitoramento glicêmico</b>, <b>rastreio de "
+        "complicações</b> (pé, microalbuminúria) e adequação do "
+        "<b>diagnóstico (CID)</b> — três pilares do cuidado "
+        "longitudinal do paciente diabético.",
+    "Hipertensão (HAS)":
+        "Avalia <b>aferição regular da PA</b>, <b>controle pressórico</b> "
+        "por faixa etária e adequação do <b>diagnóstico (CID)</b>. "
+        "As metas pressóricas variam conforme idade e comorbidades.",
+    "Prescrições Inapropriadas":
+        "Combinações farmacológicas <b>contraindicadas</b> ou de "
+        "<b>uso questionável</b> em determinadas populações. A "
+        "deprescrição é tão importante quanto a prescrição correta.",
+    "Rastreio":
+        "Identificação <b>oportunística e ativa</b> de hipertensão e "
+        "diabetes em populações elegíveis. Diagnóstico precoce muda "
+        "a história natural dessas doenças.",
+}
+
+
+# ═══════════════════════════════════════════════════════════════
 # SIDEBAR — SELEÇÃO OBRIGATÓRIA AP / CLÍNICA / ESF
 # ═══════════════════════════════════════════════════════════════
 st.sidebar.header("🎯 Equipe selecionada")
@@ -1013,13 +1139,17 @@ cortado em 1,0.
 # ─────────────────────────────────────────────────────────────
 with tab_lacunas:
     st.markdown(
-        "#### Lacunas de cuidado da sua equipe — comparado ao município"
+        "#### Lacunas de cuidado — narrativa por grupo, comparado ao município"
     )
     st.caption(
         "Cada lacuna é calculada apenas sobre a população elegível "
         "(ex.: 'CI sem AAS' usa pacientes com CI como denominador). "
-        "Município = todos os pacientes da base. Lacunas ordenadas "
-        "da mais prevalente à menos prevalente na sua equipe."
+        "À esquerda, o racional clínico do grupo + as lacunas em "
+        "destaque (piores ou melhores que o município). À direita, "
+        "todas as lacunas do grupo: o fundo do card vai de verde "
+        "(% baixa) a vermelho (% alta), a borda esquerda fica "
+        "vermelha quando a equipe está acima do município, verde "
+        "quando está abaixo, cinza quando próximo."
     )
 
     with st.spinner("Calculando lacunas da equipe e do município..."):
@@ -1037,51 +1167,152 @@ with tab_lacunas:
             on='lacuna', how='left',
         )
         df_lac['delta'] = df_lac['pct'] - df_lac['pct_mun']
-        df_lac = df_lac.sort_values('pct', ascending=False, na_position='last')
 
-        # ── Tabela com gradiente de cor + setas ─────────────────
+        # ───── Atos por grupo (ordem canônica de GRUPOS_LACUNAS) ─────
+        for grupo in GRUPOS_LACUNAS.keys():
+            df_g = df_lac[df_lac['grupo'] == grupo].copy()
+            df_g = df_g[df_g['denominador'] > 0]
+            if df_g.empty:
+                continue
+            df_g = df_g.sort_values('pct', ascending=False)
+
+            st.markdown("---")
+            st.markdown(f"##### {grupo}")
+
+            e, d = st.columns([1, 1.3])
+            with e:
+                contexto = NARRATIVA_GRUPO_LACUNAS.get(grupo, "")
+                df_pior = df_g.dropna(subset=['delta']).sort_values(
+                    'delta', ascending=False)
+                df_top_pior   = df_pior[df_pior['delta'] >  0.5].head(3)
+                df_top_melhor = df_pior[df_pior['delta'] < -0.5].tail(3)
+
+                html = (
+                    f"<div style='line-height:1.6; font-size:0.95em;'>"
+                    f"{contexto}</div>"
+                )
+
+                if not df_top_pior.empty:
+                    html += (
+                        "<div style='margin-top:14px;'>"
+                        "<b style='color:#C0392B;'>⚠️ Onde sua equipe "
+                        "está pior que o município:</b>"
+                        "<ul style='margin:6px 0 0 0; padding-left:20px;'>"
+                    )
+                    for _, r in df_top_pior.iterrows():
+                        html += (
+                            f"<li style='margin-bottom:4px;'>"
+                            f"<b>{r['lacuna']}</b> — "
+                            f"<b style='color:#C0392B;'>"
+                            f"{int(r['numerador'])}</b> "
+                            f"({float(r['pct']):.0f}%) "
+                            f"<span style='color:#C0392B;'>"
+                            f"↑ +{float(r['delta']):.1f} pp</span>"
+                            f"</li>"
+                        )
+                    html += "</ul></div>"
+
+                if not df_top_melhor.empty:
+                    html += (
+                        "<div style='margin-top:10px;'>"
+                        "<b style='color:#198754;'>✅ Onde sua equipe "
+                        "está melhor que o município:</b>"
+                        "<ul style='margin:6px 0 0 0; padding-left:20px;'>"
+                    )
+                    for _, r in df_top_melhor.iterrows():
+                        html += (
+                            f"<li style='margin-bottom:4px;'>"
+                            f"<b>{r['lacuna']}</b> — "
+                            f"<b style='color:#198754;'>"
+                            f"{int(r['numerador'])}</b> "
+                            f"({float(r['pct']):.0f}%) "
+                            f"<span style='color:#198754;'>"
+                            f"↓ {float(r['delta']):.1f} pp</span>"
+                            f"</li>"
+                        )
+                    html += "</ul></div>"
+
+                if df_top_pior.empty and df_top_melhor.empty:
+                    html += (
+                        "<div style='margin-top:10px; color:#6B7280;'>"
+                        "Sua equipe está alinhada com a média do "
+                        "município neste grupo (variação inferior a "
+                        "±0,5 pp em todas as lacunas)."
+                        "</div>"
+                    )
+
+                st.markdown(html, unsafe_allow_html=True)
+
+            with d:
+                rows = list(df_g.iterrows())
+                # Grade 2 cards por linha
+                for i in range(0, len(rows), 2):
+                    sub = st.columns(2)
+                    for j in range(2):
+                        if i + j < len(rows):
+                            _, r = rows[i + j]
+                            _card_lacuna(sub[j], r)
+
+        # ───────── Tabela completa com filtro ao final ─────────
+        st.markdown("---")
+        st.markdown("##### 📋 Tabela completa de lacunas")
+        st.caption(
+            "Visão tabular consolidada com gradiente de cor por % e "
+            "variação em relação ao município. Filtre por grupo abaixo. "
+            "Para abrir os pacientes individualmente em cada lacuna, "
+            "vá para a aba 🧑‍⚕️ **Meus Pacientes** — lá é possível "
+            "filtrar a lista nominal por lacuna específica e abrir o "
+            "card de cada paciente."
+        )
+
+        grupos_disp = [g for g in GRUPOS_LACUNAS.keys()
+                       if g in df_lac['grupo'].dropna().unique()]
+        filtro_grupo = st.multiselect(
+            "Filtrar por grupo",
+            options=grupos_disp, default=[],
+            placeholder="Todos os grupos",
+            key="lac_filtro_grupo_tab",
+        )
+
+        df_lac_tab = df_lac.sort_values(
+            'pct', ascending=False, na_position='last')
+        if filtro_grupo:
+            df_lac_tab = df_lac_tab[df_lac_tab['grupo'].isin(filtro_grupo)]
+
         df_tab = pd.DataFrame({
-            'Grupo':       df_lac['grupo'].values,
-            'Lacuna':      df_lac['lacuna'].values,
-            'n / N':       df_lac.apply(
+            'Grupo':       df_lac_tab['grupo'].values,
+            'Lacuna':      df_lac_tab['lacuna'].values,
+            'n / N':       df_lac_tab.apply(
                 lambda r: f"{int(r['numerador'])} / {int(r['denominador'])}"
                           if r['denominador'] else "—",
                 axis=1,
             ).values,
-            '% Equipe':    df_lac['pct'].astype(float).values,
-            '% Município': df_lac['pct_mun'].astype(float).values,
-            'Variação':    df_lac['delta'].astype(float).values,
+            '% Equipe':    df_lac_tab['pct'].astype(float).values,
+            '% Município': df_lac_tab['pct_mun'].astype(float).values,
+            'Variação':    df_lac_tab['delta'].astype(float).values,
         })
 
         def _fmt_variacao(v):
-            if pd.isna(v):
-                return '—'
-            if v > 0:
-                return f'↑ +{v:.1f}%'   # equipe pior que município
-            if v < 0:
-                return f'↓ {v:.1f}%'    # equipe melhor (v já negativo)
+            if pd.isna(v):     return '—'
+            if v > 0:          return f'↑ +{v:.1f}%'
+            if v < 0:          return f'↓ {v:.1f}%'
             return '↔ 0,0%'
 
         def _cor_variacao(v):
-            if pd.isna(v):
-                return ''
-            if v > 0:
-                return 'color: #C0392B; font-weight: 600;'   # vermelho
-            if v < 0:
-                return 'color: #27AE60; font-weight: 600;'   # verde
+            if pd.isna(v):     return ''
+            if v > 0:          return 'color: #C0392B; font-weight: 600;'
+            if v < 0:          return 'color: #27AE60; font-weight: 600;'
             return 'color: #6B7280;'
 
-        # Gradiente manual verde→amarelo→vermelho (sem matplotlib)
-        def _gradiente_pct(v, vmin=0.0, vmax=100.0):
-            if pd.isna(v):
-                return ''
+        def _gradiente_pct_tab(v, vmin=0.0, vmax=100.0):
+            if pd.isna(v):     return ''
             norm = max(0.0, min(1.0, (float(v) - vmin) / (vmax - vmin)))
-            if norm <= 0.5:                       # verde → amarelo
+            if norm <= 0.5:
                 t = norm * 2
                 r = int(round(76  + (255 - 76)  * t))
                 g = int(round(175 + (235 - 175) * t))
                 b = int(round( 80 + ( 59 -  80) * t))
-            else:                                  # amarelo → vermelho
+            else:
                 t = (norm - 0.5) * 2
                 r = int(round(255 + (231 - 255) * t))
                 g = int(round(235 + ( 76 - 235) * t))
@@ -1090,7 +1321,7 @@ with tab_lacunas:
 
         styled = (
             df_tab.style
-            .applymap(_gradiente_pct, subset=['% Equipe', '% Município'])
+            .applymap(_gradiente_pct_tab, subset=['% Equipe', '% Município'])
             .format({
                 '% Equipe':    lambda v: f'{v:.1f}%' if pd.notna(v) else '—',
                 '% Município': lambda v: f'{v:.1f}%' if pd.notna(v) else '—',
@@ -1117,96 +1348,6 @@ with tab_lacunas:
         st.dataframe(
             styled, hide_index=True, use_container_width=True, height=560,
         )
-
-        st.markdown("---")
-
-        # ── Gráfico vertical filtrado por grupo ─────────────────
-        st.markdown("##### Comparação visual por grupo: equipe × município")
-
-        grupos_disponiveis = (df_lac.dropna(subset=['grupo'])
-                                    ['grupo'].unique().tolist())
-        # Ordenar pela ordem canônica de GRUPOS_LACUNAS
-        grupos_disponiveis = [g for g in GRUPOS_LACUNAS.keys()
-                              if g in grupos_disponiveis]
-
-        grupo_sel = st.selectbox(
-            "Filtrar por grupo",
-            options=grupos_disponiveis,
-            index=0 if grupos_disponiveis else None,
-            key="lac_grupo_filter",
-        )
-
-        df_plot = df_lac[(df_lac['grupo'] == grupo_sel)
-                         & (df_lac['denominador'] > 0)].copy()
-        df_plot = df_plot.sort_values('pct', ascending=False)
-
-        if df_plot.empty:
-            st.info(f"Sem lacunas com pacientes elegíveis no grupo "
-                   f"**{grupo_sel}** para esta equipe.")
-        else:
-            # Cor da barra da equipe baseada em comparação com município:
-            # acima do município (pior) → vermelho; abaixo (melhor) → verde.
-            def _cor_barra_equipe(d):
-                if pd.isna(d):
-                    return '#9CA3AF'
-                if d > 0.5:  return '#E74C3C'
-                if d < -0.5: return '#27AE60'
-                return '#F59E0B'  # próximo ao município
-
-            cores_equipe = [_cor_barra_equipe(d) for d in df_plot['delta']]
-
-            fig = go.Figure()
-            # Barra do município (cinza, atrás)
-            fig.add_trace(go.Bar(
-                x=df_plot['lacuna'], y=df_plot['pct_mun'],
-                name='Município',
-                marker=dict(color='#D1D5DB'),
-                text=[f'{v:.0f}%' for v in df_plot['pct_mun']],
-                textposition='outside',
-                textfont=dict(color=T.TEXT_MUTED, size=14),
-                hovertemplate='<b>%{x}</b><br>Município: %{y:.1f}%<extra></extra>',
-            ))
-            # Barra da equipe (cor varia por delta)
-            fig.add_trace(go.Bar(
-                x=df_plot['lacuna'], y=df_plot['pct'],
-                name='Equipe',
-                marker=dict(color=cores_equipe),
-                text=[f'{v:.0f}%' for v in df_plot['pct']],
-                textposition='outside',
-                textfont=dict(color=T.TEXT, size=15, family='Arial Black'),
-                hovertemplate='<b>%{x}</b><br>Equipe: %{y:.1f}%<extra></extra>',
-            ))
-            fig.update_layout(
-                barmode='group',
-                height=520,
-                margin=dict(l=10, r=10, t=40, b=160),
-                paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
-                xaxis=dict(
-                    tickangle=-25,
-                    tickfont=dict(color=T.TEXT, size=14),
-                    automargin=True,
-                ),
-                yaxis=dict(
-                    title=dict(
-                        text='% da população elegível',
-                        font=dict(color=T.TEXT, size=14),
-                    ),
-                    tickfont=dict(color=T.TEXT_MUTED, size=13),
-                    gridcolor=T.GRID,
-                    rangemode='tozero',
-                ),
-                legend=dict(
-                    orientation='h', x=0.5, xanchor='center',
-                    y=1.08, yanchor='bottom',
-                    font=dict(color=T.TEXT, size=14),
-                ),
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            st.caption(
-                "🟥 acima do município (≥ +0,5 pp) · "
-                "🟧 próximo ao município · "
-                "🟩 abaixo do município (≤ −0,5 pp)"
-            )
 
 # ─────────────────────────────────────────────────────────────
 # ABA 3 — CONTINUIDADE DO CUIDADO
