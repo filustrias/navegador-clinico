@@ -350,6 +350,9 @@ def carregar_continuidade_agregado(ap: str = None, clinica: str = None,
         COUNTIF(regularidade_acompanhamento = 'sem_acompanhamento')  AS n_sem_acomp,
         COUNTIF(baixa_longitudinalidade   = TRUE)                    AS n_baixa_long,
         COUNTIF(usuario_frequente_urgencia = TRUE)                   AS n_freq_urg,
+        -- Uso frequente de urgência restrito a Alto/Muito Alto risco
+        COUNTIF(usuario_frequente_urgencia = TRUE
+                AND charlson_categoria IN ('Alto', 'Muito Alto'))    AS n_freq_urg_alto_ma,
         COUNTIF(alto_risco_baixo_acesso    = TRUE)                   AS n_alto_baixo_acesso,
         COUNTIF(alto_risco_intervalo_longo = TRUE)                   AS n_alto_intv_longo,
         ROUND(AVG(consultas_365d), 1)                                AS media_consultas_total,
@@ -889,10 +892,10 @@ def _card_carga_strat(col, carga_label, emoji, n_eq, den_eq,
         sinal = "+" if delta > 0 else ""
         if formato_valor == '%':
             delta_str = (f"{seta} {sinal}{delta:.1f} {unidade} "
-                         f"vs {valor_mun_str}")
+                         f"vs {valor_mun_str} no município")
         else:
             delta_str = (f"{seta} {sinal}{delta:.1f} "
-                         f"vs {valor_mun_str}")
+                         f"vs {valor_mun_str} no município")
 
     n_eq_int = int(n_eq) if (formato_valor == '%' and pd.notna(n_eq)) else None
     den_int  = int(den_eq) if (formato_valor == '%' and pd.notna(den_eq)) else None
@@ -1510,42 +1513,54 @@ with tab_cont:
 
     # ═════════════════════════════════════════════════════════════
     # 1. PACIENTES EM ALTO RISCO — pontos críticos
+    # Denominador = pacientes de Alto + Muito Alto risco (não a equipe
+    # toda). "De N pacientes de alto risco, X têm tal lacuna" é a
+    # leitura correta para esses indicadores.
     # ═════════════════════════════════════════════════════════════
+    n_alto_ma_eq  = (int(cont.get('n_carga_alto', 0) or 0)
+                     + int(cont.get('n_carga_ma', 0) or 0)) or 1
+    n_alto_ma_mun = (int(cont_mun.get('n_carga_alto', 0) or 0)
+                     + int(cont_mun.get('n_carga_ma', 0) or 0)) or 1
+
     st.markdown("##### 1. Pacientes em alto risco — pontos críticos")
     e1, d1 = st.columns([1, 1.3])
     with e1:
         st.markdown(
-            "<div style='line-height:1.6; font-size:0.95em;'>"
-            "Estes três indicadores apontam pacientes que combinam "
-            "<b>alta carga de morbidade</b> com <b>acesso insuficiente</b>. "
-            "São prioridade absoluta para busca ativa e revisão do "
-            "plano de cuidado.<br><br>"
-            "A comparação com o município ajuda a calibrar a leitura: "
-            "equipes em territórios mais vulneráveis tendem a ter % "
-            "mais alto em todos os indicadores. O que importa é "
-            "identificar onde sua equipe está acima da média e priorizar "
-            "esses pacientes."
-            "</div>",
+            f"<div style='line-height:1.6; font-size:0.95em;'>"
+            f"Estes três indicadores apontam pacientes que combinam "
+            f"<b>alta carga de morbidade</b> com <b>acesso insuficiente</b>. "
+            f"São prioridade absoluta para busca ativa e revisão do "
+            f"plano de cuidado.<br><br>"
+            f"O denominador aqui são os <b>{n_alto_ma_eq:,} pacientes "
+            f"de Carga Alta ou Muito Alta</b> da sua equipe — não a "
+            f"equipe toda. Assim, '5%' significa <i>5 em cada 100 "
+            f"pacientes de alto risco</i> com aquela lacuna.<br><br>"
+            f"A comparação com o município ajuda a calibrar a leitura: "
+            f"equipes em territórios mais vulneráveis tendem a ter % "
+            f"mais alto em todos os indicadores. O que importa é "
+            f"identificar onde sua equipe está acima da média e "
+            f"priorizar esses pacientes."
+            f"</div>",
             unsafe_allow_html=True,
         )
     with d1:
         sub = st.columns(3)
         _card_carga_strat(
             sub[0], "Alto risco + baixo acesso", "⚠️",
-            cont.get('n_alto_baixo_acesso'), n_total_c,
-            cont_mun.get('n_alto_baixo_acesso'), n_total_c_mun,
+            cont.get('n_alto_baixo_acesso'), n_alto_ma_eq,
+            cont_mun.get('n_alto_baixo_acesso'), n_alto_ma_mun,
             indicador_ruim_se_alto=True,
         )
         _card_carga_strat(
             sub[1], "Alto risco + intervalo longo", "⏱️",
-            cont.get('n_alto_intv_longo'), n_total_c,
-            cont_mun.get('n_alto_intv_longo'), n_total_c_mun,
+            cont.get('n_alto_intv_longo'), n_alto_ma_eq,
+            cont_mun.get('n_alto_intv_longo'), n_alto_ma_mun,
             indicador_ruim_se_alto=True,
         )
         _card_carga_strat(
-            sub[2], "Uso frequente de urgência", "🚑",
-            cont.get('n_freq_urg'), n_total_c,
-            cont_mun.get('n_freq_urg'), n_total_c_mun,
+            sub[2], "Alto risco + uso frequente de urgência", "🚑",
+            cont.get('n_freq_urg_alto_ma'), n_alto_ma_eq,
+            cont_mun.get('n_freq_urg_alto_ma'), n_alto_ma_mun,
             indicador_ruim_se_alto=True,
         )
 
@@ -1579,7 +1594,8 @@ with tab_cont:
         ),
         (
             "n_regular", "reg",
-            "Acompanhamento regular (≥6 meses com consulta)", "📅",
+            "Acompanhamento regular (seis ou mais meses do ano com "
+            "consultas médicas)", "📅",
             False, True,
             "<b>Regularidade aumenta com a carga</b> é o gradiente "
             "esperado: pacientes mais complexos exigem retornos mais "
@@ -1649,61 +1665,120 @@ with tab_cont:
 
     # ═════════════════════════════════════════════════════════════
     # 3. MÉDIAS DE CONSULTAS (12 meses) — estratificado por carga
+    # Mesmo padrão narrativa-à-esquerda + cards-à-direita das
+    # outras seções, agora com explicação por indicador.
     # ═════════════════════════════════════════════════════════════
     st.markdown("---")
     st.markdown(
         "##### 3. Médias por paciente nos últimos 12 meses — por Carga"
     )
     st.caption(
-        "Médias absolutas (consultas/ano, intervalo em dias, % na "
-        "unidade) por carga de morbidade, comparadas com a média do "
-        "município. <b>Mais consultas e intervalos menores são bons "
-        "sinais</b> em cargas altas. Inversões nesse padrão "
-        "(carga alta com poucas consultas / intervalo grande) "
-        "indicam iniquidade.",
-        unsafe_allow_html=False,
+        "Cada card mostra a média da equipe naquela carga e a "
+        "comparação com a média do município (mesma carga). Em "
+        "cargas altas, mais consultas e intervalos menores são bons "
+        "sinais — inversões nesse padrão indicam iniquidade no ritmo "
+        "do cuidado."
     )
 
-    # (sufixo, label, emoji, ruim_se_alto, esperado_crescente)
+    # (sufixo, label, emoji, ruim_se_alto, esperado_crescente, texto_esq)
     _MEDIAS_STRAT = [
-        ("ct",  "Consultas no total / ano",         "👥", False, True),
-        ("med", "Consultas médicas / ano",          "🩺", False, True),
-        ("enf", "Consultas de enfermagem / ano",    "📋", False, True),
-        ("tec", "Consultas de técnico / ano",       "💉", False, True),
-        ("iv",  "Intervalo mediano entre consultas (dias)",
-                                                    "⏱️", True,  False),
-        ("pu",  "% de consultas médicas na unidade",
-                                                    "🏥", False, True),
+        (
+            "ct", "Consultas no total / ano", "👥", False, True,
+            "Total de consultas com qualquer profissional da equipe "
+            "(médico, enfermagem, técnico) por paciente em 12 meses. "
+            "<b>Esperamos um gradiente claro</b>: pacientes Muito "
+            "Alto costumam ter 3–4× mais consultas que Baixos. "
+            "Quando a diferença é pequena, o cuidado pode estar "
+            "padronizado demais — todos recebem o mesmo, "
+            "independentemente da complexidade.",
+        ),
+        (
+            "med", "Consultas médicas / ano", "🩺", False, True,
+            "Consultas com médico (clínico geral, médico de família, "
+            "geriatra etc.) por paciente em 12 meses. É o indicador "
+            "<b>mais sensível à longitudinalidade do cuidado</b>: "
+            "cargas altas precisam de consultas médicas frequentes "
+            "para acompanhar morbidades, ajustar terapêutica e "
+            "revisar exames complementares. O número médio na "
+            "população geral fica entre 1 e 2/ano; em pacientes "
+            "Muito Alto deveria passar de 5/ano.",
+        ),
+        (
+            "enf", "Consultas de enfermagem / ano", "📋", False, True,
+            "Consultas com enfermeiro(a) por paciente em 12 meses. "
+            "A enfermagem complementa o cuidado médico em "
+            "<b>hipertensão, diabetes, gestação e crônicos</b>, com "
+            "consultas próprias de educação em saúde, monitoramento "
+            "e revisão de plano. Bom cuidado tem ambos (médico e "
+            "enfermagem) crescendo com a carga, não um substituindo "
+            "o outro.",
+        ),
+        (
+            "tec", "Consultas de técnico de enfermagem / ano",
+            "💉", False, True,
+            "Atendimentos com técnico de enfermagem por paciente em "
+            "12 meses — incluindo <b>vacinas, curativos, aferições "
+            "de PA, coleta de exames, glicemia capilar</b> etc. "
+            "Esperamos números maiores em cargas altas (mais "
+            "procedimentos), mas a relação com a complexidade "
+            "clínica é mais fraca que na enfermagem.",
+        ),
+        (
+            "iv", "Intervalo mediano entre consultas (dias)",
+            "⏱️", True, False,
+            "Mediana dos intervalos (em dias) entre consultas "
+            "consecutivas do paciente. <b>Quanto menor, melhor</b> "
+            "— principalmente em cargas altas. Pacientes Muito Alto "
+            "deveriam ter intervalo bem menor que Baixos (idealmente "
+            "&lt;30 dias contra &gt;60 dias). Quando o intervalo de "
+            "Muito Alto é parecido com Baixo, há iniquidade no "
+            "<b>ritmo</b> do cuidado: o paciente complexo demora "
+            "tanto quanto o saudável para voltar.",
+        ),
+        (
+            "pu", "% de consultas médicas na unidade", "🏥", False, True,
+            "Proporção das consultas médicas que aconteceram na "
+            "<b>própria unidade de cadastro</b> (vs UPA, hospital "
+            "ou outras unidades). Cargas altas deveriam ter % maior "
+            "— mais vínculo com a equipe de referência. Valores "
+            "baixos sugerem fragmentação ou paciente buscando "
+            "cuidado em outros pontos por falta de acesso na sua "
+            "unidade.",
+        ),
     ]
 
-    for suf, label, emoji, ruim_alto, cresc in _MEDIAS_STRAT:
+    for suf, label, emoji, ruim_alto, cresc, texto in _MEDIAS_STRAT:
         st.markdown(f"###### {emoji} {label}")
-        # Detecta inversão usando médias diretas
-        valores = [cont.get(f'm_{suf}_{c}')
-                   for c in ('baixo', 'mod', 'alto', 'ma')]
-        inversao = _detecta_inversao_gradiente(valores, cresc)
-        if inversao:
-            st.markdown(
-                f"<div style='margin:6px 0 10px 0; padding:8px 10px; "
-                f"border-left:3px solid #C0392B; "
-                f"background:rgba(192,57,43,0.08); border-radius:4px; "
-                f"font-size:0.88em;'>{inversao}</div>",
-                unsafe_allow_html=True,
-            )
-        sub = st.columns(4)
-        for i, (carga_lbl, em, suf_carga) in enumerate([
-            ("Baixa",      "🟢", "baixo"),
-            ("Moderada",   "🟡", "mod"),
-            ("Alta",       "🟠", "alto"),
-            ("Muito Alta", "🔴", "ma"),
-        ]):
-            _card_carga_strat(
-                sub[i], carga_lbl, em,
-                cont.get(f'm_{suf}_{suf_carga}'), None,
-                cont_mun.get(f'm_{suf}_{suf_carga}'), None,
-                indicador_ruim_se_alto=ruim_alto,
-                formato_valor='avg',
-            )
+        e, d = st.columns([1, 1.3])
+        with e:
+            valores = [cont.get(f'm_{suf}_{c}')
+                       for c in ('baixo', 'mod', 'alto', 'ma')]
+            inversao = _detecta_inversao_gradiente(valores, cresc)
+            html = (f"<div style='line-height:1.6; font-size:0.92em;'>"
+                    f"{texto}</div>")
+            if inversao:
+                html += (
+                    f"<div style='margin-top:10px; padding:8px 10px; "
+                    f"border-left:3px solid #C0392B; "
+                    f"background:rgba(192,57,43,0.08); border-radius:4px; "
+                    f"font-size:0.88em;'>{inversao}</div>"
+                )
+            st.markdown(html, unsafe_allow_html=True)
+        with d:
+            sub = st.columns(4)
+            for i, (carga_lbl, em, suf_carga) in enumerate([
+                ("Baixa",      "🟢", "baixo"),
+                ("Moderada",   "🟡", "mod"),
+                ("Alta",       "🟠", "alto"),
+                ("Muito Alta", "🔴", "ma"),
+            ]):
+                _card_carga_strat(
+                    sub[i], carga_lbl, em,
+                    cont.get(f'm_{suf}_{suf_carga}'), None,
+                    cont_mun.get(f'm_{suf}_{suf_carga}'), None,
+                    indicador_ruim_se_alto=ruim_alto,
+                    formato_valor='avg',
+                )
 
     # ═════════════════════════════════════════════════════════════
     # Final: nota remetendo a Meus Pacientes
