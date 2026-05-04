@@ -822,10 +822,9 @@ else:
 # ═══════════════════════════════════════════════════════════════
 # ABAS
 # ═══════════════════════════════════════════════════════════════
-(tab_resumo, tab_abertura_teste, tab_lacunas, tab_cont, tab_polif,
+(tab_resumo, tab_lacunas, tab_cont, tab_polif,
  tab_has, tab_has_narr, tab_dm, tab_dm_narr, tab_pacientes) = st.tabs([
-    "📊 Resumo da equipe",
-    "🧪 Abertura - teste",
+    "📊 Resumo da população",
     "⚠️ Lacunas",
     "🔄 Continuidade",
     "💊 Polifarmácia",
@@ -843,81 +842,54 @@ with tab_resumo:
     n_total = len(df)
 
     # ─────────────────────────────────────────────────────────
-    # 3️⃣ Top-10 mais críticos (PRIMEIRA INFORMAÇÃO)
+    # 1️⃣ Top-10 com maior prioridade de cuidado — cards expansíveis
     # ─────────────────────────────────────────────────────────
-    st.markdown("#### 1️⃣ Aqui estão os 10 pacientes mais críticos da sua equipe (pacientes com maior Índice de Priorização do Cuidado - IPC)")
-    st.caption(
-        "Ranking pelo IPC. Empates são desempatados pela Carga de "
-        "Morbidade. Use esta lista como ponto de partida "
-        "para discussão em equipe e planejamento do cuidado."
+    st.markdown(
+        "#### 1️⃣ 10 pacientes com maior prioridade de cuidado"
     )
-    top = df.sort_values(['ipc', 'charlson_score'],
-                        ascending=[False, False]).head(10).copy()
+    st.markdown(
+        "Caros colegas, aqui estão os 10 pacientes com maior pontuação "
+        "no **Índice de Priorização do Cuidado (IPC)**. Estes pacientes "
+        "possuem uma combinação de critérios que consideramos "
+        "importantes para qualificar o cuidado de pessoas com "
+        "**multimorbidade** (2 ou mais condições crônicas em um mesmo "
+        "paciente). Estes critérios são uma combinação de **carga de "
+        "morbidade**, **carga farmacológica**, **tempo sem consulta "
+        "médica** e **lacunas de cuidado**. Use esta lista como ponto "
+        "de partida para discussão em equipe e planejamento do cuidado "
+        "de pacientes com doenças crônicas."
+    )
 
-    if top.empty:
+    top10_cpfs = (
+        df.sort_values(['ipc', 'charlson_score'], ascending=[False, False])
+          .head(10)['cpf'].astype(str).tolist()
+    )
+
+    if not top10_cpfs:
         st.info("Sem pacientes para listar.")
     else:
-        def _fmt_int_or_dash(v):
-            return f"{int(v)}" if pd.notna(v) else "—"
-
-        def _fmt_nph(v):
-            if pd.isna(v) or v is None or v == 0:
-                return "—"
-            return f"{float(v):.2f}"
-
-        top_show = pd.DataFrame({
-            '#': range(1, len(top) + 1),
-            'Paciente': top['nome_exib'].values,
-            'Idade': top['idade'].astype('Int64').values,
-            'IPC': top['ipc'].round(2).values,
-            'Categoria': top['ipc_categoria'].values,
-            'Carga de Morbidade': top['charlson_score'].astype('Int64').values,
-            'Morbidades': top['morbidades_lista'].fillna('—').values,
-            'ACB': top['acb_score_total'].astype('Int64').values,
-            'STOPP': top['total_criterios_stopp'].astype('Int64').values,
-            'Dias s/ médico': top['dias_desde_ultima_medica'].apply(
-                _fmt_int_or_dash
-            ).values,
-            'Lacunas': top['total_lacunas'].astype('Int64').values,
-            'Medicamentos (última prescrição)': top['medicamentos_lista'].fillna('—').values,
-            'NPH (UI/kg)': top['dose_NPH_ui_kg'].apply(_fmt_nph).values,
-            'DCV s/ prev': top['ipc_dcv_sem_prev'].apply(
-                lambda v: '⚠️' if v else ''
-            ).values,
-        })
-        st.dataframe(
-            top_show, hide_index=True, use_container_width=True,
-            column_config={
-                'Morbidades':   st.column_config.TextColumn('Morbidades',   width='large'),
-                'Medicamentos (última prescrição)':
-                    st.column_config.TextColumn('Medicamentos (última prescrição)',
-                                                width='large'),
-                'IPC':          st.column_config.NumberColumn('IPC', format='%.2f'),
-                'Carga de Morbidade':
-                    st.column_config.NumberColumn('Carga de Morbidade', width='small'),
-                'ACB':          st.column_config.NumberColumn('ACB',     width='small'),
-                'STOPP':        st.column_config.NumberColumn('STOPP',   width='small'),
-                'Lacunas':      st.column_config.NumberColumn('Lacunas', width='small'),
-                'Dias s/ médico': st.column_config.TextColumn('Dias s/ médico', width='small'),
-                'NPH (UI/kg)':  st.column_config.TextColumn('NPH (UI/kg)', width='small'),
-                'DCV s/ prev':  st.column_config.TextColumn('DCV s/ prev', width='small'),
-            },
+        from components.lista_pacientes import (
+            load_patient_data_paginated, create_patient_card,
         )
 
-        # Detalhe expandido por paciente
-        with st.expander("Ver decomposição do IPC por paciente"):
-            for _, row in top.iterrows():
-                cor = CORES_IPC.get(row['ipc_categoria'], '#999')
-                st.markdown(
-                    f"<div style='border-left:4px solid {cor}; padding:6px 12px; "
-                    f"margin:4px 0; background:{cor}10; border-radius:4px;'>"
-                    f"<strong>{row['nome_exib']}</strong> — IPC {row['ipc']:.2f} "
-                    f"(<span style='color:{cor};'>{row['ipc_categoria']}</span>)<br>"
-                    f"<span style='color:{T.TEXT_MUTED}; font-size:0.88em;'>"
-                    f"{explicar_ipc_paciente(row)}</span>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
+        df_top10 = load_patient_data_paginated(
+            cpfs=tuple(top10_cpfs),
+            limit=len(top10_cpfs),
+            offset=0,
+        )
+
+        if df_top10.empty:
+            st.warning(
+                "Não foi possível carregar os dados completos dos "
+                "pacientes Top-10."
+            )
+        else:
+            # SQL não ordena por IPC (calculado em Python). Reordena aqui.
+            df_top10 = df_top10.sort_values(
+                ['ipc', 'charlson_score'], ascending=[False, False]
+            )
+            for _, paciente in df_top10.iterrows():
+                create_patient_card(paciente.to_dict(), key_prefix='resumo_')
 
     st.markdown("---")
 
@@ -1035,50 +1007,6 @@ cortado em 1,0.
                    tickfont=dict(color=T.TEXT_MUTED), gridcolor=T.GRID),
     )
     st.plotly_chart(fig_hist, use_container_width=True)
-
-# ─────────────────────────────────────────────────────────────
-# ABA — ABERTURA (TESTE) · Top-10 com card clínico completo
-# ─────────────────────────────────────────────────────────────
-with tab_abertura_teste:
-    st.markdown(
-        "#### 🧪 Abertura — Top-10 mais críticos com card clínico completo"
-    )
-    st.caption(
-        "Os 10 pacientes com pior IPC da sua equipe (empate por Carga "
-        "de Morbidade), exibidos com o mesmo card expansível usado em "
-        "Meus Pacientes."
-    )
-
-    top10_cpfs = (
-        df.sort_values(['ipc', 'charlson_score'], ascending=[False, False])
-          .head(10)['cpf'].astype(str).tolist()
-    )
-
-    if not top10_cpfs:
-        st.info("Sem pacientes para listar.")
-    else:
-        from components.lista_pacientes import (
-            load_patient_data_paginated, create_patient_card,
-        )
-
-        df_top10 = load_patient_data_paginated(
-            cpfs=tuple(top10_cpfs),
-            limit=len(top10_cpfs),
-            offset=0,
-        )
-
-        if df_top10.empty:
-            st.warning(
-                "Não foi possível carregar os dados completos dos pacientes "
-                "Top-10."
-            )
-        else:
-            # SQL não ordena por IPC (calculado em Python). Reordena aqui.
-            df_top10 = df_top10.sort_values(
-                ['ipc', 'charlson_score'], ascending=[False, False]
-            )
-            for _, paciente in df_top10.iterrows():
-                create_patient_card(paciente.to_dict(), key_prefix='abertura_')
 
 # ─────────────────────────────────────────────────────────────
 # ABA 2 — LACUNAS DA EQUIPE × MUNICÍPIO
