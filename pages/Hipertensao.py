@@ -127,11 +127,13 @@ def carregar_sumario_has(ap, clinica, esf):
         COUNTIF(HAS IS NOT NULL AND lacuna_eas_HAS_DM = TRUE)            AS n_lac_has_eas,
         COUNTIF(HAS IS NOT NULL AND lacuna_ecg_HAS_DM = TRUE)            AS n_lac_has_ecg,
         COUNTIF(HAS IS NOT NULL AND lacuna_IMC_HAS_DM = TRUE)            AS n_lac_has_imc,
-        -- Risco cardiovascular
-        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'MUITO ALTO') AS n_risco_muito_alto,
-        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'ALTO')       AS n_risco_alto,
-        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'INTERMEDIÁRIO') AS n_risco_intermediario,
-        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'BAIXO')      AS n_risco_baixo,
+        -- Risco cardiovascular (HEARTS / OMS / OPAS — who_categoria_risco_simplificada)
+        COUNTIF(HAS IS NOT NULL AND who_categoria_risco_simplificada = 'Crítico')    AS n_who_critico,
+        COUNTIF(HAS IS NOT NULL AND who_categoria_risco_simplificada = 'Muito alto') AS n_who_muito_alto,
+        COUNTIF(HAS IS NOT NULL AND who_categoria_risco_simplificada = 'Alto')       AS n_who_alto,
+        COUNTIF(HAS IS NOT NULL AND who_categoria_risco_simplificada = 'Moderado')   AS n_who_moderado,
+        COUNTIF(HAS IS NOT NULL AND who_categoria_risco_simplificada = 'Baixo')      AS n_who_baixo,
+        COUNTIF(HAS IS NOT NULL AND who_categoria_risco_simplificada IS NULL)        AS n_who_nao_calc,
         -- Prescrições de anti-hipertensivos
         COUNTIF(HAS IS NOT NULL AND principio_IECA IS NOT NULL)              AS n_rx_ieca,
         COUNTIF(HAS IS NOT NULL AND principio_BRA IS NOT NULL)               AS n_rx_bra,
@@ -168,12 +170,12 @@ def carregar_resumo_pa(ap, clinica, esf):
     sql = f"""
     WITH
     cpfs_territorio AS (
-        SELECT cpf, categoria_risco_final, idade
+        SELECT cpf, idade
         FROM `{_fqn(config.TABELA_FATO)}`
         {where_fato}
     ),
     mais_recente AS (
-        SELECT p.cpf, ct.idade, ct.categoria_risco_final,
+        SELECT p.cpf, ct.idade,
                p.tem_has, p.tem_dm, p.tem_ci, p.tem_icc,
                p.tem_stroke, p.tem_irc, p.tem_has_alto_risco,
                p.meta_pas, p.meta_pad, p.pas, p.pad,
@@ -296,7 +298,7 @@ def carregar_pacientes_has(ap, clinica, esf, limite=500,
         dias_desde_ultima_medica,
         consultas_medicas_365d,
         meses_com_consulta_12m,
-        categoria_risco_final       AS risco_cv,
+        who_categoria_risco_simplificada AS risco_cv,
 
         CASE WHEN HAS_sem_CID = TRUE THEN '⚠️ Sem CID' ELSE '✅ Com CID' END AS cid_status,
 
@@ -722,15 +724,30 @@ with tab2:
                 st.markdown(f"## {n_v:,}")
                 st.caption(f"{_p(n_v, n_has):.1f}% dos hipertensos")
 
-    # Risco cardiovascular
+    # Risco cardiovascular (HEARTS / OMS / OPAS)
     st.markdown("---")
-    st.markdown("#### Risco Cardiovascular (Framingham + SBC)")
-    rc_cols = st.columns(4)
+    st.markdown("#### Risco Cardiovascular (HEARTS / OMS / OPAS)")
+    st.caption(
+        "Modelo WHO 2019 (tropical_latin_america) com cascata "
+        "lab → non-lab. Categorias da PAHO HEARTS app."
+    )
+    rc_cols_a = st.columns(3)
     for col, label, chave, emoji in [
-        (rc_cols[0], "Muito Alto", 'n_risco_muito_alto',    '🔴'),
-        (rc_cols[1], "Alto",       'n_risco_alto',          '🟠'),
-        (rc_cols[2], "Intermediário", 'n_risco_intermediario', '🟡'),
-        (rc_cols[3], "Baixo",      'n_risco_baixo',         '🟢'),
+        (rc_cols_a[0], "Crítico (≥30%)",       'n_who_critico',    '🚨'),
+        (rc_cols_a[1], "Muito alto (20–30%)",  'n_who_muito_alto', '🔴'),
+        (rc_cols_a[2], "Alto (10–20%)",        'n_who_alto',       '🟠'),
+    ]:
+        with col:
+            with st.container(border=True):
+                n_v = int(sumario.get(chave, 0) or 0)
+                st.markdown(f"{emoji} **{label}**")
+                st.markdown(f"## {n_v:,}")
+                st.caption(f"{_p(n_v, n_has):.1f}% dos hipertensos")
+    rc_cols_b = st.columns(3)
+    for col, label, chave, emoji in [
+        (rc_cols_b[0], "Moderado (5–10%)",          'n_who_moderado', '🟡'),
+        (rc_cols_b[1], "Baixo (<5%)",               'n_who_baixo',    '🟢'),
+        (rc_cols_b[2], "Sem variáveis p/ calcular", 'n_who_nao_calc', '❔'),
     ]:
         with col:
             with st.container(border=True):

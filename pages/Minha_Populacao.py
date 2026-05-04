@@ -1338,13 +1338,13 @@ def carregar_resumo_pa(ap=None, clinica=None, esf=None) -> dict:
     WITH
     -- Passo 1: CPFs do território (tabela fato — rápido, já tem índices)
     cpfs_territorio AS (
-        SELECT cpf, categoria_risco_final, idade
+        SELECT cpf, who_categoria_risco_simplificada, idade
         FROM `rj-sms-sandbox.sub_pav_us.MM_2026_novos_cadastros_stopp_start`
         {where_fato}
     ),
     -- Passo 2: aferição mais recente por paciente (filtra por CPF)
     mais_recente AS (
-        SELECT p.cpf, ct.idade, ct.categoria_risco_final,
+        SELECT p.cpf, ct.idade, ct.who_categoria_risco_simplificada,
                p.tem_has, p.tem_dm, p.tem_ci, p.tem_icc,
                p.tem_stroke, p.tem_irc, p.tem_has_alto_risco,
                p.meta_pas, p.meta_pad, p.pas, p.pad,
@@ -1417,11 +1417,13 @@ def carregar_resumo_pa(ap=None, clinica=None, esf=None) -> dict:
                 AND NOT tem_ci AND NOT tem_stroke)                  AS n_so_icc,
         COUNTIF(tem_stroke AND NOT tem_dm AND NOT tem_irc
                 AND NOT tem_ci AND NOT tem_icc)                     AS n_so_avc,
-        -- Risco cardiovascular — escore de Framingham com reclassificação SBC
-        COUNTIF(categoria_risco_final = 'MUITO ALTO')               AS n_risco_muito_alto,
-        COUNTIF(categoria_risco_final = 'ALTO')                     AS n_risco_alto,
-        COUNTIF(categoria_risco_final = 'INTERMEDIÁRIO')            AS n_risco_intermediario,
-        COUNTIF(categoria_risco_final = 'BAIXO')                    AS n_risco_baixo,
+        -- Risco cardiovascular (HEARTS / OMS / OPAS — who_categoria_risco_simplificada)
+        COUNTIF(who_categoria_risco_simplificada = 'Crítico')       AS n_who_critico,
+        COUNTIF(who_categoria_risco_simplificada = 'Muito alto')    AS n_who_muito_alto,
+        COUNTIF(who_categoria_risco_simplificada = 'Alto')          AS n_who_alto,
+        COUNTIF(who_categoria_risco_simplificada = 'Moderado')      AS n_who_moderado,
+        COUNTIF(who_categoria_risco_simplificada = 'Baixo')         AS n_who_baixo,
+        COUNTIF(who_categoria_risco_simplificada IS NULL)           AS n_who_nao_calc,
         -- Médias
         ROUND(AVG(pas), 1)                                          AS media_pas,
         ROUND(AVG(pad), 1)                                          AS media_pad
@@ -2933,21 +2935,32 @@ with tab4:
                     unsafe_allow_html=True
                 )
 
-        # ── Alerta 2: Risco cardiovascular por Framingham/SBC ─────
-        n_muito_alto = int(rpa.get('n_risco_muito_alto', 0) or 0)
-        n_alto_f     = int(rpa.get('n_risco_alto', 0) or 0)
-        n_interm     = int(rpa.get('n_risco_intermediario', 0) or 0)
-        n_baixo_f    = int(rpa.get('n_risco_baixo', 0) or 0)
-        if n_muito_alto + n_alto_f > 0:
+        # ── Alerta 2: Risco cardiovascular (HEARTS / OMS / OPAS) ─────
+        n_who_critico    = int(rpa.get('n_who_critico', 0) or 0)
+        n_who_muito_alto = int(rpa.get('n_who_muito_alto', 0) or 0)
+        n_who_alto       = int(rpa.get('n_who_alto', 0) or 0)
+        n_who_moderado   = int(rpa.get('n_who_moderado', 0) or 0)
+        n_who_baixo      = int(rpa.get('n_who_baixo', 0) or 0)
+        n_who_nao_calc   = int(rpa.get('n_who_nao_calc', 0) or 0)
+        if n_who_critico + n_who_muito_alto + n_who_alto > 0:
             st.warning(
-                f"📊 **Estratificação de risco cardiovascular — Escore de Framingham "
-                f"com reclassificação SBC:** "
-                f"Risco Muito Alto: **{n_muito_alto:,}** ({_p(n_muito_alto, n_has_rpa):.1f}%) · "
-                f"Risco Alto: **{n_alto_f:,}** ({_p(n_alto_f, n_has_rpa):.1f}%) · "
-                f"Intermediário: **{n_interm:,}** ({_p(n_interm, n_has_rpa):.1f}%) · "
-                f"Baixo: **{n_baixo_f:,}** ({_p(n_baixo_f, n_has_rpa):.1f}%). "
-                f"Reclassificação automática para Muito Alto em casos de aterosclerose "
-                f"prévia (CI, AVC, DAP); para Alto em DRC ou LDL ≥190 mg/dL."
+                f"📊 **Estratificação de risco cardiovascular — "
+                f"HEARTS / OMS / OPAS:** "
+                f"Crítico (≥30%): **{n_who_critico:,}** "
+                f"({_p(n_who_critico, n_has_rpa):.1f}%) · "
+                f"Muito alto (20–30%): **{n_who_muito_alto:,}** "
+                f"({_p(n_who_muito_alto, n_has_rpa):.1f}%) · "
+                f"Alto (10–20%): **{n_who_alto:,}** "
+                f"({_p(n_who_alto, n_has_rpa):.1f}%) · "
+                f"Moderado (5–10%): **{n_who_moderado:,}** "
+                f"({_p(n_who_moderado, n_has_rpa):.1f}%) · "
+                f"Baixo (<5%): **{n_who_baixo:,}** "
+                f"({_p(n_who_baixo, n_has_rpa):.1f}%). "
+                f"Sem variáveis suficientes para calcular o risco: "
+                f"**{n_who_nao_calc:,}** "
+                f"({_p(n_who_nao_calc, n_has_rpa):.1f}%). "
+                f"Modelo WHO 2019 (tropical_latin_america) com cascata "
+                f"laboratorial → não-laboratorial; categorias da PAHO HEARTS app."
             )
 
         _stacked_bar_ap(
