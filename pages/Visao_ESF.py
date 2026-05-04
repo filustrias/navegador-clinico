@@ -456,6 +456,112 @@ def carregar_hipertensao_nominal(ap: str, clinica: str, esf: str) -> pd.DataFram
 
 
 @st.cache_data(show_spinner=False, ttl=900)
+def carregar_hipertensao_narrativa_agregado(ap: str, clinica: str, esf: str) -> dict:
+    """Indicadores ampliados de HAS para a aba narrativa — inclui
+    medicamentos, combinações, intensidade do tratamento, recência da
+    PA, tendência, risco CV e comorbidades. Espelha os campos da page
+    Hipertensão (abas 2 'Controle pressórico', 3 'Medicamentos
+    prescritos' e 5 'Lacunas')."""
+    sql = f"""
+    SELECT
+        COUNT(*)                                                       AS n_total,
+        COUNTIF(HAS IS NOT NULL)                                       AS n_has,
+        COUNTIF(HAS_sem_CID = TRUE)                                    AS n_sem_cid,
+        COUNTIF(has_por_cid IS NOT NULL)                               AS n_por_cid,
+        COUNTIF(has_por_medida_critica IS NOT NULL)                    AS n_por_medida_critica,
+        COUNTIF(has_por_medidas_repetidas IS NOT NULL)                 AS n_por_medidas_rep,
+        COUNTIF(has_por_medicamento IS NOT NULL)                       AS n_por_medicamento,
+        -- Controle pressórico
+        COUNTIF(HAS IS NOT NULL AND status_controle_pressorio = 'controlado')    AS n_ctrl,
+        COUNTIF(HAS IS NOT NULL AND status_controle_pressorio = 'descontrolado') AS n_desc,
+        COUNTIF(HAS IS NOT NULL AND status_controle_pressorio IS NULL)           AS n_sem_info,
+        -- Faixa etária
+        COUNTIF(HAS IS NOT NULL AND idade < 80)                        AS n_menor80,
+        COUNTIF(HAS IS NOT NULL AND idade < 80
+                AND status_controle_pressorio = 'controlado')          AS n_ctrl_menor80,
+        COUNTIF(HAS IS NOT NULL AND idade >= 80)                       AS n_80mais,
+        COUNTIF(HAS IS NOT NULL AND idade >= 80
+                AND status_controle_pressorio = 'controlado')          AS n_ctrl_80mais,
+        -- Recência da PA
+        COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa <= 90)        AS n_pa_90d,
+        COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa BETWEEN 91 AND 180)
+                                                                        AS n_pa_91_180,
+        COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa BETWEEN 181 AND 365)
+                                                                        AS n_pa_181_365,
+        COUNTIF(HAS IS NOT NULL AND
+                (dias_desde_ultima_pa > 365 OR dias_desde_ultima_pa IS NULL))
+                                                                        AS n_pa_365mais,
+        -- Tendência
+        COUNTIF(HAS IS NOT NULL AND tendencia_pa = 'melhorando')       AS n_melhorando,
+        COUNTIF(HAS IS NOT NULL AND tendencia_pa = 'estavel')          AS n_estavel,
+        COUNTIF(HAS IS NOT NULL AND tendencia_pa = 'piorando')         AS n_piorando,
+        -- Médias
+        ROUND(AVG(CASE WHEN HAS IS NOT NULL THEN pressao_sistolica END), 0)  AS media_pas,
+        ROUND(AVG(CASE WHEN HAS IS NOT NULL THEN pressao_diastolica END), 0) AS media_pad,
+        ROUND(AVG(CASE WHEN HAS IS NOT NULL THEN pct_dias_has_controlado_365d END), 1)
+                                                                        AS media_pct_ctrl,
+        -- Lacunas
+        COUNTIF(HAS IS NOT NULL AND lacuna_PA_hipertenso_180d = TRUE)  AS n_sem_pa_180d,
+        COUNTIF(HAS IS NOT NULL AND lacuna_DM_HAS_PA_descontrolada = TRUE)
+                                                                        AS n_dm_has_pa,
+        COUNTIF(HAS IS NOT NULL AND lacuna_creatinina_HAS_DM = TRUE)   AS n_sem_creat,
+        COUNTIF(HAS IS NOT NULL AND lacuna_colesterol_HAS_DM = TRUE)   AS n_sem_col,
+        COUNTIF(HAS IS NOT NULL AND lacuna_eas_HAS_DM = TRUE)          AS n_sem_eas,
+        COUNTIF(HAS IS NOT NULL AND lacuna_ecg_HAS_DM = TRUE)          AS n_sem_ecg,
+        COUNTIF(HAS IS NOT NULL AND lacuna_IMC_HAS_DM = TRUE)          AS n_sem_imc,
+        -- Comorbidades em hipertensos
+        COUNTIF(HAS IS NOT NULL AND DM IS NOT NULL)                    AS n_has_dm,
+        COUNTIF(HAS IS NOT NULL AND IRC IS NOT NULL)                   AS n_has_irc,
+        COUNTIF(HAS IS NOT NULL AND CI IS NOT NULL)                    AS n_has_ci,
+        COUNTIF(HAS IS NOT NULL AND ICC IS NOT NULL)                   AS n_has_icc,
+        COUNTIF(HAS IS NOT NULL AND stroke IS NOT NULL)                AS n_has_avc,
+        -- Risco cardiovascular
+        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'MUITO ALTO')    AS n_risco_muito_alto,
+        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'ALTO')          AS n_risco_alto,
+        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'INTERMEDIÁRIO') AS n_risco_intermediario,
+        COUNTIF(HAS IS NOT NULL AND categoria_risco_final = 'BAIXO')         AS n_risco_baixo,
+        -- Prescrições por classe de anti-hipertensivo
+        COUNTIF(HAS IS NOT NULL AND principio_IECA IS NOT NULL)          AS n_rx_ieca,
+        COUNTIF(HAS IS NOT NULL AND principio_BRA IS NOT NULL)           AS n_rx_bra,
+        COUNTIF(HAS IS NOT NULL AND principio_BCC_DHP IS NOT NULL)       AS n_rx_bcc_dhp,
+        COUNTIF(HAS IS NOT NULL AND principio_BCC_NAO_DHP IS NOT NULL)   AS n_rx_bcc_nao_dhp,
+        COUNTIF(HAS IS NOT NULL AND principio_TIAZIDICO IS NOT NULL)     AS n_rx_tiazidico,
+        COUNTIF(HAS IS NOT NULL AND principio_DIURETICO_ALCA IS NOT NULL) AS n_rx_diur_alca,
+        COUNTIF(HAS IS NOT NULL AND principio_POUPADOR_K IS NOT NULL)    AS n_rx_poupador_k,
+        COUNTIF(HAS IS NOT NULL AND principio_BETABLOQUEADOR IS NOT NULL) AS n_rx_betabloq,
+        COUNTIF(HAS IS NOT NULL AND principio_SIMPATICOLITICO IS NOT NULL) AS n_rx_simpaticol,
+        COUNTIF(HAS IS NOT NULL AND principio_ALFABLOQUEADOR IS NOT NULL) AS n_rx_alfabloq,
+        COUNTIF(HAS IS NOT NULL AND principio_VASODILATADOR IS NOT NULL) AS n_rx_vasodilat,
+        COUNTIF(HAS IS NOT NULL AND principio_NITRATO IS NOT NULL)       AS n_rx_nitrato,
+        -- Combinações e contexto clínico
+        COUNTIF(HAS IS NOT NULL AND principio_IECA IS NOT NULL
+                AND principio_BRA IS NOT NULL)                          AS n_rx_ieca_bra,
+        COUNTIF(HAS IS NOT NULL AND principio_DIURETICO_ALCA IS NOT NULL
+                AND ICC IS NOT NULL)                                    AS n_rx_diur_alca_icc,
+        COUNTIF(HAS IS NOT NULL AND principio_DIURETICO_ALCA IS NOT NULL
+                AND ICC IS NULL)                                        AS n_rx_diur_alca_sem_icc,
+        COUNTIF(HAS IS NOT NULL AND principio_POUPADOR_K IS NOT NULL
+                AND ICC IS NOT NULL)                                    AS n_rx_poupador_k_icc,
+        COUNTIF(HAS IS NOT NULL AND principio_NITRATO IS NOT NULL
+                AND CI IS NOT NULL)                                     AS n_rx_nitrato_ci,
+        COUNTIF(HAS IS NOT NULL AND principio_NITRATO IS NOT NULL
+                AND CI IS NULL)                                         AS n_rx_nitrato_sem_ci,
+        -- Intensidade do tratamento
+        COUNTIF(HAS IS NOT NULL AND intensidade_tratamento_has = 'MONOTERAPIA')        AS n_int_mono,
+        COUNTIF(HAS IS NOT NULL AND intensidade_tratamento_has = 'DUPLA_TERAPIA')      AS n_int_dupla,
+        COUNTIF(HAS IS NOT NULL AND intensidade_tratamento_has = 'TRIPLA_TERAPIA')     AS n_int_tripla,
+        COUNTIF(HAS IS NOT NULL AND intensidade_tratamento_has = 'QUADRUPLA_TERAPIA')  AS n_int_quadrupla,
+        COUNTIF(HAS IS NOT NULL AND intensidade_tratamento_has IS NULL)                AS n_int_sem_med
+    FROM `{_fqn(config.TABELA_FATO)}`
+    WHERE area_programatica_cadastro = '{ap}'
+      AND nome_clinica_cadastro     = '{clinica}'
+      AND nome_esf_cadastro         = '{esf}'
+    """
+    df = bq(sql)
+    return df.iloc[0].to_dict() if not df.empty else {}
+
+
+@st.cache_data(show_spinner=False, ttl=900)
 def carregar_diabetes_agregado(ap: str, clinica: str, esf: str) -> dict:
     """Indicadores resumidos de DM para a equipe."""
     sql = f"""
@@ -697,13 +803,14 @@ else:
 # ABAS
 # ═══════════════════════════════════════════════════════════════
 (tab_resumo, tab_abertura_teste, tab_lacunas, tab_cont, tab_polif,
- tab_has, tab_dm, tab_dm_narr, tab_pacientes) = st.tabs([
+ tab_has, tab_has_narr, tab_dm, tab_dm_narr, tab_pacientes) = st.tabs([
     "📊 Resumo da equipe",
     "🧪 Abertura - teste",
     "⚠️ Lacunas",
     "🔄 Continuidade",
     "💊 Polifarmácia",
     "🩺 Hipertensão",
+    "📖 Hipertensão (narrativa)",
     "🩸 Diabetes",
     "📖 Diabetes (narrativa)",
     "🧑‍⚕️ Meus Pacientes",
@@ -2056,6 +2163,654 @@ with tab_has:
 """)
 
 # ─────────────────────────────────────────────────────────────
+# ABA 5.1 — HIPERTENSÃO (NARRATIVA)
+# Mesma base da aba "🩺 Hipertensão" + campos importados das abas
+# 'Controle pressórico', 'Medicamentos prescritos' e 'Lacunas' da
+# page Hipertensão. Layout em 2 colunas: à esquerda o texto
+# narrativo, à direita os cards. Mantém a tabela nominal embaixo.
+# ─────────────────────────────────────────────────────────────
+with tab_has_narr:
+    st.markdown("#### Hipertensão arterial — narrativa da equipe")
+    st.caption(
+        "Mesma base da aba 🩺 Hipertensão, ampliada com medicamentos, "
+        "combinações, intensidade do tratamento, recência da PA, "
+        "tendência e risco cardiovascular — apresentada como história "
+        "em 5 atos. Status do controle pressórico vem da fato "
+        "(status_controle_pressorio) e considera as últimas aferições."
+    )
+
+    with st.spinner("Carregando indicadores de HAS..."):
+        ag_hn = carregar_hipertensao_narrativa_agregado(
+            ap_sel, cli_sel, esf_sel)
+
+    n_has_n      = int(ag_hn.get('n_has', 0) or 0) or 1
+    n_total_eq_h = int(ag_hn.get('n_total', 0) or 0) or 1
+
+    def _vh(k):
+        return int(ag_hn.get(k, 0) or 0)
+
+    def _pct_hn(num):
+        return f"{int(num or 0)/n_has_n*100:.0f}%"
+
+    # Helpers de destaque inline
+    def _bh(v):       return f"<b>{v}</b>"
+    def _bh_red(v):   return f"<span style='color:#B71C1C; font-weight:700;'>{v}</span>"
+    def _bh_green(v): return f"<span style='color:#198754; font-weight:700;'>{v}</span>"
+    def _bh_orange(v):return f"<span style='color:#E69138; font-weight:700;'>{v}</span>"
+
+    n_has_total      = _vh('n_has')
+    n_sem_cid        = _vh('n_sem_cid')
+    n_por_cid        = _vh('n_por_cid')
+    n_por_critica    = _vh('n_por_medida_critica')
+    n_por_repetidas  = _vh('n_por_medidas_rep')
+    n_por_med        = _vh('n_por_medicamento')
+    pct_eq_has       = (n_has_total / n_total_eq_h * 100) if n_total_eq_h else 0
+
+    n_ctrl_h    = _vh('n_ctrl')
+    n_desc_h    = _vh('n_desc')
+    n_sem_info  = _vh('n_sem_info')
+    n_menor80   = _vh('n_menor80')
+    n_ctrl_m80  = _vh('n_ctrl_menor80')
+    n_80mais    = _vh('n_80mais')
+    n_ctrl_80   = _vh('n_ctrl_80mais')
+    n_pa_90d    = _vh('n_pa_90d')
+    n_pa_180    = _vh('n_pa_91_180')
+    n_pa_365    = _vh('n_pa_181_365')
+    n_pa_old    = _vh('n_pa_365mais')
+    n_melh      = _vh('n_melhorando')
+    n_est_h     = _vh('n_estavel')
+    n_pio_h     = _vh('n_piorando')
+    media_pas   = ag_hn.get('media_pas')
+    media_pad   = ag_hn.get('media_pad')
+    media_pct_c = ag_hn.get('media_pct_ctrl')
+
+    n_sem_pa180 = _vh('n_sem_pa_180d')
+    n_dm_has_pa = _vh('n_dm_has_pa')
+    n_sem_creat = _vh('n_sem_creat')
+    n_sem_col   = _vh('n_sem_col')
+    n_sem_eas   = _vh('n_sem_eas')
+    n_sem_ecg   = _vh('n_sem_ecg')
+    n_sem_imc   = _vh('n_sem_imc')
+
+    n_has_dm    = _vh('n_has_dm')
+    n_has_irc   = _vh('n_has_irc')
+    n_has_ci    = _vh('n_has_ci')
+    n_has_icc   = _vh('n_has_icc')
+    n_has_avc   = _vh('n_has_avc')
+    n_rcv_ma    = _vh('n_risco_muito_alto')
+    n_rcv_a     = _vh('n_risco_alto')
+    n_rcv_int   = _vh('n_risco_intermediario')
+    n_rcv_b     = _vh('n_risco_baixo')
+
+    n_ieca      = _vh('n_rx_ieca')
+    n_bra       = _vh('n_rx_bra')
+    n_bcc_dhp   = _vh('n_rx_bcc_dhp')
+    n_bcc_ndhp  = _vh('n_rx_bcc_nao_dhp')
+    n_tiazid    = _vh('n_rx_tiazidico')
+    n_diur_alca = _vh('n_rx_diur_alca')
+    n_poup_k    = _vh('n_rx_poupador_k')
+    n_betabloq  = _vh('n_rx_betabloq')
+    n_simpat    = _vh('n_rx_simpaticol')
+    n_alfablo   = _vh('n_rx_alfabloq')
+    n_vasod     = _vh('n_rx_vasodilat')
+    n_nitrato   = _vh('n_rx_nitrato')
+
+    n_ieca_bra       = _vh('n_rx_ieca_bra')
+    n_alca_icc       = _vh('n_rx_diur_alca_icc')
+    n_alca_sem_icc   = _vh('n_rx_diur_alca_sem_icc')
+    n_poup_k_icc     = _vh('n_rx_poupador_k_icc')
+    n_nit_ci         = _vh('n_rx_nitrato_ci')
+    n_nit_sem_ci     = _vh('n_rx_nitrato_sem_ci')
+
+    n_mono      = _vh('n_int_mono')
+    n_dupla     = _vh('n_int_dupla')
+    n_tripla    = _vh('n_int_tripla')
+    n_quad      = _vh('n_int_quadrupla')
+    n_sem_med   = _vh('n_int_sem_med')
+
+    # ───────── ATO 1 — POPULAÇÃO E COMO FORAM IDENTIFICADOS ─────────
+    st.markdown("---")
+    st.markdown("##### 1. A população em foco — como foram identificados")
+    a1e, a1d = st.columns([1, 1.1])
+    with a1e:
+        st.markdown(
+            f"<div style='font-size:1.0em; line-height:1.65;'>"
+            f"Sua equipe tem {_bh(n_has_total)} <b>hipertensos</b> "
+            f"({_bh(f'{pct_eq_has:.0f}%')} da população cadastrada).<br><br>"
+            f"<b>Como chegaram a esse diagnóstico?</b><br>"
+            f"• {_bh(n_por_cid)} <b>por CID registrado</b> (I10–I16, "
+            f"O10–O11);<br>"
+            f"• {_bh(n_por_critica)} por <b>medida crítica</b> (≥180/110 "
+            f"mmHg em uma única aferição);<br>"
+            f"• {_bh(n_por_repetidas)} por <b>medidas repetidas</b> (≥140/90 "
+            f"em datas distintas);<br>"
+            f"• {_bh(n_por_med)} por <b>uso de anti-hipertensivo</b> sem CID "
+            f"(diagnóstico implícito).<br><br>"
+            f"Dentre o total, {_bh_red(n_sem_cid)} <b>ainda não têm CID "
+            f"registrado</b> — primeira lacuna a fechar para que esses "
+            f"pacientes apareçam nos relatórios oficiais."
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    with a1d:
+        c1, c2 = st.columns(2)
+        _kpi(c1, "🩺 Hipertensos na equipe",
+             f"{n_has_total:,}", f"{pct_eq_has:.0f}% da equipe")
+        _kpi(c2, "⚠️ HAS sem CID",
+             f"{n_sem_cid:,}", _pct_hn(n_sem_cid))
+        c3, c4 = st.columns(2)
+        _kpi(c3, "📋 Por CID registrado",
+             f"{n_por_cid:,}", _pct_hn(n_por_cid))
+        _kpi(c4, "📏 Por medida crítica (≥180/110)",
+             f"{n_por_critica:,}", _pct_hn(n_por_critica))
+        c5, c6 = st.columns(2)
+        _kpi(c5, "📏 Por medidas repetidas (≥140/90)",
+             f"{n_por_repetidas:,}", _pct_hn(n_por_repetidas))
+        _kpi(c6, "💊 Por uso de anti-hipertensivo",
+             f"{n_por_med:,}", _pct_hn(n_por_med))
+
+    # ───────── ATO 2 — CONTROLE PRESSÓRICO ─────────
+    st.markdown("---")
+    st.markdown("##### 2. Controle pressórico")
+    a2e, a2d = st.columns([1, 1.1])
+    with a2e:
+        media_pa_str = (f"{int(media_pas)}/{int(media_pad)} mmHg"
+                        if media_pas and media_pad else "—")
+        media_pct_str = (f"{float(media_pct_c):.0f}%"
+                         if media_pct_c is not None else "—")
+        pct_m80  = (n_ctrl_m80 / n_menor80 * 100) if n_menor80 else 0
+        pct_80   = (n_ctrl_80  / n_80mais * 100)  if n_80mais  else 0
+        st.markdown(
+            f"<div style='font-size:1.0em; line-height:1.65;'>"
+            f"Dos {_bh(n_has_total)} hipertensos, {_bh_green(n_ctrl_h)} "
+            f"estão <b>controlados</b> (PA dentro da meta), "
+            f"{_bh_red(n_desc_h)} <b>descontrolados</b> e "
+            f"{_bh_orange(n_sem_info)} sem informação suficiente.<br><br>"
+            f"<b>Por faixa etária:</b><br>"
+            f"• Menores de 80a (meta &lt;140/90): {_bh_green(n_ctrl_m80)} "
+            f"controlados de {_bh(n_menor80)} ({_bh(f'{pct_m80:.0f}%')});<br>"
+            f"• 80a ou mais (meta &lt;150/90): {_bh_green(n_ctrl_80)} "
+            f"controlados de {_bh(n_80mais)} ({_bh(f'{pct_80:.0f}%')}).<br><br>"
+            f"<b>Recência da última aferição:</b> {_bh_green(n_pa_90d)} "
+            f"≤90 dias, {_bh(n_pa_180)} entre 91–180d, "
+            f"{_bh_orange(n_pa_365)} entre 181–365d, "
+            f"{_bh_red(n_pa_old)} <b>há mais de 365 dias ou nunca</b>.<br><br>"
+            f"<b>Tendência:</b> 📈 {_bh_green(n_melh)} melhorando, "
+            f"➡️ {_bh(n_est_h)} estáveis, 📉 {_bh_red(n_pio_h)} piorando. "
+            f"PA média da equipe: {_bh(media_pa_str)}; "
+            f"<b>% dias controlado/ano</b>: {_bh(media_pct_str)}."
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    with a2d:
+        c1, c2 = st.columns(2)
+        _kpi(c1, "✅ PA controlada",
+             f"{n_ctrl_h:,}", _pct_hn(n_ctrl_h))
+        _kpi(c2, "❌ PA descontrolada",
+             f"{n_desc_h:,}", _pct_hn(n_desc_h))
+        c3, c4 = st.columns(2)
+        _kpi(c3, "🧑 Controlados <80a",
+             f"{n_ctrl_m80:,}/{n_menor80:,}",
+             f"{(n_ctrl_m80/n_menor80*100 if n_menor80 else 0):.0f}% da faixa")
+        _kpi(c4, "👴 Controlados ≥80a",
+             f"{n_ctrl_80:,}/{n_80mais:,}",
+             f"{(n_ctrl_80/n_80mais*100 if n_80mais else 0):.0f}% da faixa")
+        c5, c6 = st.columns(2)
+        _kpi(c5, "🟢 PA aferida ≤90d",
+             f"{n_pa_90d:,}", _pct_hn(n_pa_90d))
+        _kpi(c6, "🔴 PA >365d ou nunca",
+             f"{n_pa_old:,}", _pct_hn(n_pa_old))
+        c7, c8 = st.columns(2)
+        _kpi(c7, "📈 Melhorando",
+             f"{n_melh:,}", _pct_hn(n_melh))
+        _kpi(c8, "📉 Piorando",
+             f"{n_pio_h:,}", _pct_hn(n_pio_h))
+        c9, _c10 = st.columns(2)
+        _kpi(c9, "PAS / PAD média",
+             f"{int(media_pas)}/{int(media_pad)}"
+             if media_pas and media_pad else "—",
+             f"{float(media_pct_c):.0f}% dias controlado (365d)"
+             if media_pct_c is not None else None)
+
+    # ───────── ATO 3 — LACUNAS DE CUIDADO ─────────
+    st.markdown("---")
+    st.markdown("##### 3. Lacunas de cuidado")
+    a3e, a3d = st.columns([1, 1.1])
+    with a3e:
+        st.markdown(
+            f"<div style='font-size:1.0em; line-height:1.65;'>"
+            f"Quanto às ações de cuidado e exames de rotina nos "
+            f"{_bh(n_has_total)} hipertensos:<br><br>"
+            f"• {_bh_red(n_sem_pa180)} <b>sem aferição de PA</b> nos "
+            f"últimos 180 dias;<br>"
+            f"• {_bh_red(n_dm_has_pa)} com <b>DM+HAS e PA &gt;135/80</b> "
+            f"(meta restrita não atingida);<br>"
+            f"• {_bh_red(n_sem_creat)} <b>sem creatinina</b>;<br>"
+            f"• {_bh_red(n_sem_col)} <b>sem colesterol</b>;<br>"
+            f"• {_bh_red(n_sem_eas)} <b>sem EAS</b>;<br>"
+            f"• {_bh_red(n_sem_ecg)} <b>sem ECG</b>;<br>"
+            f"• {_bh_red(n_sem_imc)} <b>sem IMC calculável</b> "
+            f"(peso e/ou altura ausentes).<br><br>"
+            f"Todo hipertenso deve realizar este conjunto de exames "
+            f"ao menos uma vez por ano."
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    with a3d:
+        c1, c2 = st.columns(2)
+        _kpi(c1, "📉 Sem aferição PA >180d",
+             f"{n_sem_pa180:,}", _pct_hn(n_sem_pa180))
+        _kpi(c2, "🩸 DM+HAS com PA >135/80",
+             f"{n_dm_has_pa:,}", _pct_hn(n_dm_has_pa))
+        c3, c4 = st.columns(2)
+        _kpi(c3, "🧪 Sem creatinina (365d)",
+             f"{n_sem_creat:,}", _pct_hn(n_sem_creat))
+        _kpi(c4, "🧪 Sem colesterol (365d)",
+             f"{n_sem_col:,}", _pct_hn(n_sem_col))
+        c5, c6 = st.columns(2)
+        _kpi(c5, "💉 Sem EAS (365d)",
+             f"{n_sem_eas:,}", _pct_hn(n_sem_eas))
+        _kpi(c6, "🫀 Sem ECG (365d)",
+             f"{n_sem_ecg:,}", _pct_hn(n_sem_ecg))
+        c7, _c8 = st.columns(2)
+        _kpi(c7, "⚖️ Sem IMC calculável",
+             f"{n_sem_imc:,}", _pct_hn(n_sem_imc))
+
+    # ───────── ATO 4 — TRATAMENTO E SEGURANÇA FARMACOLÓGICA ─────────
+    st.markdown("---")
+    st.markdown("##### 4. Tratamento e segurança farmacológica")
+    a4e, a4d = st.columns([1, 1.1])
+    with a4e:
+        n_em_trat = n_mono + n_dupla + n_tripla + n_quad
+        st.markdown(
+            f"<div style='font-size:1.0em; line-height:1.65;'>"
+            f"Dos {_bh(n_has_total)} hipertensos, {_bh(n_em_trat)} "
+            f"estão em <b>tratamento medicamentoso</b> "
+            f"({_bh(n_sem_med)} sem nenhum anti-hipertensivo "
+            f"prescrito).<br><br>"
+            f"<b>Intensidade do tratamento:</b><br>"
+            f"• {_bh(n_mono)} em <b>monoterapia</b>;<br>"
+            f"• {_bh(n_dupla)} em <b>dupla terapia</b>;<br>"
+            f"• {_bh(n_tripla)} em <b>tripla terapia</b>;<br>"
+            f"• {_bh(n_quad)} em <b>quádrupla ou mais</b>.<br><br>"
+            f"<b>Classes mais usadas:</b> "
+            f"{_bh(n_ieca)} IECA · {_bh(n_bra)} BRA · "
+            f"{_bh(n_bcc_dhp)} BCC di-hidro · "
+            f"{_bh(n_tiazid)} tiazídico · "
+            f"{_bh(n_betabloq)} betabloqueador · "
+            f"{_bh(n_diur_alca)} diurético de alça · "
+            f"{_bh(n_poup_k)} poupador de K · "
+            f"{_bh(n_nitrato)} nitrato.<br><br>"
+            f"<b>🚨 Alertas farmacológicos:</b><br>"
+            f"• {_bh_red(n_ieca_bra)} com <b>IECA + BRA simultâneos</b> "
+            f"(duplo bloqueio do SRAA, contraindicado pelas diretrizes);<br>"
+            f"• {_bh_orange(n_alca_sem_icc)} com <b>diurético de alça "
+            f"sem CID de ICC</b> (uso questionável fora de ICC ou "
+            f"IRC avançada);<br>"
+            f"• {_bh_orange(n_nit_sem_ci)} com <b>nitrato sem CID de "
+            f"CI</b> (avaliar indicação);<br>"
+            f"• {_bh_green(n_alca_icc)} com diurético de alça <b>e</b> "
+            f"ICC (uso esperado);<br>"
+            f"• {_bh_green(n_poup_k_icc)} com poupador de K <b>e</b> "
+            f"ICC (uso esperado);<br>"
+            f"• {_bh_green(n_nit_ci)} com nitrato <b>e</b> CI (uso "
+            f"esperado)."
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    with a4d:
+        # Intensidade do tratamento (4 cards)
+        st.markdown(
+            f"<div style='font-size:0.85em; color:#555555; "
+            f"margin-bottom:6px;'><b>Intensidade do tratamento</b></div>",
+            unsafe_allow_html=True,
+        )
+        c1, c2 = st.columns(2)
+        _kpi(c1, "💊 Monoterapia",
+             f"{n_mono:,}", _pct_hn(n_mono))
+        _kpi(c2, "💊💊 Dupla terapia",
+             f"{n_dupla:,}", _pct_hn(n_dupla))
+        c3, c4 = st.columns(2)
+        _kpi(c3, "💊💊💊 Tripla terapia",
+             f"{n_tripla:,}", _pct_hn(n_tripla))
+        _kpi(c4, "💊⁴⁺ Quádrupla ou mais",
+             f"{n_quad:,}", _pct_hn(n_quad))
+        # Alertas farmacológicos críticos
+        st.markdown(
+            f"<div style='font-size:0.85em; color:#555555; "
+            f"margin-top:10px; margin-bottom:6px;'>"
+            f"<b>🚨 Alertas farmacológicos</b></div>",
+            unsafe_allow_html=True,
+        )
+        c5, c6 = st.columns(2)
+        _kpi(c5, "🚨 IECA + BRA simultâneos",
+             f"{n_ieca_bra:,}", _pct_hn(n_ieca_bra))
+        _kpi(c6, "⚠️ Diur. de alça sem CID de ICC",
+             f"{n_alca_sem_icc:,}", _pct_hn(n_alca_sem_icc))
+        c7, c8 = st.columns(2)
+        _kpi(c7, "⚠️ Nitrato sem CID de CI",
+             f"{n_nit_sem_ci:,}", _pct_hn(n_nit_sem_ci))
+        _kpi(c8, "✅ Diur. de alça com ICC",
+             f"{n_alca_icc:,}", _pct_hn(n_alca_icc))
+        # Classes mais usadas (3 cards por linha)
+        st.markdown(
+            f"<div style='font-size:0.85em; color:#555555; "
+            f"margin-top:10px; margin-bottom:6px;'>"
+            f"<b>Classes prescritas</b> (paciente pode receber mais "
+            f"de uma)</div>",
+            unsafe_allow_html=True,
+        )
+        c9, c10, c11 = st.columns(3)
+        _kpi(c9,  "IECA",            f"{n_ieca:,}",      _pct_hn(n_ieca))
+        _kpi(c10, "BRA",             f"{n_bra:,}",       _pct_hn(n_bra))
+        _kpi(c11, "BCC di-hidro",    f"{n_bcc_dhp:,}",   _pct_hn(n_bcc_dhp))
+        c12, c13, c14 = st.columns(3)
+        _kpi(c12, "BCC não di-hidro",f"{n_bcc_ndhp:,}",  _pct_hn(n_bcc_ndhp))
+        _kpi(c13, "Tiazídico",       f"{n_tiazid:,}",    _pct_hn(n_tiazid))
+        _kpi(c14, "Betabloqueador",  f"{n_betabloq:,}",  _pct_hn(n_betabloq))
+        c15, c16, c17 = st.columns(3)
+        _kpi(c15, "Diur. de alça",   f"{n_diur_alca:,}", _pct_hn(n_diur_alca))
+        _kpi(c16, "Poupador de K",   f"{n_poup_k:,}",    _pct_hn(n_poup_k))
+        _kpi(c17, "Nitrato",         f"{n_nitrato:,}",   _pct_hn(n_nitrato))
+        c18, c19, c20 = st.columns(3)
+        _kpi(c18, "Simpatolítico",   f"{n_simpat:,}",    _pct_hn(n_simpat))
+        _kpi(c19, "Alfabloqueador",  f"{n_alfablo:,}",   _pct_hn(n_alfablo))
+        _kpi(c20, "Vasodilatador",   f"{n_vasod:,}",     _pct_hn(n_vasod))
+
+    # ───────── ATO 5 — COMORBIDADES E RISCO CV ─────────
+    st.markdown("---")
+    st.markdown("##### 5. Comorbidades associadas e risco cardiovascular")
+    a5e, a5d = st.columns([1, 1.1])
+    with a5e:
+        st.markdown(
+            f"<div style='font-size:1.0em; line-height:1.65;'>"
+            f"Sobreposição entre HAS e outras condições "
+            f"cardiometabólicas nos {_bh(n_has_total)} hipertensos:"
+            f"<br><br>"
+            f"• 🍬 {_bh(n_has_dm)} com <b>DM</b> "
+            f"(meta PA &lt;130/80, IECA/BRA como 1ª linha);<br>"
+            f"• 🫘 {_bh(n_has_irc)} com <b>IRC</b> "
+            f"(IECA/BRA + SGLT-2 para nefroproteção);<br>"
+            f"• 💔 {_bh(n_has_ci)} com <b>CI</b> "
+            f"(estatina alta intensidade + AAS);<br>"
+            f"• 🫀 {_bh(n_has_icc)} com <b>ICC</b> "
+            f"(IECA/BRA/INRA + BB + ARM + SGLT-2);<br>"
+            f"• 🧠 {_bh(n_has_avc)} com <b>AVC prévio</b> "
+            f"(controle rigoroso de PA reduz reincidência).<br><br>"
+            f"<b>Risco cardiovascular (Framingham + SBC):</b><br>"
+            f"🔴 {_bh_red(n_rcv_ma)} muito alto · "
+            f"🟠 {_bh_orange(n_rcv_a)} alto · "
+            f"🟡 {_bh(n_rcv_int)} intermediário · "
+            f"🟢 {_bh_green(n_rcv_b)} baixo."
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    with a5d:
+        st.markdown(
+            f"<div style='font-size:0.85em; color:#555555; "
+            f"margin-bottom:6px;'><b>Comorbidades associadas</b></div>",
+            unsafe_allow_html=True,
+        )
+        c1, c2, c3 = st.columns(3)
+        _kpi(c1, "🍬 HAS + DM",  f"{n_has_dm:,}",  _pct_hn(n_has_dm))
+        _kpi(c2, "🫘 HAS + IRC", f"{n_has_irc:,}", _pct_hn(n_has_irc))
+        _kpi(c3, "💔 HAS + CI",  f"{n_has_ci:,}",  _pct_hn(n_has_ci))
+        c4, c5, _c6 = st.columns(3)
+        _kpi(c4, "🫀 HAS + ICC", f"{n_has_icc:,}", _pct_hn(n_has_icc))
+        _kpi(c5, "🧠 HAS + AVC", f"{n_has_avc:,}", _pct_hn(n_has_avc))
+        st.markdown(
+            f"<div style='font-size:0.85em; color:#555555; "
+            f"margin-top:10px; margin-bottom:6px;'>"
+            f"<b>Risco cardiovascular</b> (Framingham + SBC)</div>",
+            unsafe_allow_html=True,
+        )
+        c7, c8, c9, c10 = st.columns(4)
+        _kpi(c7,  "🔴 Muito alto",      f"{n_rcv_ma:,}",  _pct_hn(n_rcv_ma))
+        _kpi(c8,  "🟠 Alto",            f"{n_rcv_a:,}",   _pct_hn(n_rcv_a))
+        _kpi(c9,  "🟡 Intermediário",   f"{n_rcv_int:,}", _pct_hn(n_rcv_int))
+        _kpi(c10, "🟢 Baixo",           f"{n_rcv_b:,}",   _pct_hn(n_rcv_b))
+
+    # ───────── LISTA NOMINAL (mesma da aba "🩺 Hipertensão") ─────────
+    st.markdown("---")
+    st.markdown("##### Lista nominal de hipertensos")
+
+    with st.spinner("Carregando lista de hipertensos..."):
+        df_hn = carregar_hipertensao_nominal(ap_sel, cli_sel, esf_sel)
+
+    if df_hn.empty:
+        st.info("Sem pacientes com HAS na equipe.")
+    else:
+        col_fhn1, col_fhn2 = st.columns([2, 1])
+        with col_fhn1:
+            sin_hn = st.multiselect(
+                "Mostrar pacientes com:",
+                options=[
+                    '🟢 Controlados',
+                    '🔴 Descontrolados',
+                    'PA ≥ 140/90 mmHg',
+                    'PA ≥ 180/110 mmHg (urgência)',
+                    'Sem aferição PA >30d',
+                    'Sem aferição PA >90d',
+                    'Sem aferição PA >180d',
+                    'Sem aferição PA >365d',
+                    'Sem médico há >180d',
+                    'Sem CID',
+                    'Sem creatinina',
+                    'Sem colesterol',
+                    'Sem EAS',
+                    'Sem ECG',
+                    'Sem IMC calculável',
+                    'DM + HAS com PA >135/80',
+                    'HAS + IRC',
+                    'HAS + ICC',
+                    'HAS + CI',
+                    'HAS + DM',
+                ],
+                default=[],
+                placeholder="Todos os hipertensos (default)",
+                help="Lógica OR — paciente aparece se atender a qualquer "
+                     "um dos sinalizadores marcados.",
+                key="hasn_filtro_sin",
+            )
+        with col_fhn2:
+            cargas_disp_hn = ['Muito Alto', 'Alto', 'Moderado', 'Baixo']
+            carga_hn = st.multiselect(
+                "Carga de morbidade",
+                options=cargas_disp_hn, default=[], placeholder="Todas",
+                key="hasn_filtro_carga",
+            )
+
+        col_fhn3, _ = st.columns([2, 2])
+        with col_fhn3:
+            faixa_hn = st.multiselect(
+                "Faixa etária",
+                options=['<60a', '60–79a', '≥80a'],
+                default=[], placeholder="Todas",
+                key="hasn_filtro_faixa",
+            )
+
+        df_hnv = df_hn.copy()
+        if carga_hn:
+            df_hnv = df_hnv[df_hnv['charlson_categoria'].isin(carga_hn)]
+        if faixa_hn:
+            mfx = pd.Series(False, index=df_hnv.index)
+            if '<60a'   in faixa_hn: mfx |= (df_hnv['idade'] < 60)
+            if '60–79a' in faixa_hn: mfx |= ((df_hnv['idade'] >= 60) & (df_hnv['idade'] < 80))
+            if '≥80a'   in faixa_hn: mfx |= (df_hnv['idade'] >= 80)
+            df_hnv = df_hnv[mfx]
+        if sin_hn:
+            mask = pd.Series(False, index=df_hnv.index)
+            pas_h = df_hnv['pressao_sistolica']
+            pad_h = df_hnv['pressao_diastolica']
+            dpa_h = df_hnv['dias_desde_ultima_pa'].fillna(99999)
+            meta_h = df_hnv['meta_pas'].fillna(140)
+            pa_recente = (dpa_h <= 180) & pas_h.notna() & pad_h.notna()
+            controlado_h    = pa_recente & (pas_h < meta_h) & (pad_h < 90)
+            descontrolado_h = pa_recente & ((pas_h >= meta_h) | (pad_h >= 90))
+
+            if '🟢 Controlados'    in sin_hn: mask |= controlado_h
+            if '🔴 Descontrolados' in sin_hn: mask |= descontrolado_h
+            if 'PA ≥ 140/90 mmHg' in sin_hn:
+                mask |= pa_recente & ((pas_h >= 140) | (pad_h >= 90))
+            if 'PA ≥ 180/110 mmHg (urgência)' in sin_hn:
+                mask |= pa_recente & ((pas_h >= 180) | (pad_h >= 110))
+            if 'Sem aferição PA >30d'  in sin_hn: mask |= (dpa_h > 30)
+            if 'Sem aferição PA >90d'  in sin_hn: mask |= (dpa_h > 90)
+            if 'Sem aferição PA >180d' in sin_hn: mask |= (dpa_h > 180)
+            if 'Sem aferição PA >365d' in sin_hn: mask |= (dpa_h > 365)
+            if 'Sem médico há >180d' in sin_hn:
+                mask |= (df_hnv['dias_desde_ultima_medica'].fillna(99999) > 180)
+            if 'Sem CID'           in sin_hn:
+                mask |= df_hnv['HAS_sem_CID'].fillna(False).astype(bool)
+            if 'Sem creatinina'    in sin_hn:
+                mask |= df_hnv['lacuna_creatinina_HAS_DM'].fillna(False).astype(bool)
+            if 'Sem colesterol'    in sin_hn:
+                mask |= df_hnv['lacuna_colesterol_HAS_DM'].fillna(False).astype(bool)
+            if 'Sem EAS'           in sin_hn:
+                mask |= df_hnv['lacuna_eas_HAS_DM'].fillna(False).astype(bool)
+            if 'Sem ECG'           in sin_hn:
+                mask |= df_hnv['lacuna_ecg_HAS_DM'].fillna(False).astype(bool)
+            if 'Sem IMC calculável' in sin_hn:
+                mask |= df_hnv['lacuna_IMC_HAS_DM'].fillna(False).astype(bool)
+            if 'DM + HAS com PA >135/80' in sin_hn:
+                mask |= df_hnv['lacuna_DM_HAS_PA_descontrolada'].fillna(False).astype(bool)
+            if 'HAS + IRC' in sin_hn: mask |= df_hnv['IRC'].notna()
+            if 'HAS + ICC' in sin_hn: mask |= df_hnv['ICC'].notna()
+            if 'HAS + CI'  in sin_hn: mask |= df_hnv['CI'].notna()
+            if 'HAS + DM'  in sin_hn: mask |= df_hnv['DM'].notna()
+            df_hnv = df_hnv[mask]
+
+        st.caption(
+            f"**{len(df_hnv):,} hipertensos** sendo apresentados "
+            f"(de {len(df_hn):,} hipertensos da equipe)."
+        )
+
+        if df_hnv.empty:
+            st.info("Nenhum paciente bate com a combinação de filtros selecionada.")
+        else:
+            df_hnr = df_hnv.copy()
+
+            if MODO_ANONIMO:
+                df_hnr['nome_exib'] = df_hnr.apply(
+                    lambda r: anonimizar_nome(
+                        str(r.get('cpf') or r.get('nome', '')),
+                        r.get('genero', '')),
+                    axis=1,
+                )
+            else:
+                df_hnr['nome_exib'] = df_hnr['nome']
+
+            def _truthy_hn(v):
+                if v is None: return False
+                try:
+                    if pd.isna(v): return False
+                except (TypeError, ValueError):
+                    pass
+                return bool(v)
+
+            def _lacunas_has_n(r):
+                ats = []
+                pares = [
+                    ('lacuna_PA_hipertenso_180d',          'Sem PA (>180d)'),
+                    ('lacuna_HAS_descontrolado_menor80',   'PA descontrolada (<80a)'),
+                    ('lacuna_HAS_descontrolado_80mais',    'PA descontrolada (≥80a)'),
+                    ('lacuna_DM_HAS_PA_descontrolada',     'DM+HAS PA >135/80'),
+                    ('lacuna_creatinina_HAS_DM',           'Sem creatinina'),
+                    ('lacuna_colesterol_HAS_DM',           'Sem colesterol'),
+                    ('lacuna_eas_HAS_DM',                  'Sem EAS'),
+                    ('lacuna_ecg_HAS_DM',                  'Sem ECG'),
+                    ('lacuna_IMC_HAS_DM',                  'Sem IMC'),
+                ]
+                for col, txt in pares:
+                    if _truthy_hn(r.get(col)):
+                        ats.append(txt)
+                if _truthy_hn(r.get('HAS_sem_CID')):
+                    ats.append('Sem CID')
+                return ", ".join(ats) if ats else "—"
+
+            df_hnr['lacunas_has'] = df_hnr.apply(_lacunas_has_n, axis=1)
+
+            def _pa_str_n(r):
+                pas = r.get('pressao_sistolica')
+                pad = r.get('pressao_diastolica')
+                if pd.isna(pas) or pd.isna(pad):
+                    return "—"
+                return f"{int(pas)}/{int(pad)}"
+
+            df_hnr['pa_atual'] = df_hnr.apply(_pa_str_n, axis=1)
+
+            def _ctrl_pa_n(r):
+                pas = r.get('pressao_sistolica')
+                pad = r.get('pressao_diastolica')
+                dias = r.get('dias_desde_ultima_pa')
+                meta = r.get('meta_pas')
+                if pd.isna(pas) or pd.isna(pad):
+                    return '— sem PA'
+                if pd.isna(dias) or dias > 180:
+                    return '— PA antiga (>180d)'
+                meta_v = float(meta) if pd.notna(meta) else 140.0
+                if pas >= meta_v or pad >= 90:
+                    return '🔴 Descontrolado'
+                return '🟢 Controlado'
+
+            df_hnr['ctrl_str'] = df_hnr.apply(_ctrl_pa_n, axis=1)
+
+            _ord_hn = {'🔴 Descontrolado': 0, '🟢 Controlado': 1,
+                       '— sem PA': 2, '— PA antiga (>180d)': 3}
+            df_hnr['_ord_ctrl'] = df_hnr['ctrl_str'].map(_ord_hn).fillna(9)
+
+            def _fmt_dias_hn(v):
+                return f"{int(v)}" if pd.notna(v) else "—"
+
+            df_hnr = df_hnr.sort_values(
+                ['_ord_ctrl', 'dias_desde_ultima_pa'],
+                ascending=[True, False], na_position='last',
+            )
+
+            st.dataframe(
+                pd.DataFrame({
+                    'Paciente':   df_hnr['nome_exib'].values,
+                    'Idade':      df_hnr['idade'].astype('Int64').values,
+                    'Morbidades': df_hnr['morbidades_lista'].fillna('—').values,
+                    'Última prescrição crônica':
+                        df_hnr['medicamentos_lista'].fillna('—').values,
+                    'Carga de Morbidade':
+                        df_hnr['charlson_categoria'].fillna('—').values,
+                    'PA atual (mmHg)':  df_hnr['pa_atual'].values,
+                    'Dias s/ PA':       df_hnr['dias_desde_ultima_pa'].apply(_fmt_dias_hn).values,
+                    'Controle':         df_hnr['ctrl_str'].values,
+                    '% dias controlado (365d)':
+                        df_hnr['pct_dias_has_controlado_365d'].astype(float).values,
+                    'Meta PAS':         df_hnr['meta_pas'].astype('Int64').values,
+                    'Lacunas de HAS':   df_hnr['lacunas_has'].values,
+                }),
+                hide_index=True, use_container_width=True, height=540,
+                column_config={
+                    'Paciente':   st.column_config.TextColumn('Paciente', width='medium'),
+                    'Idade':      st.column_config.NumberColumn('Idade', width='small'),
+                    'Morbidades': st.column_config.TextColumn('Morbidades', width='large'),
+                    'Última prescrição crônica':
+                        st.column_config.TextColumn('Última prescrição crônica',
+                                                    width='large'),
+                    'Carga de Morbidade':
+                        st.column_config.TextColumn('Carga de Morbidade', width='small'),
+                    'PA atual (mmHg)':
+                        st.column_config.TextColumn('PA atual (mmHg)', width='small'),
+                    'Dias s/ PA':
+                        st.column_config.TextColumn('Dias s/ PA', width='small'),
+                    'Controle':
+                        st.column_config.TextColumn('Controle', width='small'),
+                    '% dias controlado (365d)':
+                        st.column_config.NumberColumn('% dias controlado',
+                                                       format='%.0f%%', width='small'),
+                    'Meta PAS':
+                        st.column_config.NumberColumn('Meta PAS', width='small'),
+                    'Lacunas de HAS':
+                        st.column_config.TextColumn('Lacunas de HAS', width='large'),
+                },
+            )
+
+# ─────────────────────────────────────────────────────────────
 # ABA 6 — DIABETES MELLITUS (DM)
 # ─────────────────────────────────────────────────────────────
 with tab_dm:
@@ -2580,7 +3335,7 @@ with tab_dm_narr:
 
     # ───────── ATO 2 — CONTROLE GLICÊMICO ─────────
     st.markdown("---")
-    st.markdown("##### 2. Controle glicêmico — o funil da HbA1c")
+    st.markdown("##### 2. Controle glicêmico")
     a2e, a2d = st.columns([1, 1.1])
     with a2e:
         media_str = (f"{float(media_a1c):.1f}%"
