@@ -22,7 +22,7 @@ from utils.anonimizador import (
 
 # CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(
-    page_title="Polifarmácia e ACB · Navegador Clínico",
+    page_title="Carga farmacológica · Navegador Clínico",
     page_icon="💊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -476,10 +476,11 @@ st.session_state['aba_poli'] = aba_sel
 # ═══════════════════════════════════════════════════════════════
 # TÍTULO
 # ═══════════════════════════════════════════════════════════════
-st.title("💊 Polifarmácia e Carga Anticolinérgica")
+st.title("💊 Carga farmacológica")
 st.markdown(
-    "Análise da carga medicamentosa, polifarmácia e escore ACB "
-    "(*Anticholinergic Cognitive Burden*) por território e complexidade clínica."
+    "Carga medicamentosa, polifarmácia, critérios STOPP/START/Beers "
+    "e Escore ACB (*Anticholinergic Cognitive Burden*) por território "
+    "e complexidade clínica."
 )
 
 # Texto explicativo de abertura — três dimensões + ACB

@@ -1163,16 +1163,14 @@ else:
 # ═══════════════════════════════════════════════════════════════
 # ABAS
 # ═══════════════════════════════════════════════════════════════
-(tab_resumo, tab_lacunas, tab_cont, tab_polif,
- tab_has, tab_has_narr, tab_dm, tab_dm_narr, tab_pacientes) = st.tabs([
+(tab_resumo, tab_cont, tab_polif,
+ tab_has, tab_dm, tab_lacunas, tab_pacientes) = st.tabs([
     "📊 Resumo da população",
-    "⚠️ Lacunas",
     "🔄 Continuidade",
     "💊 Carga farmacológica",
     "🩺 Hipertensão",
-    "📖 Hipertensão (narrativa)",
     "🩸 Diabetes",
-    "📖 Diabetes (narrativa)",
+    "⚠️ Lacunas",
     "🧑‍⚕️ Meus Pacientes",
 ])
 
@@ -1349,225 +1347,9 @@ cortado em 1,0.
     )
     st.plotly_chart(fig_hist, use_container_width=True)
 
-# ─────────────────────────────────────────────────────────────
-# ABA 2 — LACUNAS DA EQUIPE × MUNICÍPIO
-# ─────────────────────────────────────────────────────────────
-with tab_lacunas:
-    st.markdown(
-        "#### Lacunas de cuidado — Equipe versus município"
-    )
-    st.caption(
-        "Cada lacuna é calculada apenas sobre a população elegível "
-        "(ex.: 'CI sem AAS' usa pacientes com CI como denominador). "
-        "À esquerda, o racional clínico do grupo + as lacunas em "
-        "destaque (piores ou melhores que o município). À direita, "
-        "todas as lacunas do grupo: o fundo do card vai de verde "
-        "(% baixa) a vermelho (% alta), a borda esquerda fica "
-        "vermelha quando a equipe está acima do município, verde "
-        "quando está abaixo, cinza quando próximo."
-    )
-
-    with st.spinner("Calculando lacunas da equipe e do município..."):
-        df_eq  = carregar_lacunas_agregado(ap_sel, cli_sel, esf_sel)
-        df_mun = carregar_lacunas_agregado(None, None, None)
-
-    if df_eq.empty:
-        st.warning("Sem dados de lacunas para a equipe selecionada.")
-    else:
-        df_lac = df_eq.merge(
-            df_mun[['lacuna', 'numerador', 'denominador', 'pct']]
-                .rename(columns={'numerador':   'numerador_mun',
-                                 'denominador': 'denominador_mun',
-                                 'pct':         'pct_mun'}),
-            on='lacuna', how='left',
-        )
-        df_lac['delta'] = df_lac['pct'] - df_lac['pct_mun']
-
-        # ───── Atos por grupo (ordem definida em _ORDEM_GRUPOS_LACUNAS) ─────
-        for grupo in _ORDEM_GRUPOS_LACUNAS:
-            df_g = df_lac[df_lac['grupo'] == grupo].copy()
-            df_g = df_g[df_g['denominador'] > 0]
-            if df_g.empty:
-                continue
-            df_g = df_g.sort_values('pct', ascending=False)
-
-            st.markdown("---")
-            st.markdown(f"##### {_LABEL_GRUPO_DISPLAY.get(grupo, grupo)}")
-
-            e, d = st.columns([1, 1.3])
-            with e:
-                contexto = NARRATIVA_GRUPO_LACUNAS.get(grupo, "")
-                df_pior = df_g.dropna(subset=['delta']).sort_values(
-                    'delta', ascending=False)
-                df_top_pior   = df_pior[df_pior['delta'] >  0.5].head(3)
-                df_top_melhor = df_pior[df_pior['delta'] < -0.5].tail(3)
-
-                html = (
-                    f"<div style='line-height:1.6; font-size:0.95em;'>"
-                    f"{contexto}</div>"
-                )
-
-                if not df_top_pior.empty:
-                    html += (
-                        "<div style='margin-top:14px;'>"
-                        "<b style='color:#C0392B;'>⚠️ Onde sua equipe "
-                        "está pior que o município:</b>"
-                        "<ul style='margin:6px 0 0 0; padding-left:20px;'>"
-                    )
-                    for _, r in df_top_pior.iterrows():
-                        html += (
-                            f"<li style='margin-bottom:4px;'>"
-                            f"<b>{r['lacuna']}</b> — "
-                            f"<b style='color:#C0392B;'>"
-                            f"{int(r['numerador'])}</b> "
-                            f"({float(r['pct']):.0f}%) "
-                            f"<span style='color:#C0392B;'>"
-                            f"↑ +{float(r['delta']):.1f} pp</span>"
-                            f"</li>"
-                        )
-                    html += "</ul></div>"
-
-                if not df_top_melhor.empty:
-                    html += (
-                        "<div style='margin-top:10px;'>"
-                        "<b style='color:#198754;'>✅ Onde sua equipe "
-                        "está melhor que o município:</b>"
-                        "<ul style='margin:6px 0 0 0; padding-left:20px;'>"
-                    )
-                    for _, r in df_top_melhor.iterrows():
-                        html += (
-                            f"<li style='margin-bottom:4px;'>"
-                            f"<b>{r['lacuna']}</b> — "
-                            f"<b style='color:#198754;'>"
-                            f"{int(r['numerador'])}</b> "
-                            f"({float(r['pct']):.0f}%) "
-                            f"<span style='color:#198754;'>"
-                            f"↓ {float(r['delta']):.1f} pp</span>"
-                            f"</li>"
-                        )
-                    html += "</ul></div>"
-
-                if df_top_pior.empty and df_top_melhor.empty:
-                    html += (
-                        "<div style='margin-top:10px; color:#6B7280;'>"
-                        "Sua equipe está alinhada com a média do "
-                        "município neste grupo (variação inferior a "
-                        "±0,5 pp em todas as lacunas)."
-                        "</div>"
-                    )
-
-                st.markdown(html, unsafe_allow_html=True)
-
-            with d:
-                rows = list(df_g.iterrows())
-                # Grade 2 cards por linha
-                for i in range(0, len(rows), 2):
-                    sub = st.columns(2)
-                    for j in range(2):
-                        if i + j < len(rows):
-                            _, r = rows[i + j]
-                            _card_lacuna(sub[j], r)
-
-        # ───────── Tabela completa com filtro ao final ─────────
-        st.markdown("---")
-        st.markdown("##### 📋 Tabela completa de lacunas")
-        st.caption(
-            "Visão tabular consolidada com gradiente de cor por % e "
-            "variação em relação ao município. Filtre por grupo abaixo. "
-            "Para abrir os pacientes individualmente em cada lacuna, "
-            "vá para a aba 🧑‍⚕️ **Meus Pacientes** — lá é possível "
-            "filtrar a lista nominal por lacuna específica e abrir o "
-            "card de cada paciente."
-        )
-
-        grupos_disp = [g for g in _ORDEM_GRUPOS_LACUNAS
-                       if g in df_lac['grupo'].dropna().unique()]
-        filtro_grupo = st.multiselect(
-            "Filtrar por grupo",
-            options=grupos_disp, default=[],
-            placeholder="Todos os grupos",
-            format_func=lambda g: _LABEL_GRUPO_DISPLAY.get(g, g),
-            key="lac_filtro_grupo_tab",
-        )
-
-        df_lac_tab = df_lac.sort_values(
-            'pct', ascending=False, na_position='last')
-        if filtro_grupo:
-            df_lac_tab = df_lac_tab[df_lac_tab['grupo'].isin(filtro_grupo)]
-
-        df_tab = pd.DataFrame({
-            'Grupo':       df_lac_tab['grupo'].map(
-                lambda g: _LABEL_GRUPO_DISPLAY.get(g, g)).values,
-            'Lacuna':      df_lac_tab['lacuna'].values,
-            'n / N':       df_lac_tab.apply(
-                lambda r: f"{int(r['numerador'])} / {int(r['denominador'])}"
-                          if r['denominador'] else "—",
-                axis=1,
-            ).values,
-            '% Equipe':    df_lac_tab['pct'].astype(float).values,
-            '% Município': df_lac_tab['pct_mun'].astype(float).values,
-            'Variação':    df_lac_tab['delta'].astype(float).values,
-        })
-
-        def _fmt_variacao(v):
-            if pd.isna(v):     return '—'
-            if v > 0:          return f'↑ +{v:.1f}%'
-            if v < 0:          return f'↓ {v:.1f}%'
-            return '↔ 0,0%'
-
-        def _cor_variacao(v):
-            if pd.isna(v):     return ''
-            if v > 0:          return 'color: #C0392B; font-weight: 600;'
-            if v < 0:          return 'color: #27AE60; font-weight: 600;'
-            return 'color: #6B7280;'
-
-        def _gradiente_pct_tab(v, vmin=0.0, vmax=100.0):
-            if pd.isna(v):     return ''
-            norm = max(0.0, min(1.0, (float(v) - vmin) / (vmax - vmin)))
-            if norm <= 0.5:
-                t = norm * 2
-                r = int(round(76  + (255 - 76)  * t))
-                g = int(round(175 + (235 - 175) * t))
-                b = int(round( 80 + ( 59 -  80) * t))
-            else:
-                t = (norm - 0.5) * 2
-                r = int(round(255 + (231 - 255) * t))
-                g = int(round(235 + ( 76 - 235) * t))
-                b = int(round( 59 + ( 60 -  59) * t))
-            return f'background-color: rgba({r},{g},{b},0.55);'
-
-        styled = (
-            df_tab.style
-            .applymap(_gradiente_pct_tab, subset=['% Equipe', '% Município'])
-            .format({
-                '% Equipe':    lambda v: f'{v:.1f}%' if pd.notna(v) else '—',
-                '% Município': lambda v: f'{v:.1f}%' if pd.notna(v) else '—',
-                'Variação':    _fmt_variacao,
-            })
-            .applymap(_cor_variacao, subset=['Variação'])
-            .set_properties(
-                subset=['Grupo', 'Lacuna'],
-                **{'text-align': 'left'},
-            )
-            .set_properties(
-                subset=['n / N', '% Equipe', '% Município', 'Variação'],
-                **{'text-align': 'center'},
-            )
-            .set_table_styles([
-                {'selector': 'th.col_heading.level0',
-                 'props': [('text-align', 'center')]},
-                {'selector': 'th.col_heading.level0:nth-child(1), '
-                             'th.col_heading.level0:nth-child(2)',
-                 'props': [('text-align', 'left')]},
-            ])
-        )
-
-        st.dataframe(
-            styled, hide_index=True, use_container_width=True, height=560,
-        )
 
 # ─────────────────────────────────────────────────────────────
-# ABA 3 — CONTINUIDADE DO CUIDADO
+# ABA 2 — CONTINUIDADE DO CUIDADO
 # ─────────────────────────────────────────────────────────────
 with tab_cont:
     st.markdown(
@@ -1874,7 +1656,7 @@ with tab_cont:
     )
 
 # ─────────────────────────────────────────────────────────────
-# ABA 4 — CARGA FARMACOLÓGICA (Polifarmácia, STOPP, START, Beers, ACB)
+# ABA 3 — CARGA FARMACOLÓGICA (Polifarmácia, STOPP, START, Beers, ACB)
 # ─────────────────────────────────────────────────────────────
 with tab_polif:
     st.markdown("#### Carga farmacológica")
@@ -1932,6 +1714,34 @@ ACB calculado individualmente para cada paciente.
     n_idosos_eq  = int(pf_eq.get('n_idosos', 0) or 0) or 1
     n_total_mun  = int(pf_mun.get('n_total', 0) or 0) or 1
     n_idosos_mun = int(pf_mun.get('n_idosos', 0) or 0) or 1
+
+    def _top5_criterios(tipo: str, titulo: str):
+        """Lista em bullets os 5 critérios mais prevalentes de um
+        tipo (STOPP/START/Beers) na equipe, ocupando largura total
+        abaixo dos cards da seção."""
+        df_tot = agg.get('totais_por_criterio', pd.DataFrame())
+        if df_tot.empty:
+            return
+        df_top5 = (df_tot[df_tot['tipo'] == tipo]
+                   .sort_values('n_pacientes', ascending=False)
+                   .head(5))
+        df_top5 = df_top5[df_top5['n_pacientes'] > 0]
+        if df_top5.empty:
+            return
+        bullets = ""
+        for _, r in df_top5.iterrows():
+            bullets += (
+                f"<li style='margin-bottom:4px;'><b>"
+                f"{int(r['n_pacientes'])} pacientes</b> — "
+                f"{r['descricao']}</li>"
+            )
+        st.markdown(
+            f"<div style='margin-top:14px; font-size:0.92em;'>"
+            f"<b>{titulo}</b>"
+            f"<ul style='margin:6px 0 0 0; padding-left:20px;'>"
+            f"{bullets}</ul></div>",
+            unsafe_allow_html=True,
+        )
 
     # ═════════════════════════════════════════════════════════════
     # 1. DIMENSÃO QUANTITATIVA — polifarmácia e hiperpolifarmácia
@@ -2035,6 +1845,10 @@ ACB calculado individualmente para cada paciente.
             pf_mun.get('n_com_stopp_idosos'), n_idosos_mun,
             indicador_ruim_se_alto=True,
         )
+    _top5_criterios(
+        'STOPP',
+        'Top-5 critérios STOPP mais prevalentes na sua equipe',
+    )
 
     # ═════════════════════════════════════════════════════════════
     # 3. CRITÉRIOS START
@@ -2075,6 +1889,10 @@ ACB calculado individualmente para cada paciente.
             pf_mun.get('n_com_start_idosos'), n_idosos_mun,
             indicador_ruim_se_alto=True,
         )
+    _top5_criterios(
+        'START',
+        'Top-5 critérios START mais prevalentes na sua equipe',
+    )
 
     # ═════════════════════════════════════════════════════════════
     # 4. CRITÉRIOS BEERS
@@ -2117,6 +1935,10 @@ ACB calculado individualmente para cada paciente.
             pf_mun.get('n_com_beers_idosos'), n_idosos_mun,
             indicador_ruim_se_alto=True,
         )
+    _top5_criterios(
+        'Beers',
+        'Top-5 critérios Beers mais prevalentes na sua equipe',
+    )
 
     # ═════════════════════════════════════════════════════════════
     # 5. ESCORE ACB — carga anticolinérgica
@@ -2343,340 +2165,13 @@ ACB calculado individualmente para cada paciente.
 
 
 # ─────────────────────────────────────────────────────────────
-# ABA 5 — HIPERTENSÃO (HAS)
-# ─────────────────────────────────────────────────────────────
-with tab_has:
-    st.markdown("#### Hipertensão arterial — controle e lacunas da equipe")
-    st.caption(
-        "Apenas pacientes com diagnóstico ativo de HAS. Status do "
-        "controle pressórico vem da fato (status_controle_pressorio) "
-        "e considera as últimas aferições registradas."
-    )
-
-    with st.spinner("Carregando indicadores de HAS..."):
-        ag_h = carregar_hipertensao_agregado(ap_sel, cli_sel, esf_sel)
-
-    n_has = int(ag_h.get('n_has', 0) or 0) or 1
-
-    def _pct_h(num):
-        return f"{int(num or 0)/n_has*100:.0f}%" if n_has else "0%"
-
-    # KPIs
-    st.markdown("##### Indicadores populacionais (denominador = hipertensos)")
-    h1, h2, h3, h4 = st.columns(4)
-    _kpi(h1, "🩺 Hipertensos na equipe",
-         f"{int(ag_h.get('n_has', 0) or 0):,}",
-         f"{int(ag_h.get('n_has', 0) or 0)/(int(ag_h.get('n_total', 0) or 1))*100:.0f}% da equipe")
-    _kpi(h2, "✅ PA controlada",
-         f"{int(ag_h.get('n_ctrl', 0) or 0):,}",
-         _pct_h(ag_h.get('n_ctrl')))
-    _kpi(h3, "❌ PA descontrolada",
-         f"{int(ag_h.get('n_desc', 0) or 0):,}",
-         _pct_h(ag_h.get('n_desc')))
-    _kpi(h4, "⚠️ HAS sem CID",
-         f"{int(ag_h.get('n_sem_cid', 0) or 0):,}",
-         _pct_h(ag_h.get('n_sem_cid')))
-
-    h5, h6, h7, h8 = st.columns(4)
-    _kpi(h5, "📉 Sem aferição PA >180d",
-         f"{int(ag_h.get('n_sem_pa_180d', 0) or 0):,}",
-         _pct_h(ag_h.get('n_sem_pa_180d')))
-    _kpi(h6, "🧪 Sem creatinina (365d)",
-         f"{int(ag_h.get('n_sem_creat', 0) or 0):,}",
-         _pct_h(ag_h.get('n_sem_creat')))
-    _kpi(h7, "🧪 Sem colesterol (365d)",
-         f"{int(ag_h.get('n_sem_col', 0) or 0):,}",
-         _pct_h(ag_h.get('n_sem_col')))
-    _kpi(h8, "🫀 Sem ECG (365d)",
-         f"{int(ag_h.get('n_sem_ecg', 0) or 0):,}",
-         _pct_h(ag_h.get('n_sem_ecg')))
-
-    h9, h10, h11, _h12 = st.columns(4)
-    _kpi(h9, "💉 Sem EAS (365d)",
-         f"{int(ag_h.get('n_sem_eas', 0) or 0):,}",
-         _pct_h(ag_h.get('n_sem_eas')))
-    _kpi(h10, "⚖️ Sem IMC calculável",
-         f"{int(ag_h.get('n_sem_imc', 0) or 0):,}",
-         _pct_h(ag_h.get('n_sem_imc')))
-    _kpi(h11, "PAS / PAD média",
-         f"{int(ag_h.get('media_pas') or 0)} / {int(ag_h.get('media_pad') or 0)}")
-
-    st.markdown("---")
-    st.markdown("##### Lista nominal de hipertensos")
-
-    with st.spinner("Carregando lista de hipertensos..."):
-        df_h = carregar_hipertensao_nominal(ap_sel, cli_sel, esf_sel)
-
-    if df_h.empty:
-        st.info("Sem pacientes com HAS na equipe.")
-    else:
-        col_fh1, col_fh2 = st.columns([2, 1])
-        with col_fh1:
-            sin_h = st.multiselect(
-                "Mostrar pacientes com:",
-                options=[
-                    '🟢 Controlados',
-                    '🔴 Descontrolados',
-                    'PA ≥ 140/90 mmHg',
-                    'PA ≥ 180/110 mmHg (urgência)',
-                    'Sem aferição PA >30d',
-                    'Sem aferição PA >90d',
-                    'Sem aferição PA >180d',
-                    'Sem aferição PA >365d',
-                    'Sem médico há >180d',
-                    'Sem CID',
-                    'Sem creatinina',
-                    'Sem colesterol',
-                    'Sem EAS',
-                    'Sem ECG',
-                    'Sem IMC calculável',
-                    'DM + HAS com PA >135/80',
-                    'HAS + IRC',
-                    'HAS + ICC',
-                    'HAS + CI',
-                    'HAS + DM',
-                ],
-                default=[],
-                placeholder="Todos os hipertensos (default)",
-                help="Lógica OR — paciente aparece se atender a qualquer "
-                     "um dos sinalizadores marcados.",
-                key="has_filtro_sin",
-            )
-        with col_fh2:
-            cargas_disp_h = ['Muito Alto', 'Alto', 'Moderado', 'Baixo']
-            carga_h = st.multiselect(
-                "Carga de morbidade",
-                options=cargas_disp_h, default=[], placeholder="Todas",
-                key="has_filtro_carga",
-            )
-
-        col_fh3, _ = st.columns([2, 2])
-        with col_fh3:
-            faixa_h = st.multiselect(
-                "Faixa etária",
-                options=['<60a', '60–79a', '≥80a'],
-                default=[], placeholder="Todas",
-                key="has_filtro_faixa",
-            )
-
-        df_hv = df_h.copy()
-        if carga_h:
-            df_hv = df_hv[df_hv['charlson_categoria'].isin(carga_h)]
-        if faixa_h:
-            mfx = pd.Series(False, index=df_hv.index)
-            if '<60a'   in faixa_h: mfx |= (df_hv['idade'] < 60)
-            if '60–79a' in faixa_h: mfx |= ((df_hv['idade'] >= 60) & (df_hv['idade'] < 80))
-            if '≥80a'   in faixa_h: mfx |= (df_hv['idade'] >= 80)
-            df_hv = df_hv[mfx]
-        if sin_h:
-            mask = pd.Series(False, index=df_hv.index)
-            # Helpers calculados in-place — alguns campos vêm vazios
-            # do banco (ex.: status_controle_pressorio NULL), então
-            # derivamos o controle direto da PA recente vs meta_pas.
-            pas_h = df_hv['pressao_sistolica']
-            pad_h = df_hv['pressao_diastolica']
-            dpa_h = df_hv['dias_desde_ultima_pa'].fillna(99999)
-            meta_h = df_hv['meta_pas'].fillna(140)
-            pa_recente = (dpa_h <= 180) & pas_h.notna() & pad_h.notna()
-            controlado_h    = pa_recente & (pas_h < meta_h) & (pad_h < 90)
-            descontrolado_h = pa_recente & ((pas_h >= meta_h) | (pad_h >= 90))
-
-            if '🟢 Controlados'    in sin_h: mask |= controlado_h
-            if '🔴 Descontrolados' in sin_h: mask |= descontrolado_h
-            if 'PA ≥ 140/90 mmHg' in sin_h:
-                mask |= pa_recente & ((pas_h >= 140) | (pad_h >= 90))
-            if 'PA ≥ 180/110 mmHg (urgência)' in sin_h:
-                mask |= pa_recente & ((pas_h >= 180) | (pad_h >= 110))
-            if 'Sem aferição PA >30d'  in sin_h: mask |= (dpa_h > 30)
-            if 'Sem aferição PA >90d'  in sin_h: mask |= (dpa_h > 90)
-            if 'Sem aferição PA >180d' in sin_h: mask |= (dpa_h > 180)
-            if 'Sem aferição PA >365d' in sin_h: mask |= (dpa_h > 365)
-            if 'Sem médico há >180d' in sin_h:
-                mask |= (df_hv['dias_desde_ultima_medica'].fillna(99999) > 180)
-            if 'Sem CID'           in sin_h:
-                mask |= df_hv['HAS_sem_CID'].fillna(False).astype(bool)
-            if 'Sem creatinina'    in sin_h:
-                mask |= df_hv['lacuna_creatinina_HAS_DM'].fillna(False).astype(bool)
-            if 'Sem colesterol'    in sin_h:
-                mask |= df_hv['lacuna_colesterol_HAS_DM'].fillna(False).astype(bool)
-            if 'Sem EAS'           in sin_h:
-                mask |= df_hv['lacuna_eas_HAS_DM'].fillna(False).astype(bool)
-            if 'Sem ECG'           in sin_h:
-                mask |= df_hv['lacuna_ecg_HAS_DM'].fillna(False).astype(bool)
-            if 'Sem IMC calculável' in sin_h:
-                mask |= df_hv['lacuna_IMC_HAS_DM'].fillna(False).astype(bool)
-            if 'DM + HAS com PA >135/80' in sin_h:
-                mask |= df_hv['lacuna_DM_HAS_PA_descontrolada'].fillna(False).astype(bool)
-            if 'HAS + IRC' in sin_h:
-                mask |= df_hv['IRC'].notna()
-            if 'HAS + ICC' in sin_h:
-                mask |= df_hv['ICC'].notna()
-            if 'HAS + CI'  in sin_h:
-                mask |= df_hv['CI'].notna()
-            if 'HAS + DM'  in sin_h:
-                mask |= df_hv['DM'].notna()
-            df_hv = df_hv[mask]
-
-        st.caption(
-            f"**{len(df_hv):,} hipertensos** sendo apresentados "
-            f"(de {len(df_h):,} hipertensos da equipe)."
-        )
-
-        if df_hv.empty:
-            st.info("Nenhum paciente bate com a combinação de filtros selecionada.")
-        else:
-            df_hr = df_hv.copy()
-
-            if MODO_ANONIMO:
-                df_hr['nome_exib'] = df_hr.apply(
-                    lambda r: anonimizar_nome(
-                        str(r.get('cpf') or r.get('nome', '')),
-                        r.get('genero', '')),
-                    axis=1,
-                )
-            else:
-                df_hr['nome_exib'] = df_hr['nome']
-
-            def _truthy_h(v):
-                if v is None: return False
-                try:
-                    if pd.isna(v): return False
-                except (TypeError, ValueError):
-                    pass
-                return bool(v)
-
-            def _lacunas_has(r):
-                ats = []
-                pares = [
-                    ('lacuna_PA_hipertenso_180d',          'Sem PA (>180d)'),
-                    ('lacuna_HAS_descontrolado_menor80',   'PA descontrolada (<80a)'),
-                    ('lacuna_HAS_descontrolado_80mais',    'PA descontrolada (≥80a)'),
-                    ('lacuna_DM_HAS_PA_descontrolada',     'DM+HAS PA >135/80'),
-                    ('lacuna_creatinina_HAS_DM',           'Sem creatinina'),
-                    ('lacuna_colesterol_HAS_DM',           'Sem colesterol'),
-                    ('lacuna_eas_HAS_DM',                  'Sem EAS'),
-                    ('lacuna_ecg_HAS_DM',                  'Sem ECG'),
-                    ('lacuna_IMC_HAS_DM',                  'Sem IMC'),
-                ]
-                for col, txt in pares:
-                    if _truthy_h(r.get(col)):
-                        ats.append(txt)
-                if _truthy_h(r.get('HAS_sem_CID')):
-                    ats.append('Sem CID')
-                return ", ".join(ats) if ats else "—"
-
-            df_hr['lacunas_has'] = df_hr.apply(_lacunas_has, axis=1)
-
-            def _pa_str(r):
-                pas = r.get('pressao_sistolica')
-                pad = r.get('pressao_diastolica')
-                if pd.isna(pas) or pd.isna(pad):
-                    return "—"
-                return f"{int(pas)}/{int(pad)}"
-
-            df_hr['pa_atual'] = df_hr.apply(_pa_str, axis=1)
-
-            def _ctrl_pa(r):
-                """Calcula controle direto da PA recente (≤180d) vs meta."""
-                pas = r.get('pressao_sistolica')
-                pad = r.get('pressao_diastolica')
-                dias = r.get('dias_desde_ultima_pa')
-                meta = r.get('meta_pas')
-                if pd.isna(pas) or pd.isna(pad):
-                    return '— sem PA'
-                if pd.isna(dias) or dias > 180:
-                    return '— PA antiga (>180d)'
-                meta_v = float(meta) if pd.notna(meta) else 140.0
-                if pas >= meta_v or pad >= 90:
-                    return '🔴 Descontrolado'
-                return '🟢 Controlado'
-
-            df_hr['ctrl_str'] = df_hr.apply(_ctrl_pa, axis=1)
-
-            # Coluna auxiliar para ordenação (descontrolado primeiro)
-            _ord_h = {'🔴 Descontrolado': 0, '🟢 Controlado': 1,
-                       '— sem PA': 2, '— PA antiga (>180d)': 3}
-            df_hr['_ord_ctrl'] = df_hr['ctrl_str'].map(_ord_h).fillna(9)
-
-            def _fmt_dias(v):
-                return f"{int(v)}" if pd.notna(v) else "—"
-
-            df_hr = df_hr.sort_values(
-                ['_ord_ctrl', 'dias_desde_ultima_pa'],
-                ascending=[True, False], na_position='last',
-            )
-
-            st.dataframe(
-                pd.DataFrame({
-                    'Paciente':   df_hr['nome_exib'].values,
-                    'Idade':      df_hr['idade'].astype('Int64').values,
-                    'Morbidades': df_hr['morbidades_lista'].fillna('—').values,
-                    'Última prescrição crônica':
-                        df_hr['medicamentos_lista'].fillna('—').values,
-                    'Carga de Morbidade':
-                        df_hr['charlson_categoria'].fillna('—').values,
-                    'PA atual (mmHg)':  df_hr['pa_atual'].values,
-                    'Dias s/ PA':       df_hr['dias_desde_ultima_pa'].apply(_fmt_dias).values,
-                    'Controle':         df_hr['ctrl_str'].values,
-                    '% dias controlado (365d)':
-                        df_hr['pct_dias_has_controlado_365d'].astype(float).values,
-                    'Meta PAS':         df_hr['meta_pas'].astype('Int64').values,
-                    'Lacunas de HAS':   df_hr['lacunas_has'].values,
-                }),
-                hide_index=True, use_container_width=True, height=540,
-                column_config={
-                    'Paciente':   st.column_config.TextColumn('Paciente', width='medium'),
-                    'Idade':      st.column_config.NumberColumn('Idade', width='small'),
-                    'Morbidades': st.column_config.TextColumn('Morbidades', width='large'),
-                    'Última prescrição crônica':
-                        st.column_config.TextColumn('Última prescrição crônica',
-                                                    width='large'),
-                    'Carga de Morbidade':
-                        st.column_config.TextColumn('Carga de Morbidade', width='small'),
-                    'PA atual (mmHg)':
-                        st.column_config.TextColumn('PA atual (mmHg)', width='small'),
-                    'Dias s/ PA':
-                        st.column_config.TextColumn('Dias s/ PA', width='small'),
-                    'Controle':
-                        st.column_config.TextColumn('Controle', width='small'),
-                    '% dias controlado (365d)':
-                        st.column_config.NumberColumn('% dias controlado',
-                                                       format='%.0f%%', width='small'),
-                    'Meta PAS':
-                        st.column_config.NumberColumn('Meta PAS', width='small'),
-                    'Lacunas de HAS':
-                        st.column_config.TextColumn('Lacunas de HAS', width='large'),
-                },
-            )
-
-            with st.expander("ℹ️ O que significa cada coluna"):
-                st.markdown("""
-- **Paciente** — nome (anonimizado quando o modo está ativo).
-- **Idade** — anos.
-- **Morbidades** — diagnósticos crônicos ativos.
-- **Última prescrição crônica** — medicamentos da prescrição mais recente.
-- **Carga de Morbidade** — categoria do escore de Charlson.
-- **PA atual (mmHg)** — última aferição registrada (PAS/PAD).
-- **Dias s/ PA** — dias desde a última aferição.
-- **Controle** — 🟢 Controlado / 🔴 Descontrolado / — sem dados,
-  conforme `status_controle_pressorio`.
-- **% dias controlado (365d)** — proporção dos dias do último ano
-  em que o paciente esteve com PA dentro da meta.
-- **Meta PAS** — meta sistólica para o paciente (varia conforme
-  idade, comorbidades — DM/IRC têm meta mais restrita).
-- **Lacunas de HAS** — checagens em aberto: sem PA recente, PA
-  descontrolada por faixa etária, exames laboratoriais ausentes,
-  IMC não calculável, ou diagnóstico sem CID.
-""")
-
-# ─────────────────────────────────────────────────────────────
-# ABA 5.1 — HIPERTENSÃO (NARRATIVA)
+# ABA 4 — HIPERTENSÃO
 # Mesma base da aba "🩺 Hipertensão" + campos importados das abas
 # 'Controle pressórico', 'Medicamentos prescritos' e 'Lacunas' da
 # page Hipertensão. Layout em 2 colunas: à esquerda o texto
 # narrativo, à direita os cards. Mantém a tabela nominal embaixo.
 # ─────────────────────────────────────────────────────────────
-with tab_has_narr:
+with tab_has:
     st.markdown("#### Hipertensão arterial — narrativa da equipe")
     st.caption(
         "Mesma base da aba 🩺 Hipertensão, ampliada com medicamentos, "
@@ -3156,679 +2651,25 @@ with tab_has_narr:
         _kpi(c8, "🧠 Alta carga anticolinérgica (ACB ≥3)",
              f"{n_acb:,}", _pct_hn(n_acb))
 
-    # ───────── LISTA NOMINAL (mesma da aba "🩺 Hipertensão") ─────────
+    # ─── Lista nominal removida — usuário deve usar a aba "Meus Pacientes" ───
     st.markdown("---")
-    st.markdown("##### Lista nominal de hipertensos")
-
-    with st.spinner("Carregando lista de hipertensos..."):
-        df_hn = carregar_hipertensao_nominal(ap_sel, cli_sel, esf_sel)
-
-    if df_hn.empty:
-        st.info("Sem pacientes com HAS na equipe.")
-    else:
-        col_fhn1, col_fhn2 = st.columns([2, 1])
-        with col_fhn1:
-            sin_hn = st.multiselect(
-                "Mostrar pacientes com:",
-                options=[
-                    '🟢 Controlados',
-                    '🔴 Descontrolados',
-                    'PA ≥ 140/90 mmHg',
-                    'PA ≥ 180/110 mmHg (urgência)',
-                    'Sem aferição PA >30d',
-                    'Sem aferição PA >90d',
-                    'Sem aferição PA >180d',
-                    'Sem aferição PA >365d',
-                    'Sem médico há >180d',
-                    'Sem CID',
-                    'Sem creatinina',
-                    'Sem colesterol',
-                    'Sem EAS',
-                    'Sem ECG',
-                    'Sem IMC calculável',
-                    'DM + HAS com PA >135/80',
-                    'HAS + IRC',
-                    'HAS + ICC',
-                    'HAS + CI',
-                    'HAS + DM',
-                ],
-                default=[],
-                placeholder="Todos os hipertensos (default)",
-                help="Lógica OR — paciente aparece se atender a qualquer "
-                     "um dos sinalizadores marcados.",
-                key="hasn_filtro_sin",
-            )
-        with col_fhn2:
-            cargas_disp_hn = ['Muito Alto', 'Alto', 'Moderado', 'Baixo']
-            carga_hn = st.multiselect(
-                "Carga de morbidade",
-                options=cargas_disp_hn, default=[], placeholder="Todas",
-                key="hasn_filtro_carga",
-            )
-
-        col_fhn3, _ = st.columns([2, 2])
-        with col_fhn3:
-            faixa_hn = st.multiselect(
-                "Faixa etária",
-                options=['<60a', '60–79a', '≥80a'],
-                default=[], placeholder="Todas",
-                key="hasn_filtro_faixa",
-            )
-
-        df_hnv = df_hn.copy()
-        if carga_hn:
-            df_hnv = df_hnv[df_hnv['charlson_categoria'].isin(carga_hn)]
-        if faixa_hn:
-            mfx = pd.Series(False, index=df_hnv.index)
-            if '<60a'   in faixa_hn: mfx |= (df_hnv['idade'] < 60)
-            if '60–79a' in faixa_hn: mfx |= ((df_hnv['idade'] >= 60) & (df_hnv['idade'] < 80))
-            if '≥80a'   in faixa_hn: mfx |= (df_hnv['idade'] >= 80)
-            df_hnv = df_hnv[mfx]
-        if sin_hn:
-            mask = pd.Series(False, index=df_hnv.index)
-            pas_h = df_hnv['pressao_sistolica']
-            pad_h = df_hnv['pressao_diastolica']
-            dpa_h = df_hnv['dias_desde_ultima_pa'].fillna(99999)
-            meta_h = df_hnv['meta_pas'].fillna(140)
-            pa_recente = (dpa_h <= 180) & pas_h.notna() & pad_h.notna()
-            controlado_h    = pa_recente & (pas_h < meta_h) & (pad_h < 90)
-            descontrolado_h = pa_recente & ((pas_h >= meta_h) | (pad_h >= 90))
-
-            if '🟢 Controlados'    in sin_hn: mask |= controlado_h
-            if '🔴 Descontrolados' in sin_hn: mask |= descontrolado_h
-            if 'PA ≥ 140/90 mmHg' in sin_hn:
-                mask |= pa_recente & ((pas_h >= 140) | (pad_h >= 90))
-            if 'PA ≥ 180/110 mmHg (urgência)' in sin_hn:
-                mask |= pa_recente & ((pas_h >= 180) | (pad_h >= 110))
-            if 'Sem aferição PA >30d'  in sin_hn: mask |= (dpa_h > 30)
-            if 'Sem aferição PA >90d'  in sin_hn: mask |= (dpa_h > 90)
-            if 'Sem aferição PA >180d' in sin_hn: mask |= (dpa_h > 180)
-            if 'Sem aferição PA >365d' in sin_hn: mask |= (dpa_h > 365)
-            if 'Sem médico há >180d' in sin_hn:
-                mask |= (df_hnv['dias_desde_ultima_medica'].fillna(99999) > 180)
-            if 'Sem CID'           in sin_hn:
-                mask |= df_hnv['HAS_sem_CID'].fillna(False).astype(bool)
-            if 'Sem creatinina'    in sin_hn:
-                mask |= df_hnv['lacuna_creatinina_HAS_DM'].fillna(False).astype(bool)
-            if 'Sem colesterol'    in sin_hn:
-                mask |= df_hnv['lacuna_colesterol_HAS_DM'].fillna(False).astype(bool)
-            if 'Sem EAS'           in sin_hn:
-                mask |= df_hnv['lacuna_eas_HAS_DM'].fillna(False).astype(bool)
-            if 'Sem ECG'           in sin_hn:
-                mask |= df_hnv['lacuna_ecg_HAS_DM'].fillna(False).astype(bool)
-            if 'Sem IMC calculável' in sin_hn:
-                mask |= df_hnv['lacuna_IMC_HAS_DM'].fillna(False).astype(bool)
-            if 'DM + HAS com PA >135/80' in sin_hn:
-                mask |= df_hnv['lacuna_DM_HAS_PA_descontrolada'].fillna(False).astype(bool)
-            if 'HAS + IRC' in sin_hn: mask |= df_hnv['IRC'].notna()
-            if 'HAS + ICC' in sin_hn: mask |= df_hnv['ICC'].notna()
-            if 'HAS + CI'  in sin_hn: mask |= df_hnv['CI'].notna()
-            if 'HAS + DM'  in sin_hn: mask |= df_hnv['DM'].notna()
-            df_hnv = df_hnv[mask]
-
-        st.caption(
-            f"**{len(df_hnv):,} hipertensos** sendo apresentados "
-            f"(de {len(df_hn):,} hipertensos da equipe)."
-        )
-
-        if df_hnv.empty:
-            st.info("Nenhum paciente bate com a combinação de filtros selecionada.")
-        else:
-            df_hnr = df_hnv.copy()
-
-            if MODO_ANONIMO:
-                df_hnr['nome_exib'] = df_hnr.apply(
-                    lambda r: anonimizar_nome(
-                        str(r.get('cpf') or r.get('nome', '')),
-                        r.get('genero', '')),
-                    axis=1,
-                )
-            else:
-                df_hnr['nome_exib'] = df_hnr['nome']
-
-            def _truthy_hn(v):
-                if v is None: return False
-                try:
-                    if pd.isna(v): return False
-                except (TypeError, ValueError):
-                    pass
-                return bool(v)
-
-            def _lacunas_has_n(r):
-                ats = []
-                pares = [
-                    ('lacuna_PA_hipertenso_180d',          'Sem PA (>180d)'),
-                    ('lacuna_HAS_descontrolado_menor80',   'PA descontrolada (<80a)'),
-                    ('lacuna_HAS_descontrolado_80mais',    'PA descontrolada (≥80a)'),
-                    ('lacuna_DM_HAS_PA_descontrolada',     'DM+HAS PA >135/80'),
-                    ('lacuna_creatinina_HAS_DM',           'Sem creatinina'),
-                    ('lacuna_colesterol_HAS_DM',           'Sem colesterol'),
-                    ('lacuna_eas_HAS_DM',                  'Sem EAS'),
-                    ('lacuna_ecg_HAS_DM',                  'Sem ECG'),
-                    ('lacuna_IMC_HAS_DM',                  'Sem IMC'),
-                ]
-                for col, txt in pares:
-                    if _truthy_hn(r.get(col)):
-                        ats.append(txt)
-                if _truthy_hn(r.get('HAS_sem_CID')):
-                    ats.append('Sem CID')
-                return ", ".join(ats) if ats else "—"
-
-            df_hnr['lacunas_has'] = df_hnr.apply(_lacunas_has_n, axis=1)
-
-            def _pa_str_n(r):
-                pas = r.get('pressao_sistolica')
-                pad = r.get('pressao_diastolica')
-                if pd.isna(pas) or pd.isna(pad):
-                    return "—"
-                return f"{int(pas)}/{int(pad)}"
-
-            df_hnr['pa_atual'] = df_hnr.apply(_pa_str_n, axis=1)
-
-            def _ctrl_pa_n(r):
-                pas = r.get('pressao_sistolica')
-                pad = r.get('pressao_diastolica')
-                dias = r.get('dias_desde_ultima_pa')
-                meta = r.get('meta_pas')
-                if pd.isna(pas) or pd.isna(pad):
-                    return '— sem PA'
-                if pd.isna(dias) or dias > 180:
-                    return '— PA antiga (>180d)'
-                meta_v = float(meta) if pd.notna(meta) else 140.0
-                if pas >= meta_v or pad >= 90:
-                    return '🔴 Descontrolado'
-                return '🟢 Controlado'
-
-            df_hnr['ctrl_str'] = df_hnr.apply(_ctrl_pa_n, axis=1)
-
-            _ord_hn = {'🔴 Descontrolado': 0, '🟢 Controlado': 1,
-                       '— sem PA': 2, '— PA antiga (>180d)': 3}
-            df_hnr['_ord_ctrl'] = df_hnr['ctrl_str'].map(_ord_hn).fillna(9)
-
-            def _fmt_dias_hn(v):
-                return f"{int(v)}" if pd.notna(v) else "—"
-
-            df_hnr = df_hnr.sort_values(
-                ['_ord_ctrl', 'dias_desde_ultima_pa'],
-                ascending=[True, False], na_position='last',
-            )
-
-            st.dataframe(
-                pd.DataFrame({
-                    'Paciente':   df_hnr['nome_exib'].values,
-                    'Idade':      df_hnr['idade'].astype('Int64').values,
-                    'Morbidades': df_hnr['morbidades_lista'].fillna('—').values,
-                    'Última prescrição crônica':
-                        df_hnr['medicamentos_lista'].fillna('—').values,
-                    'Carga de Morbidade':
-                        df_hnr['charlson_categoria'].fillna('—').values,
-                    'PA atual (mmHg)':  df_hnr['pa_atual'].values,
-                    'Dias s/ PA':       df_hnr['dias_desde_ultima_pa'].apply(_fmt_dias_hn).values,
-                    'Controle':         df_hnr['ctrl_str'].values,
-                    '% dias controlado (365d)':
-                        df_hnr['pct_dias_has_controlado_365d'].astype(float).values,
-                    'Meta PAS':         df_hnr['meta_pas'].astype('Int64').values,
-                    'Lacunas de HAS':   df_hnr['lacunas_has'].values,
-                }),
-                hide_index=True, use_container_width=True, height=540,
-                column_config={
-                    'Paciente':   st.column_config.TextColumn('Paciente', width='medium'),
-                    'Idade':      st.column_config.NumberColumn('Idade', width='small'),
-                    'Morbidades': st.column_config.TextColumn('Morbidades', width='large'),
-                    'Última prescrição crônica':
-                        st.column_config.TextColumn('Última prescrição crônica',
-                                                    width='large'),
-                    'Carga de Morbidade':
-                        st.column_config.TextColumn('Carga de Morbidade', width='small'),
-                    'PA atual (mmHg)':
-                        st.column_config.TextColumn('PA atual (mmHg)', width='small'),
-                    'Dias s/ PA':
-                        st.column_config.TextColumn('Dias s/ PA', width='small'),
-                    'Controle':
-                        st.column_config.TextColumn('Controle', width='small'),
-                    '% dias controlado (365d)':
-                        st.column_config.NumberColumn('% dias controlado',
-                                                       format='%.0f%%', width='small'),
-                    'Meta PAS':
-                        st.column_config.NumberColumn('Meta PAS', width='small'),
-                    'Lacunas de HAS':
-                        st.column_config.TextColumn('Lacunas de HAS', width='large'),
-                },
-            )
-
-# ─────────────────────────────────────────────────────────────
-# ABA 6 — DIABETES MELLITUS (DM)
-# ─────────────────────────────────────────────────────────────
-with tab_dm:
-    st.markdown("#### Diabetes mellitus — controle e lacunas da equipe")
-    st.caption(
-        "Apenas pacientes com diagnóstico ativo de DM. Status do "
-        "controle glicêmico considera HbA1c recente vs meta etária "
-        "(<60a → 7,0%; 60–69a → 7,5%; ≥70a → 8,0%)."
+    st.info(
+        "🧑‍⚕️ **Para abrir os pacientes individualmente**, vá para a "
+        "aba **Meus Pacientes**. Lá é possível filtrar a lista "
+        "nominal por **HAS**, por **Carga de Morbidade** e por "
+        "**lacunas específicas** (sem PA recente, descontrolados, "
+        "sem creatinina, sem ECG, IECA + BRA simultâneos etc.) "
+        "e abrir o card completo de cada paciente."
     )
 
-    with st.spinner("Carregando indicadores de DM..."):
-        ag_d = carregar_diabetes_agregado(ap_sel, cli_sel, esf_sel)
-
-    n_dm = int(ag_d.get('n_dm', 0) or 0) or 1
-
-    def _pct_d(num):
-        return f"{int(num or 0)/n_dm*100:.0f}%" if n_dm else "0%"
-
-    st.markdown("##### Indicadores populacionais (denominador = diabéticos)")
-    d1, d2, d3, d4 = st.columns(4)
-    _kpi(d1, "🩸 Diabéticos na equipe",
-         f"{int(ag_d.get('n_dm', 0) or 0):,}",
-         f"{int(ag_d.get('n_dm', 0) or 0)/(int(ag_d.get('n_total', 0) or 1))*100:.0f}% da equipe")
-    _kpi(d2,
-         "✅ Glicemia controlada (pacientes com A1C realizado há "
-         "< 180 dias e com resultado dentro da meta)",
-         f"{int(ag_d.get('n_ctrl', 0) or 0):,}",
-         _pct_d(ag_d.get('n_ctrl')))
-    _kpi(d3, "❌ HbA1c acima da meta",
-         f"{int(ag_d.get('n_lac_desc', 0) or 0):,}",
-         _pct_d(ag_d.get('n_lac_desc')))
-    _kpi(d4, "⚠️ DM sem CID",
-         f"{int(ag_d.get('n_sem_cid', 0) or 0):,}",
-         _pct_d(ag_d.get('n_sem_cid')))
-
-    d5, d6, d7, d8 = st.columns(4)
-    _kpi(d5, "📉 Sem HbA1c (>180d)",
-         f"{int(ag_d.get('n_sem_a1c_180d', 0) or 0):,}",
-         _pct_d(ag_d.get('n_sem_a1c_180d')))
-    _kpi(d6, "🚫 Nunca fez HbA1c",
-         f"{int(ag_d.get('n_nunca_a1c', 0) or 0):,}",
-         _pct_d(ag_d.get('n_nunca_a1c')))
-    _kpi(d7, "🦶 Sem exame do pé (365d)",
-         f"{int(ag_d.get('n_sem_pe', 0) or 0):,}",
-         _pct_d(ag_d.get('n_sem_pe')))
-    _kpi(d8, "🧪 Sem microalbuminúria",
-         f"{int(ag_d.get('n_sem_micro', 0) or 0):,}",
-         _pct_d(ag_d.get('n_sem_micro')))
-
-    d9, d10, d11, d12 = st.columns(4)
-    _kpi(d9, "💊 DM complicado sem SGLT-2",
-         f"{int(ag_d.get('n_complic_sem_sglt2', 0) or 0):,}",
-         _pct_d(ag_d.get('n_complic_sem_sglt2')))
-    _kpi(d10, "🧪 Sem creatinina",
-         f"{int(ag_d.get('n_sem_creat', 0) or 0):,}",
-         _pct_d(ag_d.get('n_sem_creat')))
-    _kpi(d11, "🧪 Sem colesterol",
-         f"{int(ag_d.get('n_sem_col', 0) or 0):,}",
-         _pct_d(ag_d.get('n_sem_col')))
-    _kpi(d12, "HbA1c média",
-         f"{float(ag_d.get('media_a1c') or 0):.1f}%" if ag_d.get('media_a1c') else "—")
-
-    # Linha extra — segurança farmacológica
-    d13, d14, d15, d16 = st.columns(4)
-    _kpi(d13, "💉 Em uso de insulina (qualquer tipo)",
-         f"{int(ag_d.get('n_em_insulina', 0) or 0):,}",
-         _pct_d(ag_d.get('n_em_insulina')))
-    _kpi(d14, "🚨 NPH > 0,85 UI/kg",
-         f"{int(ag_d.get('n_nph_alta', 0) or 0):,}",
-         _pct_d(ag_d.get('n_nph_alta')))
-    _kpi(d15, "🚨 Metformina (regular+XR) > 2.550 mg/dia",
-         f"{int(ag_d.get('n_metf_total_alta', 0) or 0):,}",
-         _pct_d(ag_d.get('n_metf_total_alta')))
-    _kpi(d16, "🚨 Metformina XR > 2.000 mg/dia",
-         f"{int(ag_d.get('n_metf_xr_alta', 0) or 0):,}",
-         _pct_d(ag_d.get('n_metf_xr_alta')))
-
-    d17, _, _, _ = st.columns(4)
-    _kpi(d17, "⚠️ Sulfonilureia em monoterapia",
-         f"{int(ag_d.get('n_sulfo_mono', 0) or 0):,}",
-         _pct_d(ag_d.get('n_sulfo_mono')))
-
-    # Pré-diabetes (denominador = total da equipe, não diabéticos)
-    n_total_equipe = int(ag_d.get('n_total', 0) or 0) or 1
-    d18, d19, _, _ = st.columns(4)
-    n_pre = int(ag_d.get('n_pre_dm', 0) or 0)
-    _kpi(d18, "🟡 Pré-diabéticos na equipe",
-         f"{n_pre:,}",
-         f"{n_pre/n_total_equipe*100:.0f}% da equipe")
-    n_dm = int(ag_d.get('n_dm', 0) or 0)
-    _kpi(d19, "📈 Pré-DM + DM (carga total)",
-         f"{(n_pre + n_dm):,}",
-         f"{(n_pre + n_dm)/n_total_equipe*100:.0f}% da equipe")
-
-    # Complicações do diabetes detectadas (denominador = diabéticos)
-    st.markdown("##### Complicações do diabetes detectadas")
-    cd1, cd2, cd3 = st.columns(3)
-    _kpi(cd1, "👁️ Retinopatia diabética",
-         f"{int(ag_d.get('n_dm_retino', 0) or 0):,}",
-         _pct_d(ag_d.get('n_dm_retino')))
-    _kpi(cd2, "🫘 Nefropatia diabética",
-         f"{int(ag_d.get('n_dm_nefro', 0) or 0):,}",
-         _pct_d(ag_d.get('n_dm_nefro')))
-    _kpi(cd3, "🧠 Neuropatia diabética",
-         f"{int(ag_d.get('n_dm_neuro', 0) or 0):,}",
-         _pct_d(ag_d.get('n_dm_neuro')))
-
-    cd4, cd5, _ = st.columns(3)
-    _kpi(cd4, "🦶 Pé diabético (CID)",
-         f"{int(ag_d.get('n_dm_pe', 0) or 0):,}",
-         _pct_d(ag_d.get('n_dm_pe')))
-    _kpi(cd5, "❤️ Complicação cardiovascular do DM",
-         f"{int(ag_d.get('n_dm_complic_cv', 0) or 0):,}",
-         _pct_d(ag_d.get('n_dm_complic_cv')))
-
-    st.markdown("---")
-    st.markdown("##### Lista nominal de diabéticos")
-
-    with st.spinner("Carregando lista de diabéticos..."):
-        df_d = carregar_diabetes_nominal(ap_sel, cli_sel, esf_sel)
-
-    if df_d.empty:
-        st.info("Sem pacientes com DM na equipe.")
-    else:
-        col_fd1, col_fd2 = st.columns([2, 1])
-        with col_fd1:
-            sin_d = st.multiselect(
-                "Mostrar pacientes com:",
-                options=[
-                    '🟢 Controlados',
-                    '🔴 Descontrolados',
-                    'HbA1c acima da meta',
-                    'HbA1c severamente alta (≥9%)',
-                    'Sem HbA1c recente (>180d)',
-                    'Sem HbA1c há >365d',
-                    'Sem HbA1c há >730d',
-                    'Nunca fez HbA1c',
-                    'Em uso de insulina',
-                    'NPH > 0,85 UI/kg',
-                    'Exame dos pés não realizado (>365d)',
-                    'Nunca teve exame do pé',
-                    'Sem microalbuminúria',
-                    'Sem médico há >180d',
-                    'DM complicado sem SGLT-2',
-                    'DM tipo 1 provável',
-                    'DM + IRC',
-                    'DM + ICC',
-                    'DM + CI',
-                    'DM + HAS',
-                    'Sem CID',
-                    'Sem creatinina',
-                    'Sem colesterol',
-                    'Sem ECG',
-                ],
-                default=[],
-                placeholder="Todos os diabéticos (default)",
-                help="Lógica OR — paciente aparece se atender a qualquer "
-                     "um dos sinalizadores marcados.",
-                key="dm_filtro_sin",
-            )
-        with col_fd2:
-            cargas_disp_d = ['Muito Alto', 'Alto', 'Moderado', 'Baixo']
-            carga_d = st.multiselect(
-                "Carga de morbidade",
-                options=cargas_disp_d, default=[], placeholder="Todas",
-                key="dm_filtro_carga",
-            )
-
-        col_fd3, _ = st.columns([2, 2])
-        with col_fd3:
-            faixa_d = st.multiselect(
-                "Faixa etária",
-                options=['<60a', '60–79a', '≥80a'],
-                default=[], placeholder="Todas",
-                key="dm_filtro_faixa",
-            )
-
-        df_dv = df_d.copy()
-        if carga_d:
-            df_dv = df_dv[df_dv['charlson_categoria'].isin(carga_d)]
-        if faixa_d:
-            mfx = pd.Series(False, index=df_dv.index)
-            if '<60a'   in faixa_d: mfx |= (df_dv['idade'] < 60)
-            if '60–79a' in faixa_d: mfx |= ((df_dv['idade'] >= 60) & (df_dv['idade'] < 80))
-            if '≥80a'   in faixa_d: mfx |= (df_dv['idade'] >= 80)
-            df_dv = df_dv[mfx]
-        if sin_d:
-            mask = pd.Series(False, index=df_dv.index)
-            # Helpers para controle glicêmico calculado direto
-            a1c_v = df_dv['hba1c_atual']
-            da1c_v = df_dv['dias_desde_ultima_hba1c'].fillna(99999)
-            meta_v = df_dv['meta_hba1c']
-            a1c_recente = (da1c_v <= 180) & a1c_v.notna() & meta_v.notna()
-            controlado_d    = a1c_recente & (a1c_v <= meta_v)
-            descontrolado_d = a1c_recente & (a1c_v >  meta_v)
-
-            if '🟢 Controlados'    in sin_d: mask |= controlado_d
-            if '🔴 Descontrolados' in sin_d: mask |= descontrolado_d
-            if 'HbA1c acima da meta' in sin_d:
-                mask |= df_dv['lacuna_DM_descontrolado'].fillna(False).astype(bool)
-            if 'HbA1c severamente alta (≥9%)' in sin_d:
-                mask |= (df_dv['hba1c_atual'].fillna(0) >= 9)
-            if 'Sem HbA1c recente (>180d)' in sin_d:
-                mask |= df_dv['lacuna_DM_sem_HbA1c_recente'].fillna(False).astype(bool)
-            if 'Sem HbA1c há >365d' in sin_d: mask |= (da1c_v > 365)
-            if 'Sem HbA1c há >730d' in sin_d: mask |= (da1c_v > 730)
-            if 'Nunca fez HbA1c' in sin_d:
-                mask |= df_dv['hba1c_atual'].isna()
-            # Insulina/NPH — alinhados com os KPIs populacionais
-            # (flags principio_INSULINA_* / dose_NPH_ui_kg, janela ampla).
-            # Antes o filtro usava critério mais estrito (texto na
-            # última prescrição) e ficava com 0 enquanto o KPI mostrava
-            # 4. O usuário não conseguia abrir a lista dos alertados.
-            if 'Em uso de insulina' in sin_d:
-                mask |= df_dv['usa_insulina'].fillna(False).astype(bool)
-            if 'NPH > 0,85 UI/kg' in sin_d:
-                mask |= (df_dv['dose_NPH_ui_kg'].fillna(0) > 0.85)
-            if 'Sem médico há >180d' in sin_d:
-                mask |= (df_dv['dias_desde_ultima_medica'].fillna(99999) > 180)
-            if 'Exame dos pés não realizado (>365d)' in sin_d:
-                mask |= df_dv['lacuna_DM_sem_exame_pe_365d'].fillna(False).astype(bool)
-            if 'Nunca teve exame do pé' in sin_d:
-                mask |= df_dv['lacuna_DM_nunca_teve_exame_pe'].fillna(False).astype(bool)
-            if 'Sem microalbuminúria' in sin_d:
-                mask |= df_dv['lacuna_DM_microalbuminuria_nao_solicitado'].fillna(False).astype(bool)
-            if 'DM complicado sem SGLT-2' in sin_d:
-                mask |= df_dv['lacuna_DM_complicado_sem_SGLT2'].fillna(False).astype(bool)
-            if 'DM tipo 1 provável' in sin_d:
-                mask |= df_dv['provavel_dm1'].fillna(False).astype(bool)
-            if 'DM + IRC' in sin_d: mask |= df_dv['IRC'].notna()
-            if 'DM + ICC' in sin_d: mask |= df_dv['ICC'].notna()
-            if 'DM + CI'  in sin_d: mask |= df_dv['CI'].notna()
-            if 'DM + HAS' in sin_d: mask |= df_dv['HAS'].notna()
-            if 'Sem CID' in sin_d:
-                mask |= df_dv['DM_sem_CID'].fillna(False).astype(bool)
-            if 'Sem creatinina' in sin_d:
-                mask |= df_dv['lacuna_creatinina_HAS_DM'].fillna(False).astype(bool)
-            if 'Sem colesterol' in sin_d:
-                mask |= df_dv['lacuna_colesterol_HAS_DM'].fillna(False).astype(bool)
-            if 'Sem ECG' in sin_d:
-                mask |= df_dv['lacuna_ecg_HAS_DM'].fillna(False).astype(bool)
-            df_dv = df_dv[mask]
-
-        st.caption(
-            f"**{len(df_dv):,} diabéticos** sendo apresentados "
-            f"(de {len(df_d):,} diabéticos da equipe)."
-        )
-
-        if df_dv.empty:
-            st.info("Nenhum paciente bate com a combinação de filtros selecionada.")
-        else:
-            df_dr = df_dv.copy()
-
-            if MODO_ANONIMO:
-                df_dr['nome_exib'] = df_dr.apply(
-                    lambda r: anonimizar_nome(
-                        str(r.get('cpf') or r.get('nome', '')),
-                        r.get('genero', '')),
-                    axis=1,
-                )
-            else:
-                df_dr['nome_exib'] = df_dr['nome']
-
-            def _truthy_d(v):
-                if v is None: return False
-                try:
-                    if pd.isna(v): return False
-                except (TypeError, ValueError):
-                    pass
-                return bool(v)
-
-            def _tipo_dm(v):
-                return 'DM1?' if _truthy_d(v) else 'DM2'
-
-            def _lacunas_dm(r):
-                ats = []
-                pares = [
-                    ('lacuna_DM_descontrolado',                  'HbA1c > meta'),
-                    ('lacuna_DM_sem_HbA1c_recente',              'Sem HbA1c (>180d)'),
-                    ('lacuna_DM_hba1c_nao_solicitado',           'A1c não solicitada'),
-                    ('lacuna_DM_sem_exame_pe_365d',              'Sem exame do pé (>365d)'),
-                    ('lacuna_DM_sem_exame_pe_180d',              'Sem exame do pé (>180d)'),
-                    ('lacuna_DM_nunca_teve_exame_pe',            'Nunca exame do pé'),
-                    ('lacuna_DM_microalbuminuria_nao_solicitado','Sem microalbuminúria'),
-                    ('lacuna_DM_complicado_sem_SGLT2',           'DM complicado sem SGLT-2'),
-                    ('lacuna_creatinina_HAS_DM',                 'Sem creatinina'),
-                    ('lacuna_colesterol_HAS_DM',                 'Sem colesterol'),
-                    ('lacuna_eas_HAS_DM',                        'Sem EAS'),
-                    ('lacuna_ecg_HAS_DM',                        'Sem ECG'),
-                    ('lacuna_IMC_HAS_DM',                        'Sem IMC'),
-                ]
-                for col, txt in pares:
-                    if _truthy_d(r.get(col)):
-                        ats.append(txt)
-                if _truthy_d(r.get('DM_sem_CID')):
-                    ats.append('Sem CID')
-                return ", ".join(ats) if ats else "—"
-
-            df_dr['lacunas_dm'] = df_dr.apply(_lacunas_dm, axis=1)
-            df_dr['tipo_dm']    = df_dr['provavel_dm1'].apply(_tipo_dm)
-
-            def _ctrl_a1c(r):
-                """Calcula controle direto: HbA1c recente (≤180d) vs meta etária."""
-                a1c = r.get('hba1c_atual')
-                meta = r.get('meta_hba1c')
-                dias = r.get('dias_desde_ultima_hba1c')
-                if pd.isna(a1c):
-                    return '— sem HbA1c'
-                if pd.isna(dias) or dias > 180:
-                    return '— HbA1c antiga (>180d)'
-                if pd.isna(meta):
-                    return '— sem meta'
-                return '🔴 Descontrolado' if a1c > meta else '🟢 Controlado'
-
-            df_dr['ctrl_str'] = df_dr.apply(_ctrl_a1c, axis=1)
-
-            _ord_d = {'🔴 Descontrolado': 0, '🟢 Controlado': 1,
-                       '— sem HbA1c': 2, '— HbA1c antiga (>180d)': 3,
-                       '— sem meta': 4}
-            df_dr['_ord_ctrl'] = df_dr['ctrl_str'].map(_ord_d).fillna(9)
-
-            def _fmt_dias(v):
-                return f"{int(v)}" if pd.notna(v) else "—"
-
-            def _fmt_a1c(v):
-                return f"{float(v):.1f}%" if pd.notna(v) else "—"
-
-            df_dr = df_dr.sort_values(
-                ['_ord_ctrl', 'dias_desde_ultima_hba1c'],
-                ascending=[True, False], na_position='last',
-            )
-
-            # NPH UI/kg — mostra a dose sempre que ela existe na flag
-            # estrutural, alinhado com o KPI populacional. Antes a coluna
-            # era suprimida quando 'nph'/'isofana' não estava na última
-            # prescrição, mas isso fazia desaparecer justamente os
-            # pacientes alertados por dose alta. Critério estrito
-            # (núcleo crônico atual) continua valendo no card do paciente
-            # em Meus Pacientes — aqui a visão é populacional.
-            _nph_show = df_dr['dose_NPH_ui_kg'].astype(float)
-
-            df_show_dm = pd.DataFrame({
-                'Paciente':   df_dr['nome_exib'].values,
-                'Idade':      df_dr['idade'].astype('Int64').values,
-                'Morbidades': df_dr['morbidades_lista'].fillna('—').values,
-                'Última prescrição crônica':
-                    df_dr['medicamentos_lista'].fillna('—').values,
-                'Carga de Morbidade':
-                    df_dr['charlson_categoria'].fillna('—').values,
-                'Tipo':       df_dr['tipo_dm'].values,
-                'HbA1c atual': df_dr['hba1c_atual'].apply(_fmt_a1c).values,
-                'Meta HbA1c': df_dr['meta_hba1c'].apply(_fmt_a1c).values,
-                'Dias s/ HbA1c':
-                    df_dr['dias_desde_ultima_hba1c'].apply(_fmt_dias).values,
-                'Controle':   df_dr['ctrl_str'].values,
-                # Numérica — só preenchida quando NPH está na prescrição atual
-                'NPH (UI/kg)': _nph_show.values,
-                'Lacunas de DM': df_dr['lacunas_dm'].values,
-            })
-
-            def _cor_nph(v):
-                """Destaca em vermelho NPH > 0,85 UI/kg."""
-                if pd.isna(v):
-                    return ''
-                try:
-                    if float(v) > 0.85:
-                        return ('background-color: rgba(231,76,60,0.55); '
-                                'color: #B71C1C; font-weight: 600;')
-                except (TypeError, ValueError):
-                    pass
-                return ''
-
-            styled_dm = (
-                df_show_dm.style
-                .applymap(_cor_nph, subset=['NPH (UI/kg)'])
-                .format({'NPH (UI/kg)':
-                         lambda v: f'{v:.2f}' if pd.notna(v) and v > 0 else '—'})
-            )
-
-            st.dataframe(
-                styled_dm,
-                hide_index=True, use_container_width=True, height=540,
-                column_config={
-                    'Paciente':   st.column_config.TextColumn('Paciente', width='medium'),
-                    'Idade':      st.column_config.NumberColumn('Idade', width='small'),
-                    'Morbidades': st.column_config.TextColumn('Morbidades', width='large'),
-                    'Última prescrição crônica':
-                        st.column_config.TextColumn('Última prescrição crônica',
-                                                    width='large'),
-                    'Carga de Morbidade':
-                        st.column_config.TextColumn('Carga de Morbidade', width='small'),
-                    'Tipo':         st.column_config.TextColumn('Tipo', width='small'),
-                    'HbA1c atual':  st.column_config.TextColumn('HbA1c atual', width='small'),
-                    'Meta HbA1c':   st.column_config.TextColumn('Meta HbA1c', width='small'),
-                    'Dias s/ HbA1c':st.column_config.TextColumn('Dias s/ HbA1c', width='small'),
-                    'Controle':     st.column_config.TextColumn('Controle', width='small'),
-                    'NPH (UI/kg)':  st.column_config.TextColumn('NPH (UI/kg)', width='small'),
-                    'Lacunas de DM':st.column_config.TextColumn('Lacunas de DM', width='large'),
-                },
-            )
-
-            with st.expander("ℹ️ O que significa cada coluna"):
-                st.markdown("""
-- **Paciente** — nome (anonimizado quando o modo está ativo).
-- **Idade** — anos.
-- **Morbidades** — diagnósticos crônicos ativos.
-- **Última prescrição crônica** — medicamentos da prescrição mais recente.
-- **Carga de Morbidade** — categoria do escore de Charlson.
-- **Tipo** — DM1? (provável tipo 1 por sinais clínicos) ou DM2.
-- **HbA1c atual** — último resultado disponível.
-- **Meta HbA1c** — meta etária do paciente
-  (<60a → 7,0%; 60–69a → 7,5%; ≥70a → 8,0%).
-- **Dias s/ HbA1c** — dias desde o último resultado registrado.
-- **Controle** — 🟢 Controlado / 🔴 Descontrolado / — sem dados,
-  conforme HbA1c recente comparada à meta etária.
-- **NPH (UI/kg)** — dose diária de insulina NPH dividida pelo peso
-  do paciente. **Valores >0,85 UI/kg aparecem destacados em
-  vermelho** — sugerem resistência insulínica importante (ou
-  possível erro de digitação acima de 1,5).
-- **Lacunas de DM** — checagens em aberto: HbA1c acima da meta,
-  HbA1c não solicitada/ausente, exame do pé ausente,
-  microalbuminúria ausente, DM complicado sem SGLT-2, exames
-  laboratoriais e cardiológicos ausentes, ou diagnóstico sem CID.
-""")
 
 # ─────────────────────────────────────────────────────────────
-# ABA 6.1 — DIABETES (NARRATIVA)
+# ABA 5 — DIABETES MELLITUS (DM)
 # Mesma base de dados da aba "🩸 Diabetes", apresentada como história
 # em 5 atos. Layout em 2 colunas: à esquerda o texto narrativo, à
 # direita os cards (versão antiga). Mantém a tabela nominal embaixo.
 # ─────────────────────────────────────────────────────────────
-with tab_dm_narr:
+with tab_dm:
     st.markdown("#### Diabetes mellitus — narrativa da equipe")
     st.caption(
         "Mesma base da aba 🩸 Diabetes, contada como história em "
@@ -4128,276 +2969,235 @@ with tab_dm_narr:
         _kpi(c8, "🧠 Alta carga anticolinérgica (ACB ≥3)",
              f"{n_acb_d:,}", _pct_dn(n_acb_d))
 
-    # ───────── LISTA NOMINAL (mesma da aba "🩸 Diabetes") ─────────
+    # ─── Lista nominal removida — usuário deve usar a aba "Meus Pacientes" ───
     st.markdown("---")
-    st.markdown("##### Lista nominal de diabéticos")
+    st.info(
+        "🧑‍⚕️ **Para abrir os pacientes individualmente**, vá para a "
+        "aba **Meus Pacientes**. Lá é possível filtrar a lista "
+        "nominal por **DM**, por **Carga de Morbidade** e por "
+        "**lacunas específicas** (descontrolados, sem HbA1c "
+        "recente, sem exame do pé, ACB ≥ 3, NPH > 0,85 UI/kg, "
+        "sulfonilureia em monoterapia etc.) e abrir o card "
+        "completo de cada paciente."
+    )
 
-    with st.spinner("Carregando lista de diabéticos..."):
-        df_dn = carregar_diabetes_nominal(ap_sel, cli_sel, esf_sel)
 
-    if df_dn.empty:
-        st.info("Sem pacientes com DM na equipe.")
+# ─────────────────────────────────────────────────────────────
+# ABA 6 — LACUNAS DA EQUIPE × MUNICÍPIO
+# ─────────────────────────────────────────────────────────────
+with tab_lacunas:
+    st.markdown(
+        "#### Lacunas de cuidado — Equipe versus município"
+    )
+    st.caption(
+        "Cada lacuna é calculada apenas sobre a população elegível "
+        "(ex.: 'CI sem AAS' usa pacientes com CI como denominador). "
+        "À esquerda, o racional clínico do grupo + as lacunas em "
+        "destaque (piores ou melhores que o município). À direita, "
+        "todas as lacunas do grupo: o fundo do card vai de verde "
+        "(% baixa) a vermelho (% alta), a borda esquerda fica "
+        "vermelha quando a equipe está acima do município, verde "
+        "quando está abaixo, cinza quando próximo."
+    )
+
+    with st.spinner("Calculando lacunas da equipe e do município..."):
+        df_eq  = carregar_lacunas_agregado(ap_sel, cli_sel, esf_sel)
+        df_mun = carregar_lacunas_agregado(None, None, None)
+
+    if df_eq.empty:
+        st.warning("Sem dados de lacunas para a equipe selecionada.")
     else:
-        col_fdn1, col_fdn2 = st.columns([2, 1])
-        with col_fdn1:
-            sin_dn = st.multiselect(
-                "Mostrar pacientes com:",
-                options=[
-                    '🟢 Controlados',
-                    '🔴 Descontrolados',
-                    'HbA1c acima da meta',
-                    'HbA1c severamente alta (≥9%)',
-                    'Sem HbA1c recente (>180d)',
-                    'Sem HbA1c há >365d',
-                    'Sem HbA1c há >730d',
-                    'Nunca fez HbA1c',
-                    'Em uso de insulina',
-                    'NPH > 0,85 UI/kg',
-                    'Exame dos pés não realizado (>365d)',
-                    'Nunca teve exame do pé',
-                    'Sem microalbuminúria',
-                    'Sem médico há >180d',
-                    'DM complicado sem SGLT-2',
-                    'DM tipo 1 provável',
-                    'DM + IRC',
-                    'DM + ICC',
-                    'DM + CI',
-                    'DM + HAS',
-                    'Sem CID',
-                    'Sem creatinina',
-                    'Sem colesterol',
-                    'Sem ECG',
-                ],
-                default=[],
-                placeholder="Todos os diabéticos (default)",
-                help="Lógica OR — paciente aparece se atender a qualquer "
-                     "um dos sinalizadores marcados.",
-                key="dmn_filtro_sin",
-            )
-        with col_fdn2:
-            cargas_disp_dn = ['Muito Alto', 'Alto', 'Moderado', 'Baixo']
-            carga_dn = st.multiselect(
-                "Carga de morbidade",
-                options=cargas_disp_dn, default=[], placeholder="Todas",
-                key="dmn_filtro_carga",
-            )
+        df_lac = df_eq.merge(
+            df_mun[['lacuna', 'numerador', 'denominador', 'pct']]
+                .rename(columns={'numerador':   'numerador_mun',
+                                 'denominador': 'denominador_mun',
+                                 'pct':         'pct_mun'}),
+            on='lacuna', how='left',
+        )
+        df_lac['delta'] = df_lac['pct'] - df_lac['pct_mun']
 
-        col_fdn3, _ = st.columns([2, 2])
-        with col_fdn3:
-            faixa_dn = st.multiselect(
-                "Faixa etária",
-                options=['<60a', '60–79a', '≥80a'],
-                default=[], placeholder="Todas",
-                key="dmn_filtro_faixa",
-            )
+        # ───── Atos por grupo (ordem definida em _ORDEM_GRUPOS_LACUNAS) ─────
+        for grupo in _ORDEM_GRUPOS_LACUNAS:
+            df_g = df_lac[df_lac['grupo'] == grupo].copy()
+            df_g = df_g[df_g['denominador'] > 0]
+            if df_g.empty:
+                continue
+            df_g = df_g.sort_values('pct', ascending=False)
 
-        df_dnv = df_dn.copy()
-        if carga_dn:
-            df_dnv = df_dnv[df_dnv['charlson_categoria'].isin(carga_dn)]
-        if faixa_dn:
-            mfx = pd.Series(False, index=df_dnv.index)
-            if '<60a'   in faixa_dn: mfx |= (df_dnv['idade'] < 60)
-            if '60–79a' in faixa_dn: mfx |= ((df_dnv['idade'] >= 60) & (df_dnv['idade'] < 80))
-            if '≥80a'   in faixa_dn: mfx |= (df_dnv['idade'] >= 80)
-            df_dnv = df_dnv[mfx]
-        if sin_dn:
-            mask = pd.Series(False, index=df_dnv.index)
-            a1c_v  = df_dnv['hba1c_atual']
-            da1c_v = df_dnv['dias_desde_ultima_hba1c'].fillna(99999)
-            meta_v = df_dnv['meta_hba1c']
-            a1c_recente = (da1c_v <= 180) & a1c_v.notna() & meta_v.notna()
-            controlado_d    = a1c_recente & (a1c_v <= meta_v)
-            descontrolado_d = a1c_recente & (a1c_v >  meta_v)
+            st.markdown("---")
+            st.markdown(f"##### {_LABEL_GRUPO_DISPLAY.get(grupo, grupo)}")
 
-            if '🟢 Controlados'    in sin_dn: mask |= controlado_d
-            if '🔴 Descontrolados' in sin_dn: mask |= descontrolado_d
-            if 'HbA1c acima da meta' in sin_dn:
-                mask |= df_dnv['lacuna_DM_descontrolado'].fillna(False).astype(bool)
-            if 'HbA1c severamente alta (≥9%)' in sin_dn:
-                mask |= (df_dnv['hba1c_atual'].fillna(0) >= 9)
-            if 'Sem HbA1c recente (>180d)' in sin_dn:
-                mask |= df_dnv['lacuna_DM_sem_HbA1c_recente'].fillna(False).astype(bool)
-            if 'Sem HbA1c há >365d' in sin_dn: mask |= (da1c_v > 365)
-            if 'Sem HbA1c há >730d' in sin_dn: mask |= (da1c_v > 730)
-            if 'Nunca fez HbA1c' in sin_dn:
-                mask |= df_dnv['hba1c_atual'].isna()
-            if 'Em uso de insulina' in sin_dn:
-                mask |= df_dnv['usa_insulina'].fillna(False).astype(bool)
-            if 'NPH > 0,85 UI/kg' in sin_dn:
-                mask |= (df_dnv['dose_NPH_ui_kg'].fillna(0) > 0.85)
-            if 'Sem médico há >180d' in sin_dn:
-                mask |= (df_dnv['dias_desde_ultima_medica'].fillna(99999) > 180)
-            if 'Exame dos pés não realizado (>365d)' in sin_dn:
-                mask |= df_dnv['lacuna_DM_sem_exame_pe_365d'].fillna(False).astype(bool)
-            if 'Nunca teve exame do pé' in sin_dn:
-                mask |= df_dnv['lacuna_DM_nunca_teve_exame_pe'].fillna(False).astype(bool)
-            if 'Sem microalbuminúria' in sin_dn:
-                mask |= df_dnv['lacuna_DM_microalbuminuria_nao_solicitado'].fillna(False).astype(bool)
-            if 'DM complicado sem SGLT-2' in sin_dn:
-                mask |= df_dnv['lacuna_DM_complicado_sem_SGLT2'].fillna(False).astype(bool)
-            if 'DM tipo 1 provável' in sin_dn:
-                mask |= df_dnv['provavel_dm1'].fillna(False).astype(bool)
-            if 'DM + IRC' in sin_dn: mask |= df_dnv['IRC'].notna()
-            if 'DM + ICC' in sin_dn: mask |= df_dnv['ICC'].notna()
-            if 'DM + CI'  in sin_dn: mask |= df_dnv['CI'].notna()
-            if 'DM + HAS' in sin_dn: mask |= df_dnv['HAS'].notna()
-            if 'Sem CID' in sin_dn:
-                mask |= df_dnv['DM_sem_CID'].fillna(False).astype(bool)
-            if 'Sem creatinina' in sin_dn:
-                mask |= df_dnv['lacuna_creatinina_HAS_DM'].fillna(False).astype(bool)
-            if 'Sem colesterol' in sin_dn:
-                mask |= df_dnv['lacuna_colesterol_HAS_DM'].fillna(False).astype(bool)
-            if 'Sem ECG' in sin_dn:
-                mask |= df_dnv['lacuna_ecg_HAS_DM'].fillna(False).astype(bool)
-            df_dnv = df_dnv[mask]
+            e, d = st.columns([1, 1.3])
+            with e:
+                contexto = NARRATIVA_GRUPO_LACUNAS.get(grupo, "")
+                df_pior = df_g.dropna(subset=['delta']).sort_values(
+                    'delta', ascending=False)
+                df_top_pior   = df_pior[df_pior['delta'] >  0.5].head(3)
+                df_top_melhor = df_pior[df_pior['delta'] < -0.5].tail(3)
 
+                html = (
+                    f"<div style='line-height:1.6; font-size:0.95em;'>"
+                    f"{contexto}</div>"
+                )
+
+                if not df_top_pior.empty:
+                    html += (
+                        "<div style='margin-top:14px;'>"
+                        "<b style='color:#C0392B;'>⚠️ Onde sua equipe "
+                        "está pior que o município:</b>"
+                        "<ul style='margin:6px 0 0 0; padding-left:20px;'>"
+                    )
+                    for _, r in df_top_pior.iterrows():
+                        html += (
+                            f"<li style='margin-bottom:4px;'>"
+                            f"<b>{r['lacuna']}</b> — "
+                            f"<b style='color:#C0392B;'>"
+                            f"{int(r['numerador'])}</b> "
+                            f"({float(r['pct']):.0f}%) "
+                            f"<span style='color:#C0392B;'>"
+                            f"↑ +{float(r['delta']):.1f} pp</span>"
+                            f"</li>"
+                        )
+                    html += "</ul></div>"
+
+                if not df_top_melhor.empty:
+                    html += (
+                        "<div style='margin-top:10px;'>"
+                        "<b style='color:#198754;'>✅ Onde sua equipe "
+                        "está melhor que o município:</b>"
+                        "<ul style='margin:6px 0 0 0; padding-left:20px;'>"
+                    )
+                    for _, r in df_top_melhor.iterrows():
+                        html += (
+                            f"<li style='margin-bottom:4px;'>"
+                            f"<b>{r['lacuna']}</b> — "
+                            f"<b style='color:#198754;'>"
+                            f"{int(r['numerador'])}</b> "
+                            f"({float(r['pct']):.0f}%) "
+                            f"<span style='color:#198754;'>"
+                            f"↓ {float(r['delta']):.1f} pp</span>"
+                            f"</li>"
+                        )
+                    html += "</ul></div>"
+
+                if df_top_pior.empty and df_top_melhor.empty:
+                    html += (
+                        "<div style='margin-top:10px; color:#6B7280;'>"
+                        "Sua equipe está alinhada com a média do "
+                        "município neste grupo (variação inferior a "
+                        "±0,5 pp em todas as lacunas)."
+                        "</div>"
+                    )
+
+                st.markdown(html, unsafe_allow_html=True)
+
+            with d:
+                rows = list(df_g.iterrows())
+                # Grade 2 cards por linha
+                for i in range(0, len(rows), 2):
+                    sub = st.columns(2)
+                    for j in range(2):
+                        if i + j < len(rows):
+                            _, r = rows[i + j]
+                            _card_lacuna(sub[j], r)
+
+        # ───────── Tabela completa com filtro ao final ─────────
+        st.markdown("---")
+        st.markdown("##### 📋 Tabela completa de lacunas")
         st.caption(
-            f"**{len(df_dnv):,} diabéticos** sendo apresentados "
-            f"(de {len(df_dn):,} diabéticos da equipe)."
+            "Visão tabular consolidada com gradiente de cor por % e "
+            "variação em relação ao município. Filtre por grupo abaixo. "
+            "Para abrir os pacientes individualmente em cada lacuna, "
+            "vá para a aba 🧑‍⚕️ **Meus Pacientes** — lá é possível "
+            "filtrar a lista nominal por lacuna específica e abrir o "
+            "card de cada paciente."
         )
 
-        if df_dnv.empty:
-            st.info("Nenhum paciente bate com a combinação de filtros selecionada.")
-        else:
-            df_dnr = df_dnv.copy()
+        grupos_disp = [g for g in _ORDEM_GRUPOS_LACUNAS
+                       if g in df_lac['grupo'].dropna().unique()]
+        filtro_grupo = st.multiselect(
+            "Filtrar por grupo",
+            options=grupos_disp, default=[],
+            placeholder="Todos os grupos",
+            format_func=lambda g: _LABEL_GRUPO_DISPLAY.get(g, g),
+            key="lac_filtro_grupo_tab",
+        )
 
-            if MODO_ANONIMO:
-                df_dnr['nome_exib'] = df_dnr.apply(
-                    lambda r: anonimizar_nome(
-                        str(r.get('cpf') or r.get('nome', '')),
-                        r.get('genero', '')),
-                    axis=1,
-                )
+        df_lac_tab = df_lac.sort_values(
+            'pct', ascending=False, na_position='last')
+        if filtro_grupo:
+            df_lac_tab = df_lac_tab[df_lac_tab['grupo'].isin(filtro_grupo)]
+
+        df_tab = pd.DataFrame({
+            'Grupo':       df_lac_tab['grupo'].map(
+                lambda g: _LABEL_GRUPO_DISPLAY.get(g, g)).values,
+            'Lacuna':      df_lac_tab['lacuna'].values,
+            'n / N':       df_lac_tab.apply(
+                lambda r: f"{int(r['numerador'])} / {int(r['denominador'])}"
+                          if r['denominador'] else "—",
+                axis=1,
+            ).values,
+            '% Equipe':    df_lac_tab['pct'].astype(float).values,
+            '% Município': df_lac_tab['pct_mun'].astype(float).values,
+            'Variação':    df_lac_tab['delta'].astype(float).values,
+        })
+
+        def _fmt_variacao(v):
+            if pd.isna(v):     return '—'
+            if v > 0:          return f'↑ +{v:.1f}%'
+            if v < 0:          return f'↓ {v:.1f}%'
+            return '↔ 0,0%'
+
+        def _cor_variacao(v):
+            if pd.isna(v):     return ''
+            if v > 0:          return 'color: #C0392B; font-weight: 600;'
+            if v < 0:          return 'color: #27AE60; font-weight: 600;'
+            return 'color: #6B7280;'
+
+        def _gradiente_pct_tab(v, vmin=0.0, vmax=100.0):
+            if pd.isna(v):     return ''
+            norm = max(0.0, min(1.0, (float(v) - vmin) / (vmax - vmin)))
+            if norm <= 0.5:
+                t = norm * 2
+                r = int(round(76  + (255 - 76)  * t))
+                g = int(round(175 + (235 - 175) * t))
+                b = int(round( 80 + ( 59 -  80) * t))
             else:
-                df_dnr['nome_exib'] = df_dnr['nome']
+                t = (norm - 0.5) * 2
+                r = int(round(255 + (231 - 255) * t))
+                g = int(round(235 + ( 76 - 235) * t))
+                b = int(round( 59 + ( 60 -  59) * t))
+            return f'background-color: rgba({r},{g},{b},0.55);'
 
-            def _truthy_dn(v):
-                if v is None: return False
-                try:
-                    if pd.isna(v): return False
-                except (TypeError, ValueError):
-                    pass
-                return bool(v)
-
-            def _tipo_dm_n(v):
-                return 'DM1?' if _truthy_dn(v) else 'DM2'
-
-            def _lacunas_dm_n(r):
-                ats = []
-                pares = [
-                    ('lacuna_DM_descontrolado',                  'HbA1c > meta'),
-                    ('lacuna_DM_sem_HbA1c_recente',              'Sem HbA1c (>180d)'),
-                    ('lacuna_DM_hba1c_nao_solicitado',           'A1c não solicitada'),
-                    ('lacuna_DM_sem_exame_pe_365d',              'Sem exame do pé (>365d)'),
-                    ('lacuna_DM_sem_exame_pe_180d',              'Sem exame do pé (>180d)'),
-                    ('lacuna_DM_nunca_teve_exame_pe',            'Nunca exame do pé'),
-                    ('lacuna_DM_microalbuminuria_nao_solicitado','Sem microalbuminúria'),
-                    ('lacuna_DM_complicado_sem_SGLT2',           'DM complicado sem SGLT-2'),
-                    ('lacuna_creatinina_HAS_DM',                 'Sem creatinina'),
-                    ('lacuna_colesterol_HAS_DM',                 'Sem colesterol'),
-                    ('lacuna_eas_HAS_DM',                        'Sem EAS'),
-                    ('lacuna_ecg_HAS_DM',                        'Sem ECG'),
-                    ('lacuna_IMC_HAS_DM',                        'Sem IMC'),
-                ]
-                for col, txt in pares:
-                    if _truthy_dn(r.get(col)):
-                        ats.append(txt)
-                if _truthy_dn(r.get('DM_sem_CID')):
-                    ats.append('Sem CID')
-                return ", ".join(ats) if ats else "—"
-
-            df_dnr['lacunas_dm'] = df_dnr.apply(_lacunas_dm_n, axis=1)
-            df_dnr['tipo_dm']    = df_dnr['provavel_dm1'].apply(_tipo_dm_n)
-
-            def _ctrl_a1c_n(r):
-                a1c = r.get('hba1c_atual')
-                meta = r.get('meta_hba1c')
-                dias = r.get('dias_desde_ultima_hba1c')
-                if pd.isna(a1c):
-                    return '— sem HbA1c'
-                if pd.isna(dias) or dias > 180:
-                    return '— HbA1c antiga (>180d)'
-                if pd.isna(meta):
-                    return '— sem meta'
-                return '🔴 Descontrolado' if a1c > meta else '🟢 Controlado'
-
-            df_dnr['ctrl_str'] = df_dnr.apply(_ctrl_a1c_n, axis=1)
-
-            _ord_dn = {'🔴 Descontrolado': 0, '🟢 Controlado': 1,
-                       '— sem HbA1c': 2, '— HbA1c antiga (>180d)': 3,
-                       '— sem meta': 4}
-            df_dnr['_ord_ctrl'] = df_dnr['ctrl_str'].map(_ord_dn).fillna(9)
-
-            def _fmt_dias_n(v):
-                return f"{int(v)}" if pd.notna(v) else "—"
-
-            def _fmt_a1c_n(v):
-                return f"{float(v):.1f}%" if pd.notna(v) else "—"
-
-            df_dnr = df_dnr.sort_values(
-                ['_ord_ctrl', 'dias_desde_ultima_hba1c'],
-                ascending=[True, False], na_position='last',
-            )
-
-            _nph_show_n = df_dnr['dose_NPH_ui_kg'].astype(float)
-
-            df_show_dmn = pd.DataFrame({
-                'Paciente':   df_dnr['nome_exib'].values,
-                'Idade':      df_dnr['idade'].astype('Int64').values,
-                'Morbidades': df_dnr['morbidades_lista'].fillna('—').values,
-                'Última prescrição crônica':
-                    df_dnr['medicamentos_lista'].fillna('—').values,
-                'Carga de Morbidade':
-                    df_dnr['charlson_categoria'].fillna('—').values,
-                'Tipo':       df_dnr['tipo_dm'].values,
-                'HbA1c atual': df_dnr['hba1c_atual'].apply(_fmt_a1c_n).values,
-                'Meta HbA1c': df_dnr['meta_hba1c'].apply(_fmt_a1c_n).values,
-                'Dias s/ HbA1c':
-                    df_dnr['dias_desde_ultima_hba1c'].apply(_fmt_dias_n).values,
-                'Controle':   df_dnr['ctrl_str'].values,
-                'NPH (UI/kg)': _nph_show_n.values,
-                'Lacunas de DM': df_dnr['lacunas_dm'].values,
+        styled = (
+            df_tab.style
+            .applymap(_gradiente_pct_tab, subset=['% Equipe', '% Município'])
+            .format({
+                '% Equipe':    lambda v: f'{v:.1f}%' if pd.notna(v) else '—',
+                '% Município': lambda v: f'{v:.1f}%' if pd.notna(v) else '—',
+                'Variação':    _fmt_variacao,
             })
-
-            def _cor_nph_n(v):
-                if pd.isna(v):
-                    return ''
-                try:
-                    if float(v) > 0.85:
-                        return ('background-color: rgba(231,76,60,0.55); '
-                                'color: #B71C1C; font-weight: 600;')
-                except (TypeError, ValueError):
-                    pass
-                return ''
-
-            styled_dmn = (
-                df_show_dmn.style
-                .applymap(_cor_nph_n, subset=['NPH (UI/kg)'])
-                .format({'NPH (UI/kg)':
-                         lambda v: f'{v:.2f}' if pd.notna(v) and v > 0 else '—'})
+            .applymap(_cor_variacao, subset=['Variação'])
+            .set_properties(
+                subset=['Grupo', 'Lacuna'],
+                **{'text-align': 'left'},
             )
-
-            st.dataframe(
-                styled_dmn,
-                hide_index=True, use_container_width=True, height=540,
-                column_config={
-                    'Paciente':   st.column_config.TextColumn('Paciente', width='medium'),
-                    'Idade':      st.column_config.NumberColumn('Idade', width='small'),
-                    'Morbidades': st.column_config.TextColumn('Morbidades', width='large'),
-                    'Última prescrição crônica':
-                        st.column_config.TextColumn('Última prescrição crônica',
-                                                    width='large'),
-                    'Carga de Morbidade':
-                        st.column_config.TextColumn('Carga de Morbidade', width='small'),
-                    'Tipo':         st.column_config.TextColumn('Tipo', width='small'),
-                    'HbA1c atual':  st.column_config.TextColumn('HbA1c atual', width='small'),
-                    'Meta HbA1c':   st.column_config.TextColumn('Meta HbA1c', width='small'),
-                    'Dias s/ HbA1c':st.column_config.TextColumn('Dias s/ HbA1c', width='small'),
-                    'Controle':     st.column_config.TextColumn('Controle', width='small'),
-                    'NPH (UI/kg)':  st.column_config.TextColumn('NPH (UI/kg)', width='small'),
-                    'Lacunas de DM':st.column_config.TextColumn('Lacunas de DM', width='large'),
-                },
+            .set_properties(
+                subset=['n / N', '% Equipe', '% Município', 'Variação'],
+                **{'text-align': 'center'},
             )
+            .set_table_styles([
+                {'selector': 'th.col_heading.level0',
+                 'props': [('text-align', 'center')]},
+                {'selector': 'th.col_heading.level0:nth-child(1), '
+                             'th.col_heading.level0:nth-child(2)',
+                 'props': [('text-align', 'left')]},
+            ])
+        )
+
+        st.dataframe(
+            styled, hide_index=True, use_container_width=True, height=560,
+        )
 
 # ─────────────────────────────────────────────────────────────
 # ABA 7 — MEUS PACIENTES (lista nominal completa, embarcada)
