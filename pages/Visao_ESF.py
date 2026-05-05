@@ -1093,8 +1093,17 @@ if _perfil == 'equipe':
     esf_sel = _ctx.get('esf')
 
     if not (ap_sel and cli_sel and esf_sel):
-        # Contexto não foi setado — volta para a tela de seleção
-        st.switch_page("Home.py")
+        # Contexto vazio — em vez de fazer st.switch_page automático
+        # (que pode entrar em loop com st.navigation), mostra um link
+        # clicável e para a renderização. Mais defensivo e visível
+        # para o usuário do que um switch silencioso.
+        st.error(
+            "⚠️ Sua equipe não está selecionada. Volte para a tela "
+            "inicial e escolha sua AP, Clínica e ESF."
+        )
+        st.page_link("Home.py", label="↩ Voltar para a tela inicial",
+                      icon="🏠")
+        st.stop()
 
     st.sidebar.header("🎯 Sua equipe")
     st.sidebar.markdown(
