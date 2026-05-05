@@ -289,17 +289,60 @@ if not usuario:
         render_selecao_perfil()
     st.stop()
 
-# Etapa 2: logado, sem contexto territorial → seleção territorial
-if not st.session_state.get('contexto_territorial'):
-    render_selecao_territorial()
-    st.stop()
+_perfil = usuario.get('perfil', 'equipe')
 
-# Etapa 3: logado e com contexto → redireciona para Visão ESF
-# Arquitetura clássica: cada page é um arquivo independente em
-# pages/, com seu próprio set_page_config. O menu nativo de pages
-# (sidebar) está escondido pelo CSS no topo deste arquivo e pelo
-# _CSS_GLOBAL de components/cabecalho.py. A navegação é controlada
-# por st.switch_page e por verificações de perfil em cada page
-# (utils.auth.bloquear_perfil_esf bloqueia o ESF nas pages que não
-# devem ser acessíveis a esse perfil).
-st.switch_page("pages/Visao_ESF.py")
+# Etapa 2: ESF precisa selecionar AP/Clínica/ESF antes de entrar em
+# Visão ESF. Outros perfis (admin / gestor / gerente) têm acesso a
+# todas as pages — vão direto para a Home com o menu horizontal.
+if _perfil == 'equipe':
+    if not st.session_state.get('contexto_territorial'):
+        render_selecao_territorial()
+        st.stop()
+    # ESF logado e com contexto: redireciona para Visão ESF
+    st.switch_page("pages/Visao_ESF.py")
+
+# ═══════════════════════════════════════════════════════════════
+# Home para perfis não-ESF (admin / gestor / gerente)
+# Renderiza o menu horizontal de pages (via renderizar_cabecalho) +
+# uma lista de page_links como ponto de partida. Cada page mantém
+# seu próprio set_page_config + sidebar de filtros editáveis.
+# ═══════════════════════════════════════════════════════════════
+from components.cabecalho import renderizar_cabecalho
+renderizar_cabecalho("Home")
+
+st.markdown("## 👋 Bem-vindo")
+st.caption(
+    "Você tem acesso a todas as visualizações do Navegador Clínico. "
+    "Use o menu acima ou os atalhos abaixo para navegar."
+)
+
+st.markdown("---")
+st.markdown("### 📑 Visualizações disponíveis")
+
+links = [
+    ("pages/Minha_Populacao.py",     "👥 Minha População",
+     "Pirâmides etárias, distribuição da Carga de Morbidade."),
+    ("pages/Meus_Pacientes.py",      "🧑‍⚕️ Meus Pacientes",
+     "Lista nominal completa com filtros e card por paciente."),
+    ("pages/Lacunas_de_Cuidado.py",  "⚠️ Lacunas de Cuidado",
+     "Lacunas de cuidado por território, com benchmark."),
+    ("pages/Acesso_Continuidade.py", "🔄 Acesso e Continuidade",
+     "Indicadores de regularidade, fragmentação e iniquidade."),
+    ("pages/Polifarmacia_ACB.py",    "💊 Carga farmacológica",
+     "Polifarmácia, STOPP/START/Beers e Escore ACB."),
+    ("pages/Diabetes.py",            "🩸 Diabetes",
+     "Controle glicêmico, complicações e farmacologia."),
+    ("pages/Hipertensao.py",         "🩺 Hipertensão",
+     "Controle pressórico, medicamentos e Risco CV (HEARTS)."),
+    ("pages/Risco_Cardiovascular.py","❤️ Risco Cardiovascular",
+     "Comparação dos estimadores Framingham/SBC e WHO/HEARTS."),
+    ("pages/Visao_ESF.py",           "📋 Visão ESF",
+     "Visão consolidada por equipe (storytelling em abas)."),
+]
+
+for path, titulo, descricao in links:
+    col_a, col_b = st.columns([3, 5])
+    with col_a:
+        st.page_link(path, label=titulo)
+    with col_b:
+        st.caption(descricao)
