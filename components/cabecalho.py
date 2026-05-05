@@ -13,6 +13,9 @@ from utils.auth import (
     get_perfil, get_contexto_territorial, logout,
     ROTULOS_PERFIS, ICONES_PERFIS
 )
+from utils.anonimizador import (
+    anonimizar_ap, anonimizar_clinica, anonimizar_esf,
+)
 from utils.data_loader import limpar_cache
 from utils import theme as T
 
@@ -82,11 +85,11 @@ def _linha_contexto(ctx: dict, perfil: str) -> str:
     if perfil in ('admin', 'gestor'):
         return "Acesso irrestrito"
     if ctx.get('esf'):
-        return f"ESF: {ctx['esf']}"
+        return f"ESF: {anonimizar_esf(ctx['esf'])}"
     if ctx.get('clinica'):
-        return f"Clínica: {ctx['clinica']}"
+        return f"Clínica: {anonimizar_clinica(ctx['clinica'])}"
     if ctx.get('ap'):
-        return f"AP: {ctx['ap']}"
+        return f"AP: {anonimizar_ap(str(ctx['ap']))}"
     return "Território não selecionado"
 
 
