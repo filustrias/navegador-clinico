@@ -481,6 +481,135 @@ st.markdown(
     "Análise da carga medicamentosa, polifarmácia e escore ACB "
     "(*Anticholinergic Cognitive Burden*) por território e complexidade clínica."
 )
+
+# Texto explicativo de abertura — três dimensões + ACB
+st.markdown("""
+**Carga farmacológica** é o termo que usamos para descrever a
+exposição cumulativa de um paciente a medicamentos e seus
+potenciais efeitos adversos. Operacionalmente, costuma ser
+decomposta em três dimensões.
+
+**Dimensão quantitativa.** Polifarmácia (≥5 medicamentos crônicos)
+e hiperpolifarmácia (≥10). São métricas simples, mas que se
+correlacionam fortemente com eventos adversos, hospitalizações e
+mortalidade em idosos.
+
+**Dimensão qualitativa.** Avalia a adequação prescritiva paciente
+a paciente. Fazem parte deste domínio os critérios STOPP/START, os
+critérios de Beers e o MAI (*Medication Appropriateness Index*).
+
+**Dimensão de exposição funcional.** Mensura o potencial impacto
+funcional que o uso crônico de medicamentos pode ter sobre o
+paciente. O Drug Burden Index (DBI) é um exemplo de escala neste
+domínio: pondera a exposição diária a fármacos sedativos e
+anticolinérgicos pela dose mínima eficaz, predizendo perda
+funcional e cognitiva.
+
+Dentro dessa dimensão, a **carga anticolinérgica** ocupa um lugar
+de destaque e está aqui representada pelo **Escore ACB
+(*Anticholinergic Cognitive Burden*)**. Refere-se ao efeito
+cumulativo do bloqueio de receptores muscarínicos por um ou mais
+medicamentos. Perifericamente, produz xerostomia, constipação,
+retenção urinária, taquicardia e visão turva; centralmente, pode
+causar sedação, confusão, delirium e — com exposição prolongada —
+declínio cognitivo e maior incidência de demência. Os idosos são
+especialmente vulneráveis pela menor reserva colinérgica central,
+redução da barreira hematoencefálica e alterações
+farmacocinéticas.
+
+---
+
+**No Navegador**, os três domínios estão representados
+respectivamente por: (1) a contagem de medicamentos crônicos e a
+identificação dos pacientes em polifarmácia ou hiperpolifarmácia;
+(2) o painel de critérios STOPP, START e Beers; e (3) o Escore
+ACB calculado individualmente para cada paciente.
+""")
+
+# Aprofundamento sobre as ferramentas STOPP/START/Beers — em expander
+with st.expander(
+    "📚 Saiba mais — sobre os critérios STOPP, START e Beers"
+):
+    st.markdown("""
+As três ferramentas mais consagradas internacionalmente são os
+**Critérios de Beers** (Estados Unidos) e os **Critérios STOPP e
+START** (Europa). Seus objetivos centrais são reduzir eventos
+adversos relacionados a medicamentos e, no caso do START,
+melhorar a prescrição de medicamentos potencialmente benéficos
+que vêm sendo subutilizados.
+
+Há evidência consistente de que a aplicação dessas ferramentas
+melhora a identificação de medicamentos potencialmente perigosos
+— com destaque para benzodiazepínicos, anti-histamínicos e
+anti-inflamatórios não esteroides (AINEs) — e evidência mais
+limitada de impacto sobre desfechos como hospitalização e quedas.
+O efeito sobre mortalidade permanece incerto. Os medicamentos de
+maior preocupação em idosos são aqueles com efeitos
+anticolinérgicos e os que atuam sobre o sistema nervoso central.
+
+Um ponto importante: **nenhum desses critérios deve ser aplicado
+mecanicamente**. Sua interpretação deve ser sempre individualizada,
+considerando saúde geral, objetivos terapêuticos, preferências do
+paciente, contexto de cuidado e barreiras de acesso.
+
+#### Critérios de Beers
+
+Desenvolvidos nos Estados Unidos pela *American Geriatrics
+Society*, os Critérios de Beers consistem em um consenso de
+especialistas voltado à prescrição em pessoas com 65 anos ou mais
+que não estejam em cuidados paliativos exclusivos. As
+recomendações abordam três grandes eixos: precauções específicas
+— como propensão a quedas e confusão; ajustes de dose — por
+exemplo, em insuficiência renal; e interações medicamentosas
+potencialmente perigosas, particularmente relevantes em idosos
+polimedicados.
+
+A versão 2023 trouxe atualizações com impacto direto na prática
+clínica. Passou a reconhecer explicitamente o risco da carga
+anticolinérgica cumulativa quando há uso concomitante de múltiplos
+fármacos com essa propriedade. Recomendou evitar o início de ácido
+acetilsalicílico para prevenção primária cardiovascular em idosos.
+Em anticoagulação, sugere cautela com rivaroxabana e dabigatrana
+no tratamento prolongado de fibrilação atrial e tromboembolismo
+venoso, dado o maior risco de sangramento maior e gastrointestinal
+frente à apixabana, e desencoraja o início de varfarina quando
+houver opção por anticoagulantes orais diretos. Em diabetes,
+recomenda evitar sulfonilureias — tanto de ação curta quanto
+longa — em monoterapia ou terapia combinada, pelo maior risco de
+hipoglicemia, eventos cardiovasculares e mortalidade global em
+comparação a alternativas, e uso cauteloso de inibidores de SGLT2
+pelo aumento do risco de infecções urogenitais e cetoacidose
+euglicêmica.
+
+#### Critérios STOPP — *Screening Tool of Older Persons' potentially inappropriate Prescriptions*
+
+O STOPP é uma ferramenta de rastreio que sinaliza prescrições
+potencialmente inapropriadas em idosos. Sua estrutura é organizada
+por sistema/órgão ou condição clínica, e foi desenhada para
+destacar três cenários particularmente comuns na prática:
+medicamentos com evidência insuficiente de benefício na população
+idosa; medicamentos prescritos por período superior ao
+recomendado — exemplo clássico, anticoagulantes mantidos por anos
+após um único episódio de trombose venosa profunda provocada; e
+medicamentos que duplicam o efeito de outros já em uso pelo
+paciente. Embora sua adoção seja historicamente mais frequente na
+Europa, seus alertas vêm sendo incorporados a sistemas de
+prescrição assistida em diversos países, inclusive no Brasil.
+
+#### Critérios START — *Screening Tool to Alert doctors to Right Treatment*
+
+O START opera de forma complementar ao STOPP: em vez de sinalizar
+o que deve ser retirado, ele aponta o que deveria ter sido
+prescrito e não foi. Suas recomendações são baseadas em condições
+clínicas. Exemplos típicos incluem: terapia antiplaquetária na
+maioria dos pacientes com doença vascular significativa, ácido
+fólico para usuários crônicos de metotrexato e laxativos para
+usuários crônicos de opioides. O consenso é o de que, salvo
+contraindicação específica — como cuidados paliativos exclusivos
+ou insuficiência renal terminal —, essas intervenções devem ser
+consideradas para a maior parte dos idosos elegíveis.
+""")
+
 st.markdown("---")
 
 # ═══════════════════════════════════════════════════════════════

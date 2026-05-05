@@ -319,6 +319,59 @@ def carregar_criterios_idoso_nominal(ap: str, clinica: str, esf: str) -> pd.Data
 
 
 @st.cache_data(show_spinner=False, ttl=900)
+def carregar_polifarm_resumo(ap: str = None, clinica: str = None,
+                             esf: str = None) -> dict:
+    """Resumo de Carga farmacológica para um escopo (equipe ou
+    município). Cobre as três dimensões:
+      - quantitativa:   polifarmácia, hiperpolifarmácia, média de meds
+      - qualitativa:    pacientes com ≥1 STOPP, START, Beers
+      - exposição funcional (anticolinérgica): ACB ≥1 e ≥3
+
+    Aceita None nos filtros para escopo do município (sem WHERE).
+    Função leve — não lista critérios individuais."""
+    clauses = []
+    if ap:      clauses.append(f"f.area_programatica_cadastro = '{ap}'")
+    if clinica: clauses.append(f"f.nome_clinica_cadastro     = '{clinica}'")
+    if esf:     clauses.append(f"f.nome_esf_cadastro         = '{esf}'")
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    sql = f"""
+    SELECT
+        COUNT(*)                                                   AS n_total,
+        COUNTIF(f.idade >= 65)                                     AS n_idosos,
+        -- ── Dimensão quantitativa ──
+        COUNTIF(f.polifarmacia = TRUE)                             AS n_polifarm,
+        COUNTIF(f.hiperpolifarmacia = TRUE)                        AS n_hiperpoli,
+        COUNTIF(f.idade >= 65 AND f.polifarmacia = TRUE)           AS n_polifarm_idosos,
+        COUNTIF(f.idade >= 65 AND f.hiperpolifarmacia = TRUE)      AS n_hiperpoli_idosos,
+        ROUND(AVG(f.total_medicamentos_cronicos), 1)               AS media_meds,
+        ROUND(AVG(IF(f.idade >= 65,
+                     f.total_medicamentos_cronicos, NULL)), 1)     AS media_meds_idosos,
+        -- ── Dimensão de exposição funcional (ACB) ──
+        COUNTIF(f.acb_score_total >= 1)                            AS n_acb_ge1,
+        COUNTIF(f.acb_score_total >= 3)                            AS n_acb_ge3,
+        COUNTIF(f.acb_score_total >= 1 AND f.idade >= 65)          AS n_acb_ge1_idosos,
+        COUNTIF(f.acb_score_total >= 3 AND f.idade >= 65)          AS n_acb_ge3_idosos,
+        -- ── Dimensão qualitativa (STOPP/START/Beers) ──
+        COUNTIF(COALESCE(s.total_criterios_stopp, 0) > 0)          AS n_com_stopp,
+        COUNTIF(COALESCE(s.total_criterios_start, 0) > 0)          AS n_com_start,
+        COUNTIF(COALESCE(s.total_criterios_beers, 0) > 0)          AS n_com_beers,
+        COUNTIF(f.idade >= 65
+                AND COALESCE(s.total_criterios_stopp, 0) > 0)      AS n_com_stopp_idosos,
+        COUNTIF(f.idade >= 65
+                AND COALESCE(s.total_criterios_start, 0) > 0)      AS n_com_start_idosos,
+        COUNTIF(f.idade >= 65
+                AND COALESCE(s.total_criterios_beers, 0) > 0)      AS n_com_beers_idosos
+    FROM `{_fqn(config.TABELA_FATO)}` f
+    LEFT JOIN `rj-sms-sandbox.sub_pav_us.MM_stopp_start` s
+           ON f.cpf = s.cpf
+    {where}
+    """
+    df = bq(sql)
+    return df.iloc[0].to_dict() if not df.empty else {}
+
+
+@st.cache_data(show_spinner=False, ttl=900)
 def carregar_continuidade_agregado(ap: str = None, clinica: str = None,
                                    esf: str = None) -> dict:
     """Estatísticas de continuidade do cuidado.
@@ -1115,7 +1168,7 @@ else:
     "📊 Resumo da população",
     "⚠️ Lacunas",
     "🔄 Continuidade",
-    "💊 Polifarmácia",
+    "💊 Carga farmacológica",
     "🩺 Hipertensão",
     "📖 Hipertensão (narrativa)",
     "🩸 Diabetes",
@@ -1821,100 +1874,302 @@ with tab_cont:
     )
 
 # ─────────────────────────────────────────────────────────────
-# ABA 4 — POLIFARMÁCIA (STOPP/START/Beers)
+# ABA 4 — CARGA FARMACOLÓGICA (Polifarmácia, STOPP, START, Beers, ACB)
 # ─────────────────────────────────────────────────────────────
 with tab_polif:
-    st.markdown("#### Critérios de prescrição em idosos — STOPP, START, Beers e escore ACB")
-    st.caption(
-        "STOPP = medicamentos potencialmente inapropriados que devem ser "
-        "evitados/revistos. START = medicamentos indicados ausentes da "
-        "prescrição. Beers = critérios complementares (AGS 2023). "
-        "ACB = Anticholinergic Cognitive Burden score, soma da carga "
-        "anticolinérgica dos medicamentos em uso. "
-        "Cada paciente pode somar múltiplos critérios; um critério é "
-        "contado uma única vez por paciente, independente de quantos "
-        "medicamentos da classe estejam prescritos."
+    st.markdown("#### Carga farmacológica")
+
+    # Texto explicativo de abertura — três dimensões + ACB
+    st.markdown("""
+**Carga farmacológica** é o termo que usamos para descrever a
+exposição cumulativa de um paciente a medicamentos e seus
+potenciais efeitos adversos. Operacionalmente, costuma ser
+decomposta em três dimensões.
+
+**Dimensão quantitativa.** Polifarmácia (≥5 medicamentos crônicos)
+e hiperpolifarmácia (≥10). São métricas simples, mas que se
+correlacionam fortemente com eventos adversos, hospitalizações e
+mortalidade em idosos.
+
+**Dimensão qualitativa.** Avalia a adequação prescritiva paciente
+a paciente. Fazem parte deste domínio os critérios STOPP/START, os
+critérios de Beers e o MAI (*Medication Appropriateness Index*).
+
+**Dimensão de exposição funcional.** Mensura o potencial impacto
+funcional que o uso crônico de medicamentos pode ter sobre o
+paciente. O Drug Burden Index (DBI) é um exemplo de escala neste
+domínio: pondera a exposição diária a fármacos sedativos e
+anticolinérgicos pela dose mínima eficaz, predizendo perda
+funcional e cognitiva.
+
+Dentro dessa dimensão, a **carga anticolinérgica** ocupa um lugar
+de destaque e está aqui representada pelo **Escore ACB
+(*Anticholinergic Cognitive Burden*)**. Refere-se ao efeito
+cumulativo do bloqueio de receptores muscarínicos por um ou mais
+medicamentos. Perifericamente, produz xerostomia, constipação,
+retenção urinária, taquicardia e visão turva; centralmente, pode
+causar sedação, confusão, delirium e — com exposição prolongada —
+declínio cognitivo e maior incidência de demência. Os idosos são
+especialmente vulneráveis pela menor reserva colinérgica central,
+redução da barreira hematoencefálica e alterações
+farmacocinéticas.
+
+---
+
+**No Navegador**, os três domínios estão representados
+respectivamente por: (1) a contagem de medicamentos crônicos e a
+identificação dos pacientes em polifarmácia ou hiperpolifarmácia;
+(2) o painel de critérios STOPP, START e Beers; e (3) o Escore
+ACB calculado individualmente para cada paciente.
+""")
+
+    with st.spinner("Calculando carga farmacológica da equipe e do município..."):
+        pf_eq  = carregar_polifarm_resumo(ap_sel, cli_sel, esf_sel)
+        pf_mun = carregar_polifarm_resumo(None, None, None)
+        agg    = carregar_criterios_idoso_agregado(ap_sel, cli_sel, esf_sel)
+
+    n_total_eq   = int(pf_eq.get('n_total', 0) or 0) or 1
+    n_idosos_eq  = int(pf_eq.get('n_idosos', 0) or 0) or 1
+    n_total_mun  = int(pf_mun.get('n_total', 0) or 0) or 1
+    n_idosos_mun = int(pf_mun.get('n_idosos', 0) or 0) or 1
+
+    # ═════════════════════════════════════════════════════════════
+    # 1. DIMENSÃO QUANTITATIVA — polifarmácia e hiperpolifarmácia
+    # ═════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown(
+        "##### 1. Dimensão quantitativa — polifarmácia e "
+        "hiperpolifarmácia"
     )
-
-    with st.spinner("Calculando critérios da equipe..."):
-        agg = carregar_criterios_idoso_agregado(ap_sel, cli_sel, esf_sel)
-
-    n_total_pol = agg.get('n_pacientes_equipe', 0) or 1
-
-    # ─── Cards de totais por tipo ───
-    p1, p2, p3, p4 = st.columns(4)
-    _kpi(p1, "👥 Pacientes da equipe", f"{agg.get('n_pacientes_equipe', 0):,}")
-    _kpi(p2, "🚫 Com STOPP", f"{agg.get('n_com_stopp', 0):,}",
-         f"{agg.get('n_com_stopp', 0)/n_total_pol*100:.0f}%")
-    _kpi(p3, "💡 Com START", f"{agg.get('n_com_start', 0):,}",
-         f"{agg.get('n_com_start', 0)/n_total_pol*100:.0f}%")
-    _kpi(p4, "🇺🇸 Com Beers", f"{agg.get('n_com_beers', 0):,}",
-         f"{agg.get('n_com_beers', 0)/n_total_pol*100:.0f}%")
-
-    # ─── Distribuição: gráfico de barras ───
-    st.markdown("##### Distribuição de critérios por paciente")
-    st.caption(
-        "Quantos pacientes têm 0, 1, 2, 3 ou ≥4 critérios de cada tipo."
-    )
-    df_d_stopp = agg.get('distribuicao_stopp', pd.DataFrame())
-    df_d_start = agg.get('distribuicao_start', pd.DataFrame())
-    df_d_beers = agg.get('distribuicao_beers', pd.DataFrame())
-
-    if not df_d_stopp.empty:
-        fig_d = go.Figure()
-        ordem = ['0', '1', '2', '3', '≥4']
-        fig_d.add_trace(go.Bar(
-            x=ordem, y=df_d_stopp.set_index('n_criterios')
-                                  .reindex(ordem)['n_pacientes'].values,
-            name='STOPP',
-            marker=dict(color='#C0392B'),
-            text=df_d_stopp.set_index('n_criterios')
-                            .reindex(ordem)['n_pacientes'].values,
-            textposition='outside',
-            textfont=dict(size=14, color=T.TEXT),
-        ))
-        fig_d.add_trace(go.Bar(
-            x=ordem, y=df_d_start.set_index('n_criterios')
-                                  .reindex(ordem)['n_pacientes'].values,
-            name='START',
-            marker=dict(color='#27AE60'),
-            text=df_d_start.set_index('n_criterios')
-                            .reindex(ordem)['n_pacientes'].values,
-            textposition='outside',
-            textfont=dict(size=14, color=T.TEXT),
-        ))
-        fig_d.add_trace(go.Bar(
-            x=ordem, y=df_d_beers.set_index('n_criterios')
-                                  .reindex(ordem)['n_pacientes'].values,
-            name='Beers',
-            marker=dict(color='#4f8ef7'),
-            text=df_d_beers.set_index('n_criterios')
-                            .reindex(ordem)['n_pacientes'].values,
-            textposition='outside',
-            textfont=dict(size=14, color=T.TEXT),
-        ))
-        fig_d.update_layout(
-            barmode='group',
-            height=380,
-            margin=dict(l=10, r=10, t=20, b=40),
-            paper_bgcolor=T.PAPER_BG, plot_bgcolor=T.PLOT_BG,
-            xaxis=dict(
-                title=dict(text='Nº de critérios por paciente',
-                           font=dict(color=T.TEXT, size=14)),
-                tickfont=dict(color=T.TEXT, size=14),
-            ),
-            yaxis=dict(
-                title=dict(text='Pacientes',
-                           font=dict(color=T.TEXT, size=14)),
-                tickfont=dict(color=T.TEXT_MUTED, size=13),
-                gridcolor=T.GRID,
-                rangemode='tozero',
-            ),
-            legend=dict(orientation='h', x=0.5, xanchor='center',
-                        y=1.10, yanchor='bottom',
-                        font=dict(color=T.TEXT, size=14)),
+    e1, d1 = st.columns([1, 1.3])
+    with e1:
+        media_meds_eq        = pf_eq.get('media_meds') or 0
+        media_meds_idosos_eq = pf_eq.get('media_meds_idosos') or 0
+        st.markdown(
+            f"<div style='line-height:1.6; font-size:0.95em;'>"
+            f"Quantos medicamentos crônicos cada paciente tem em "
+            f"prescrição? <b>Polifarmácia</b> sinaliza ≥5 e "
+            f"<b>hiperpolifarmácia</b> ≥10 medicamentos crônicos "
+            f"simultâneos.<br><br>"
+            f"Na sua equipe, a média é <b>{float(media_meds_eq):.1f} "
+            f"medicamentos crônicos por paciente</b> "
+            f"(<b>{float(media_meds_idosos_eq):.1f}</b> nos pacientes "
+            f"com 65 anos ou mais). Os cards à direita mostram a "
+            f"prevalência de polifarmácia e hiperpolifarmácia "
+            f"separadamente para a equipe inteira e para o "
+            f"sub-conjunto de <b>idosos</b> — esse último é o "
+            f"recorte que mais importa para o risco de eventos "
+            f"adversos.<br><br>"
+            f"A comparação com a média do município ajuda a calibrar "
+            f"a leitura: equipes com perfil mais idoso ou mais "
+            f"comórbido tendem a ter % maior, e isso não é "
+            f"necessariamente \"problema\" — mas serve para "
+            f"identificar pacientes-alvo de revisão de prescrição."
+            f"</div>",
+            unsafe_allow_html=True,
         )
-        st.plotly_chart(fig_d, use_container_width=True)
+    with d1:
+        c1, c2 = st.columns(2)
+        _card_carga_strat(
+            c1, "Polifarmácia (≥5 meds crônicos)", "💊",
+            pf_eq.get('n_polifarm'), n_total_eq,
+            pf_mun.get('n_polifarm'), n_total_mun,
+            indicador_ruim_se_alto=True,
+        )
+        _card_carga_strat(
+            c2, "Hiperpolifarmácia (≥10 meds crônicos)", "💊💊",
+            pf_eq.get('n_hiperpoli'), n_total_eq,
+            pf_mun.get('n_hiperpoli'), n_total_mun,
+            indicador_ruim_se_alto=True,
+        )
+        c3, c4 = st.columns(2)
+        _card_carga_strat(
+            c3, "Idosos (≥65a) em polifarmácia", "👴",
+            pf_eq.get('n_polifarm_idosos'), n_idosos_eq,
+            pf_mun.get('n_polifarm_idosos'), n_idosos_mun,
+            indicador_ruim_se_alto=True,
+        )
+        _card_carga_strat(
+            c4, "Idosos (≥65a) em hiperpolifarmácia", "👴",
+            pf_eq.get('n_hiperpoli_idosos'), n_idosos_eq,
+            pf_mun.get('n_hiperpoli_idosos'), n_idosos_mun,
+            indicador_ruim_se_alto=True,
+        )
+
+    # ═════════════════════════════════════════════════════════════
+    # 2. CRITÉRIOS STOPP
+    # ═════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("##### 2. Critérios STOPP")
+    e2, d2 = st.columns([1, 1.3])
+    with e2:
+        st.markdown(
+            "<div style='line-height:1.6; font-size:0.95em;'>"
+            "<b>STOPP</b> é uma ferramenta de rastreio que sinaliza "
+            "prescrições potencialmente inapropriadas em idosos, "
+            "organizada por sistema/órgão. Destaca três cenários: "
+            "medicamentos sem benefício comprovado nessa população, "
+            "medicamentos mantidos por tempo superior ao recomendado "
+            "e duplicações terapêuticas. Indica o que deve ser "
+            "<b>reavaliado ou suspenso</b>.<br><br>"
+            "Os cards à direita mostram quantos pacientes da equipe "
+            "têm <b>pelo menos um critério STOPP positivo</b>, "
+            "comparados com a média do município. A lista detalhada "
+            "de quais critérios estão ativos aparece mais abaixo "
+            "(<i>Detalhe por critério</i>) e a lista nominal de "
+            "pacientes está no fim da aba."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with d2:
+        c1, c2 = st.columns(2)
+        _card_carga_strat(
+            c1, "Pacientes com ≥1 critério STOPP", "🚫",
+            pf_eq.get('n_com_stopp'), n_total_eq,
+            pf_mun.get('n_com_stopp'), n_total_mun,
+            indicador_ruim_se_alto=True,
+        )
+        _card_carga_strat(
+            c2, "Idosos (≥65a) com ≥1 critério STOPP", "👴",
+            pf_eq.get('n_com_stopp_idosos'), n_idosos_eq,
+            pf_mun.get('n_com_stopp_idosos'), n_idosos_mun,
+            indicador_ruim_se_alto=True,
+        )
+
+    # ═════════════════════════════════════════════════════════════
+    # 3. CRITÉRIOS START
+    # ═════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("##### 3. Critérios START")
+    e3, d3 = st.columns([1, 1.3])
+    with e3:
+        st.markdown(
+            "<div style='line-height:1.6; font-size:0.95em;'>"
+            "<b>START</b> é a ferramenta complementar ao STOPP: em "
+            "vez de apontar o que deve sair, sinaliza o que <b>"
+            "deveria ter sido prescrito e não foi</b>. As "
+            "recomendações são baseadas em condições clínicas — como "
+            "antiplaquetário em doença vascular, ácido fólico com "
+            "metotrexato, laxativos com opioides crônicos — e devem "
+            "ser consideradas para a maioria dos idosos elegíveis, "
+            "salvo contraindicação específica.<br><br>"
+            "É importante lembrar que cada um destes apontamentos "
+            "é uma <b>oportunidade de revisão</b>, não uma falha "
+            "automática. A decisão de prescrever ou não envolve "
+            "avaliação de segurança, contraindicações, expectativa "
+            "de vida e preferência do paciente."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with d3:
+        c1, c2 = st.columns(2)
+        _card_carga_strat(
+            c1, "Pacientes com ≥1 critério START", "💡",
+            pf_eq.get('n_com_start'), n_total_eq,
+            pf_mun.get('n_com_start'), n_total_mun,
+            indicador_ruim_se_alto=True,
+        )
+        _card_carga_strat(
+            c2, "Idosos (≥65a) com ≥1 critério START", "👴",
+            pf_eq.get('n_com_start_idosos'), n_idosos_eq,
+            pf_mun.get('n_com_start_idosos'), n_idosos_mun,
+            indicador_ruim_se_alto=True,
+        )
+
+    # ═════════════════════════════════════════════════════════════
+    # 4. CRITÉRIOS BEERS
+    # ═════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("##### 4. Critérios de Beers")
+    e4, d4 = st.columns([1, 1.3])
+    with e4:
+        st.markdown(
+            "<div style='line-height:1.6; font-size:0.95em;'>"
+            "<b>Beers (2023)</b> é um conjunto de critérios "
+            "desenvolvido pela <i>American Geriatrics Society</i> "
+            "para identificar medicamentos potencialmente "
+            "inapropriados em pessoas com 65 anos ou mais fora de "
+            "cuidados paliativos exclusivos. Cobrem precauções "
+            "específicas, ajustes de dose e interações "
+            "medicamentosas.<br><br>"
+            "A versão de 2023 enfatiza a <b>carga anticolinérgica "
+            "cumulativa</b> e atualiza recomendações sobre "
+            "anticoagulação, antidiabéticos e prevenção "
+            "cardiovascular primária. Por exemplo: evitar início de "
+            "AAS para prevenção primária em idosos; cautela com "
+            "rivaroxabana e dabigatrana em FA prolongada (frente à "
+            "apixabana); evitar sulfonilureias pelo risco de "
+            "hipoglicemia."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with d4:
+        c1, c2 = st.columns(2)
+        _card_carga_strat(
+            c1, "Pacientes com ≥1 critério Beers", "🇺🇸",
+            pf_eq.get('n_com_beers'), n_total_eq,
+            pf_mun.get('n_com_beers'), n_total_mun,
+            indicador_ruim_se_alto=True,
+        )
+        _card_carga_strat(
+            c2, "Idosos (≥65a) com ≥1 critério Beers", "👴",
+            pf_eq.get('n_com_beers_idosos'), n_idosos_eq,
+            pf_mun.get('n_com_beers_idosos'), n_idosos_mun,
+            indicador_ruim_se_alto=True,
+        )
+
+    # ═════════════════════════════════════════════════════════════
+    # 5. ESCORE ACB — carga anticolinérgica
+    # ═════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("##### 5. Escore ACB — *Anticholinergic Cognitive Burden*")
+    e5, d5 = st.columns([1, 1.3])
+    with e5:
+        st.markdown(
+            "<div style='line-height:1.6; font-size:0.95em;'>"
+            "O <b>Escore ACB</b> mede o efeito cumulativo do "
+            "bloqueio de receptores muscarínicos pelos medicamentos "
+            "em uso. Cada fármaco recebe um peso de 0 a 3; o escore "
+            "do paciente é a soma dos pesos da lista atual de "
+            "medicamentos.<br><br>"
+            "<b>ACB ≥ 1</b> indica algum grau de exposição "
+            "anticolinérgica; <b>ACB ≥ 3</b> é o ponto de corte "
+            "associado a risco clinicamente relevante de confusão, "
+            "delirium, quedas e — com exposição prolongada — "
+            "declínio cognitivo.<br><br>"
+            "Idosos são especialmente vulneráveis pela menor reserva "
+            "colinérgica central, alterações farmacocinéticas e "
+            "menor barreira hematoencefálica."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with d5:
+        c1, c2 = st.columns(2)
+        _card_carga_strat(
+            c1, "Pacientes com ACB ≥ 1", "🧠",
+            pf_eq.get('n_acb_ge1'), n_total_eq,
+            pf_mun.get('n_acb_ge1'), n_total_mun,
+            indicador_ruim_se_alto=True,
+        )
+        _card_carga_strat(
+            c2, "Pacientes com ACB ≥ 3 (risco relevante)", "🚨",
+            pf_eq.get('n_acb_ge3'), n_total_eq,
+            pf_mun.get('n_acb_ge3'), n_total_mun,
+            indicador_ruim_se_alto=True,
+        )
+        c3, c4 = st.columns(2)
+        _card_carga_strat(
+            c3, "Idosos (≥65a) com ACB ≥ 1", "👴",
+            pf_eq.get('n_acb_ge1_idosos'), n_idosos_eq,
+            pf_mun.get('n_acb_ge1_idosos'), n_idosos_mun,
+            indicador_ruim_se_alto=True,
+        )
+        _card_carga_strat(
+            c4, "Idosos (≥65a) com ACB ≥ 3", "👴",
+            pf_eq.get('n_acb_ge3_idosos'), n_idosos_eq,
+            pf_mun.get('n_acb_ge3_idosos'), n_idosos_mun,
+            indicador_ruim_se_alto=True,
+        )
 
     st.markdown("---")
 
