@@ -106,11 +106,11 @@ def render_selecao_perfil():
             'disponivel': False,
         },
         {
-            'icon': '🏛️',
-            'titulo': 'SAP',
-            'subtitulo': 'Subsecretaria de Atenção Primária',
+            'icon': '🛠️',
+            'titulo': 'Admin',
+            'subtitulo': 'Acesso completo (todas as pages)',
             'perfil': 'admin',
-            'disponivel': False,
+            'disponivel': True,
         },
     ]
 
@@ -157,7 +157,7 @@ def render_login(perfil: str):
         'equipe':  '👨‍⚕️ Equipe de Saúde da Família',
         'gerente': '🏥 Gerente de Clínica',
         'gestor':  '📍 Coordenação de Área Programática',
-        'admin':   '🏛️ Subsecretaria de Atenção Primária',
+        'admin':   '🛠️ Admin (acesso completo)',
     }
     rotulo = rotulos.get(perfil, perfil)
 

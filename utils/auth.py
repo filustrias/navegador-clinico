@@ -185,11 +185,18 @@ USUARIOS_DEMO = {
         'nome_completo': 'Equipe de Saúde da Família',
         'perfil':        'equipe',
     },
+    # Acesso completo a todas as pages (uso de inspeção / desenvolvimento).
+    # As pages que hoje têm bloquear_perfil_esf() não bloqueiam admin.
+    'admin': {
+        'username':      'admin',
+        'senha':         'esqueci',
+        'nome_completo': 'Administrador (acesso completo)',
+        'perfil':        'admin',
+    },
     # Os demais perfis serão habilitados quando suas visualizações
     # forem implementadas.
     # 'gerente': {'username': 'gerente', 'senha': '...', ...},
     # 'gestor':  {'username': 'ap',      'senha': '...', ...},
-    # 'admin':   {'username': 'sap',     'senha': '...', ...},
 }
 
 
