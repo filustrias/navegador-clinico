@@ -29,14 +29,17 @@ from utils.criterios_idoso import (
     coluna_para_codigo, descricao_curta, justificativa, categoria, tipo,
 )
 from components.lista_pacientes import renderizar_lista_pacientes
+from utils.auth import (
+    requer_login, get_perfil, get_contexto_territorial, logout,
+)
 import config
 
-st.set_page_config(
-    page_title="Visão ESF · Navegador Clínico",
-    page_icon="📋",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+# Page config único é gerenciado por Home.py (entrypoint via
+# st.navigation). Esta page não declara set_page_config próprio.
+
+# Login obrigatório (redireciona para Home se não houver sessão)
+_usuario = requer_login()
+_perfil  = get_perfil()
 
 renderizar_cabecalho("Visão ESF")
 
@@ -1072,62 +1075,97 @@ NARRATIVA_GRUPO_LACUNAS = {
 
 
 # ═══════════════════════════════════════════════════════════════
-# SIDEBAR — SELEÇÃO OBRIGATÓRIA AP / CLÍNICA / ESF
+# SIDEBAR — território da equipe
+#
+# Para o perfil 'equipe' (ESF), o território vem fixo do contexto
+# territorial definido na tela de seleção do Home.py — a sidebar
+# mostra apenas o resumo + botões de Trocar equipe / Sair.
+#
+# Para outros perfis (gerente / gestor / admin), continuam os
+# selectboxes editáveis para navegar entre territórios.
 # ═══════════════════════════════════════════════════════════════
-st.sidebar.header("🎯 Equipe selecionada")
 mostrar_badge_anonimo()
-st.sidebar.info("⚠️ Selecione AP, Clínica e ESF para carregar a visão da equipe.")
 
-df_opts = carregar_territorios()
-if df_opts.empty:
-    st.sidebar.error("Sem opções de filtro disponíveis.")
-    st.stop()
+if _perfil == 'equipe':
+    _ctx = get_contexto_territorial()
+    ap_sel  = _ctx.get('ap')
+    cli_sel = _ctx.get('clinica')
+    esf_sel = _ctx.get('esf')
 
-aps = sorted(df_opts['area_programatica_cadastro'].dropna().unique().tolist())
-ap_sel = st.sidebar.selectbox(
-    "Área Programática: *",
-    options=[None] + aps,
-    format_func=lambda x: "Selecione..." if x is None else anonimizar_ap(str(x)),
-    key="ve_ap",
-)
+    if not (ap_sel and cli_sel and esf_sel):
+        # Contexto não foi setado — volta para a tela de seleção
+        st.switch_page("Home.py")
 
-if ap_sel:
-    clinicas = sorted(df_opts[df_opts['area_programatica_cadastro'] == ap_sel]
-                      ['nome_clinica_cadastro'].dropna().unique().tolist())
+    st.sidebar.header("🎯 Sua equipe")
+    st.sidebar.markdown(
+        f"**AP:** {anonimizar_ap(str(ap_sel))}  \n"
+        f"**Clínica:** {anonimizar_clinica(cli_sel)}  \n"
+        f"**ESF:** {anonimizar_esf(esf_sel)}"
+    )
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🔄 Trocar equipe", use_container_width=True,
+                          key="ve_trocar"):
+        st.session_state['contexto_territorial'] = None
+        st.switch_page("Home.py")
+    if st.sidebar.button("🚪 Sair", use_container_width=True,
+                          key="ve_sair"):
+        logout()
 else:
-    clinicas = []
+    st.sidebar.header("🎯 Equipe selecionada")
+    st.sidebar.info(
+        "⚠️ Selecione AP, Clínica e ESF para carregar a visão da equipe."
+    )
 
-cli_sel = st.sidebar.selectbox(
-    "Clínica da Família: *",
-    options=[None] + clinicas,
-    format_func=lambda x: "Selecione..." if x is None else anonimizar_clinica(x),
-    disabled=not ap_sel, key="ve_cli",
-)
+    df_opts = carregar_territorios()
+    if df_opts.empty:
+        st.sidebar.error("Sem opções de filtro disponíveis.")
+        st.stop()
 
-if ap_sel and cli_sel:
-    esfs = sorted(df_opts[(df_opts['area_programatica_cadastro'] == ap_sel)
-                          & (df_opts['nome_clinica_cadastro'] == cli_sel)]
-                  ['nome_esf_cadastro'].dropna().unique().tolist())
-else:
-    esfs = []
+    aps = sorted(df_opts['area_programatica_cadastro'].dropna().unique().tolist())
+    ap_sel = st.sidebar.selectbox(
+        "Área Programática: *",
+        options=[None] + aps,
+        format_func=lambda x: "Selecione..." if x is None else anonimizar_ap(str(x)),
+        key="ve_ap",
+    )
 
-esf_sel = st.sidebar.selectbox(
-    "ESF: *",
-    options=[None] + esfs,
-    format_func=lambda x: "Selecione..." if x is None else anonimizar_esf(x),
-    disabled=not cli_sel, key="ve_esf",
-)
+    if ap_sel:
+        clinicas = sorted(df_opts[df_opts['area_programatica_cadastro'] == ap_sel]
+                          ['nome_clinica_cadastro'].dropna().unique().tolist())
+    else:
+        clinicas = []
 
-# Bloqueia até que a equipe esteja selecionada
-if not ap_sel:
-    st.warning("⚠️ Selecione uma Área Programática na barra lateral.")
-    st.stop()
-if not cli_sel:
-    st.warning("⚠️ Selecione uma Clínica da Família na barra lateral.")
-    st.stop()
-if not esf_sel:
-    st.warning("⚠️ Selecione uma ESF na barra lateral.")
-    st.stop()
+    cli_sel = st.sidebar.selectbox(
+        "Clínica da Família: *",
+        options=[None] + clinicas,
+        format_func=lambda x: "Selecione..." if x is None else anonimizar_clinica(x),
+        disabled=not ap_sel, key="ve_cli",
+    )
+
+    if ap_sel and cli_sel:
+        esfs = sorted(df_opts[(df_opts['area_programatica_cadastro'] == ap_sel)
+                              & (df_opts['nome_clinica_cadastro'] == cli_sel)]
+                      ['nome_esf_cadastro'].dropna().unique().tolist())
+    else:
+        esfs = []
+
+    esf_sel = st.sidebar.selectbox(
+        "ESF: *",
+        options=[None] + esfs,
+        format_func=lambda x: "Selecione..." if x is None else anonimizar_esf(x),
+        disabled=not cli_sel, key="ve_esf",
+    )
+
+    # Bloqueia até que a equipe esteja selecionada
+    if not ap_sel:
+        st.warning("⚠️ Selecione uma Área Programática na barra lateral.")
+        st.stop()
+    if not cli_sel:
+        st.warning("⚠️ Selecione uma Clínica da Família na barra lateral.")
+        st.stop()
+    if not esf_sel:
+        st.warning("⚠️ Selecione uma ESF na barra lateral.")
+        st.stop()
 
 # ═══════════════════════════════════════════════════════════════
 # TÍTULO + EXPLICAÇÃO DO IPC

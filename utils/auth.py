@@ -154,28 +154,73 @@ def exibir_usuario_logado():
 
 
 def requer_login():
+    """Garante que há usuário logado. Se não houver, redireciona para
+    a página inicial (Home.py), onde a tela de login é renderizada.
+    Reaproveita o usuário já em sessão se existir."""
+    user = st.session_state.get('usuario_logado')
+    if not user:
+        try:
+            st.switch_page("Home.py")
+        except Exception:
+            # Fallback se st.switch_page não existir / não puder
+            # ser chamado fora de um contexto de page
+            st.warning("⚠️ Por favor, faça login na página inicial.")
+            st.stop()
+    # Mantém compatibilidade com pages que leem usuario_global
+    st.session_state['usuario_global'] = user
+    return user
+
+
+# ═══════════════════════════════════════════════════════════════
+# LOGIN DEMO — credenciais hardcoded (sem BigQuery)
+# ═══════════════════════════════════════════════════════════════
+
+# Credenciais de demonstração por perfil. Em produção real, isso vai
+# para a tabela MM_usuarios_navegador. Por ora, esses logins genéricos
+# servem para acesso rápido por perfil.
+USUARIOS_DEMO = {
+    'equipe': {
+        'username':      'equipe',
+        'senha':         'esf123',
+        'nome_completo': 'Equipe de Saúde da Família',
+        'perfil':        'equipe',
+    },
+    # Os demais perfis serão habilitados quando suas visualizações
+    # forem implementadas.
+    # 'gerente': {'username': 'gerente', 'senha': '...', ...},
+    # 'gestor':  {'username': 'ap',      'senha': '...', ...},
+    # 'admin':   {'username': 'sap',     'senha': '...', ...},
+}
+
+
+def verificar_login_demo(username: str, senha: str,
+                         perfil_esperado: str = None) -> dict:
+    """Verifica credenciais hardcoded em USUARIOS_DEMO.
+
+    Retorna dict do usuário no mesmo formato de verificar_login()
+    se as credenciais forem válidas e baterem com o perfil esperado.
+    Caso contrário, retorna None.
     """
-    MODO DESENVOLVIMENTO — login desativado.
-    Para reativar: comente o bloco DEV e descomente o bloco PROD.
-    """
-    # ── DEV: bypass de login ──────────────────────────────────
-    usuario_dev = {
-        'username':      'dev',
-        'nome_completo': 'Usuário Dev',
-        'email':         'dev@sms.rio',
-        'perfil':        'admin',          # acesso irrestrito
-        'area_programatica': None,
-        'clinica':       None,
-        'esf':           None,
-        'ultimo_acesso': None,
-    }
-    st.session_state['usuario_logado'] = usuario_dev
-    return usuario_dev
-    # ── PROD: descomente abaixo e remova o bloco DEV ──────────
-    # if 'usuario_logado' not in st.session_state or not st.session_state.usuario_logado:
-    #     login_form()
-    #     st.stop()
-    # return st.session_state.usuario_logado
+    if not username or not senha:
+        return None
+    candidatos = (
+        [USUARIOS_DEMO[perfil_esperado]]
+        if perfil_esperado and perfil_esperado in USUARIOS_DEMO
+        else list(USUARIOS_DEMO.values())
+    )
+    for cred in candidatos:
+        if cred['username'] == username and cred['senha'] == senha:
+            return {
+                'username':          cred['username'],
+                'nome_completo':     cred['nome_completo'],
+                'email':             None,
+                'perfil':            cred['perfil'],
+                'area_programatica': None,
+                'clinica':           None,
+                'esf':               None,
+                'ultimo_acesso':     None,
+            }
+    return None
 
 
 # ═══════════════════════════════════════════════════════════════
