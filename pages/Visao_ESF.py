@@ -22,7 +22,7 @@ from utils.ipc import (
     PESOS_DEFAULT, BONUS_DCV_SEM_PREV, CORES_IPC,
 )
 from utils.morbidades import gerar_sql_morbidades_lista
-from utils.lacunas_config import LACUNAS, GRUPOS_LACUNAS
+from utils.lacunas_config import LACUNAS
 from utils.criterios_idoso import (
     CRITERIOS_STOPP, CRITERIOS_START, CRITERIOS_BEERS,
     todos_codigos_stopp, todos_codigos_start, todos_codigos_beers,
@@ -951,10 +951,34 @@ def _detecta_inversao_gradiente(valores, esperado_crescente):
     return None
 
 
+# Ordem de exibição dos grupos de lacunas na aba narrativa. Difere
+# da ordem canônica de GRUPOS_LACUNAS (que vive em
+# utils/lacunas_config.py e é usada por outras telas). Chaves
+# precisam bater literalmente com o que vem de df_lac['grupo'].
+_ORDEM_GRUPOS_LACUNAS = [
+    "Rastreio",
+    "Hipertensão (HAS)",
+    "Diabetes Mellitus (DM)",
+    "Cardiopatia Isquêmica (CI)",
+    "ICC e IRC (manejo clínico)",
+    "Fibrilação Atrial (FA)",
+    "Prescrições Inapropriadas",
+]
+
+# Renames apenas para exibição (chave do banco/config → label visível
+# na aba). Não mexe no df_lac['grupo'] em si.
+_LABEL_GRUPO_DISPLAY = {
+    "Rastreio": "Rastreios",
+    "ICC e IRC (manejo clínico)":
+        "Insuficiência Cardíaca e Doença Renal Crônica",
+}
+
+
 # Texto contextual narrativo por grupo de lacunas. Mostrado à esquerda
 # antes da listagem das lacunas piores/melhores em comparação com o
 # município. Só descreve o RACIONAL CLÍNICO do grupo, deixando os
-# números para os cards.
+# números para os cards. Chaves devem bater literalmente com
+# df_lac['grupo'] (proveniente de utils/lacunas_config.py).
 NARRATIVA_GRUPO_LACUNAS = {
     "Cardiopatia Isquêmica (CI)":
         "Avalia se pacientes com CI estão em <b>prevenção secundária</b> "
@@ -970,9 +994,10 @@ NARRATIVA_GRUPO_LACUNAS = {
         "combinações inadequadas a evitar.",
     "Fibrilação Atrial (FA)":
         "Avalia <b>anticoagulação</b> e <b>controle da frequência "
-        "cardíaca</b> em pacientes com FA — duas medidas que reduzem "
-        "drasticamente AVC isquêmico e cardiomiopatia "
-        "taquicardia-induzida.",
+        "cardíaca</b> em pacientes com FA. Estas são medidas "
+        "terapêuticas em que o médico deverá avaliar segurança e "
+        "adequação ao cenário do paciente para decidir, de forma "
+        "compartilhada, se as utiliza ou não.",
     "Diabetes Mellitus (DM)":
         "Avalia <b>monitoramento glicêmico</b>, <b>rastreio de "
         "complicações</b> (pé, microalbuminúria) e adequação do "
@@ -1276,7 +1301,7 @@ cortado em 1,0.
 # ─────────────────────────────────────────────────────────────
 with tab_lacunas:
     st.markdown(
-        "#### Lacunas de cuidado — narrativa por grupo, comparado ao município"
+        "#### Lacunas de cuidado — Equipe versus município"
     )
     st.caption(
         "Cada lacuna é calculada apenas sobre a população elegível "
@@ -1305,8 +1330,8 @@ with tab_lacunas:
         )
         df_lac['delta'] = df_lac['pct'] - df_lac['pct_mun']
 
-        # ───── Atos por grupo (ordem canônica de GRUPOS_LACUNAS) ─────
-        for grupo in GRUPOS_LACUNAS.keys():
+        # ───── Atos por grupo (ordem definida em _ORDEM_GRUPOS_LACUNAS) ─────
+        for grupo in _ORDEM_GRUPOS_LACUNAS:
             df_g = df_lac[df_lac['grupo'] == grupo].copy()
             df_g = df_g[df_g['denominador'] > 0]
             if df_g.empty:
@@ -1314,7 +1339,7 @@ with tab_lacunas:
             df_g = df_g.sort_values('pct', ascending=False)
 
             st.markdown("---")
-            st.markdown(f"##### {grupo}")
+            st.markdown(f"##### {_LABEL_GRUPO_DISPLAY.get(grupo, grupo)}")
 
             e, d = st.columns([1, 1.3])
             with e:
@@ -1402,12 +1427,13 @@ with tab_lacunas:
             "card de cada paciente."
         )
 
-        grupos_disp = [g for g in GRUPOS_LACUNAS.keys()
+        grupos_disp = [g for g in _ORDEM_GRUPOS_LACUNAS
                        if g in df_lac['grupo'].dropna().unique()]
         filtro_grupo = st.multiselect(
             "Filtrar por grupo",
             options=grupos_disp, default=[],
             placeholder="Todos os grupos",
+            format_func=lambda g: _LABEL_GRUPO_DISPLAY.get(g, g),
             key="lac_filtro_grupo_tab",
         )
 
@@ -1417,7 +1443,8 @@ with tab_lacunas:
             df_lac_tab = df_lac_tab[df_lac_tab['grupo'].isin(filtro_grupo)]
 
         df_tab = pd.DataFrame({
-            'Grupo':       df_lac_tab['grupo'].values,
+            'Grupo':       df_lac_tab['grupo'].map(
+                lambda g: _LABEL_GRUPO_DISPLAY.get(g, g)).values,
             'Lacuna':      df_lac_tab['lacuna'].values,
             'n / N':       df_lac_tab.apply(
                 lambda r: f"{int(r['numerador'])} / {int(r['denominador'])}"
@@ -2497,7 +2524,7 @@ with tab_has_narr:
 
     # ───────── ATO 1 — POPULAÇÃO E COMO FORAM IDENTIFICADOS ─────────
     st.markdown("---")
-    st.markdown("##### 1. A população em foco — como foram identificados")
+    st.markdown("##### 1. Como foram identificados os hipertensos da equipe?")
     a1e, a1d = st.columns([1, 1.1])
     with a1e:
         st.markdown(
@@ -3607,7 +3634,7 @@ with tab_dm_narr:
 
     # ───────── ATO 1 — POPULAÇÃO EM FOCO ─────────
     st.markdown("---")
-    st.markdown("##### 1. A população em foco")
+    st.markdown("##### 1. Como foram identificados os diabéticos da equipe?")
     a1e, a1d = st.columns([1, 1.1])
     with a1e:
         st.markdown(
