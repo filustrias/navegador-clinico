@@ -3252,13 +3252,24 @@ with tab_lacunas:
 
 # ─────────────────────────────────────────────────────────────
 # ABA 7 — MEUS PACIENTES (lista nominal completa, embarcada)
+# Diagnóstico temporário: try/except para capturar exceção
+# silenciosa que pode estar deixando a interação 'pálida'.
 # ─────────────────────────────────────────────────────────────
 with tab_pacientes:
-    renderizar_lista_pacientes(
-        area=ap_sel,
-        clinica=cli_sel,
-        esf=esf_sel,
-        scope="esf",
-        incluir_sidebar=False,
-    )
+    import traceback
+    try:
+        renderizar_lista_pacientes(
+            area=ap_sel,
+            clinica=cli_sel,
+            esf=esf_sel,
+            scope="esf",
+            incluir_sidebar=False,
+        )
+    except Exception as _e_lp:
+        st.error(
+            f"❌ Erro ao renderizar 'Meus Pacientes':\n\n"
+            f"**{type(_e_lp).__name__}**: {_e_lp}"
+        )
+        with st.expander("📋 Stack trace (para diagnóstico)"):
+            st.code(traceback.format_exc(), language="python")
 
