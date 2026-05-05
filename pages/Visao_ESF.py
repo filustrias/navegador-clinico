@@ -28,7 +28,6 @@ from utils.criterios_idoso import (
     todos_codigos_stopp, todos_codigos_start, todos_codigos_beers,
     coluna_para_codigo, descricao_curta, justificativa, categoria, tipo,
 )
-from components.lista_pacientes import renderizar_lista_pacientes
 from utils.auth import (
     requer_login, get_perfil, get_contexto_territorial, logout,
 )
@@ -1116,6 +1115,10 @@ if _perfil == 'equipe':
         f"**ESF:** {anonimizar_esf(esf_sel)}"
     )
     st.sidebar.markdown("---")
+    if st.sidebar.button("🧑‍⚕️ Abrir Lista Nominal",
+                          use_container_width=True,
+                          type="primary", key="ve_abrir_lista"):
+        st.switch_page("pages/Meus_Pacientes.py")
     if st.sidebar.button("🔄 Trocar equipe", use_container_width=True,
                           key="ve_trocar"):
         st.session_state['contexto_territorial'] = None
@@ -1215,14 +1218,13 @@ else:
 # ABAS
 # ═══════════════════════════════════════════════════════════════
 (tab_resumo, tab_cont, tab_polif,
- tab_has, tab_dm, tab_lacunas, tab_pacientes) = st.tabs([
+ tab_has, tab_dm, tab_lacunas) = st.tabs([
     "📊 Resumo da população",
     "🔄 Continuidade",
     "💊 Carga farmacológica",
     "🩺 Hipertensão",
     "🩸 Diabetes",
     "⚠️ Lacunas",
-    "🧑‍⚕️ Meus Pacientes",
 ])
 
 # ─────────────────────────────────────────────────────────────
@@ -3249,27 +3251,4 @@ with tab_lacunas:
         st.dataframe(
             styled, hide_index=True, use_container_width=True, height=560,
         )
-
-# ─────────────────────────────────────────────────────────────
-# ABA 7 — MEUS PACIENTES (lista nominal completa, embarcada)
-# Diagnóstico temporário: try/except para capturar exceção
-# silenciosa que pode estar deixando a interação 'pálida'.
-# ─────────────────────────────────────────────────────────────
-with tab_pacientes:
-    import traceback
-    try:
-        renderizar_lista_pacientes(
-            area=ap_sel,
-            clinica=cli_sel,
-            esf=esf_sel,
-            scope="esf",
-            incluir_sidebar=False,
-        )
-    except Exception as _e_lp:
-        st.error(
-            f"❌ Erro ao renderizar 'Meus Pacientes':\n\n"
-            f"**{type(_e_lp).__name__}**: {_e_lp}"
-        )
-        with st.expander("📋 Stack trace (para diagnóstico)"):
-            st.code(traceback.format_exc(), language="python")
 
