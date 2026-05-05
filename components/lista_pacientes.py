@@ -1166,14 +1166,13 @@ def create_patient_card(patient_data, key_prefix: str = ''):
         # SUB-ABAS DETALHADAS
         # ============================================
 
-        tab1, tab2, tab3, tab4, tab5, tab_hist, tab6, tab7 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab_hist, tab7 = st.tabs([
             "📊 Carga de Morbidade",
             "❤️ Risco Cardiovascular",
             "🔄 Continuidade do Cuidado",
             "⚠️ Lacunas de Cuidado",
             "💊 Polifarmácia e STOPP-START",
             "📜 Histórico farmacológico",
-            "📈 Inércia Terapêutica",
             "📝 Relatar Problemas"
         ])
 
@@ -1969,18 +1968,6 @@ def create_patient_card(patient_data, key_prefix: str = ''):
                     with st.expander("Ver texto bruto"):
                         st.text(historico_730)
 
-        # ========== TAB 6: INÉRCIA TERAPÊUTICA (PLACEHOLDER) ==========
-        with tab6:
-            st.info("🚧 **Módulo em desenvolvimento**")
-            st.markdown("""
-            Esta aba apresentará:
-            - Tempo de descontrole sem ajuste terapêutico
-            - Progressão de parâmetros clínicos
-            - Oportunidades de intensificação
-            - Histórico de ajustes medicamentosos
-            """)
-
-
         # ========== TAB 7: RELATAR PROBLEMA ==========
         with tab7:
             usuario_logado = st.session_state.get('usuario_global', {})
@@ -2378,23 +2365,19 @@ def renderizar_lista_pacientes(
     if apenas_insulina:
         filtros_texto += " | 💉 Em insulina"
 
-    st.markdown(f"**📊 {total_pacientes:,} pacientes encontrados** | {filtros_texto}")
+    # Placeholders para o cabeçalho de "X pacientes encontrados" e
+    # caption de paginação. Serão preenchidos depois do load para
+    # refletir filtros locais (IPC / busca anônima) que só são
+    # aplicados no Python, depois do SQL.
+    header_placeholder  = st.empty()
+    estat_placeholder   = st.empty()
+    caption_placeholder = st.empty()
 
-    st.success(f"**{estatisticas['total']} pacientes cadastrados | {estatisticas['multimorbidos']} multimórbidos | {estatisticas['polifarmacia']} em polifarmácia**")
-
-    if morbidades_selecionadas:
-        if len(morbidades_selecionadas) == 1:
-            morb_texto = morbidades_selecionadas[0]
-        elif len(morbidades_selecionadas) == 2:
-            operador_texto = " e " if "E" in operador_morbidades else " ou "
-            morb_texto = f"{morbidades_selecionadas[0]}{operador_texto}{morbidades_selecionadas[1]}"
-        else:
-            operador_texto = " e " if "E" in operador_morbidades else " ou "
-            morb_texto = ", ".join(morbidades_selecionadas[:-1]) + f"{operador_texto}{morbidades_selecionadas[-1]}"
-        
-        st.caption(f"Mostrando {total_pacientes} pacientes com {morb_texto} | Página {pagina_atual + 1} de {total_paginas}")
-    else:
-        st.caption(f"Página {pagina_atual + 1} de {total_paginas}")
+    estat_placeholder.success(
+        f"**{estatisticas['total']} pacientes cadastrados | "
+        f"{estatisticas['multimorbidos']} multimórbidos | "
+        f"{estatisticas['polifarmacia']} em polifarmácia**"
+    )
 
     offset = pagina_atual * PACIENTES_POR_PAGINA
 
@@ -2468,8 +2451,38 @@ def renderizar_lista_pacientes(
             )
 
     if df_pacientes.empty:
+        # Quando filtros locais (IPC / busca anônima) zeram o
+        # resultado, total_pacientes já foi recalculado para 0 acima.
+        # Atualiza o header para refletir.
+        if filtragem_local:
+            header_placeholder.markdown(
+                f"**📊 0 pacientes encontrados** | {filtros_texto}"
+            )
         st.warning("⚠️ Nenhum paciente encontrado" + (" para a busca informada." if busca_nome_raw else "."))
         return
+
+    # Atualiza o header com o total real (pós-filtros locais quando
+    # aplicável) e a caption de paginação.
+    header_placeholder.markdown(
+        f"**📊 {total_pacientes:,} pacientes encontrados** | {filtros_texto}"
+    )
+    if morbidades_selecionadas:
+        if len(morbidades_selecionadas) == 1:
+            morb_texto = morbidades_selecionadas[0]
+        elif len(morbidades_selecionadas) == 2:
+            operador_texto = " e " if "E" in operador_morbidades else " ou "
+            morb_texto = f"{morbidades_selecionadas[0]}{operador_texto}{morbidades_selecionadas[1]}"
+        else:
+            operador_texto = " e " if "E" in operador_morbidades else " ou "
+            morb_texto = ", ".join(morbidades_selecionadas[:-1]) + f"{operador_texto}{morbidades_selecionadas[-1]}"
+        caption_placeholder.caption(
+            f"Mostrando {total_pacientes} pacientes com {morb_texto} | "
+            f"Página {pagina_atual + 1} de {total_paginas}"
+        )
+    else:
+        caption_placeholder.caption(
+            f"Página {pagina_atual + 1} de {total_paginas}"
+        )
 
     # Botões de navegação (topo)
     col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
