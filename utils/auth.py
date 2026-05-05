@@ -250,12 +250,16 @@ def get_contexto_territorial() -> dict:
 
     Retorna dict com chaves: ap, clinica, esf
     Valores None significam "sem restrição" (válido para gestor/admin).
+
+    Nota: a chave 'contexto_territorial' pode existir em
+    session_state com valor None (inicializado no Home.py). Por isso
+    NÃO podemos usar dict.get(..., default) — ele só usa o default
+    quando a chave não existe. Tratamos None explicitamente abaixo.
     """
-    return st.session_state.get('contexto_territorial', {
-        'ap': None,
-        'clinica': None,
-        'esf': None,
-    })
+    ctx = st.session_state.get('contexto_territorial')
+    if not ctx:
+        return {'ap': None, 'clinica': None, 'esf': None}
+    return ctx
 
 
 def set_contexto_territorial(ap=None, clinica=None, esf=None):
