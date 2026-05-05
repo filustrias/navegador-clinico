@@ -2171,8 +2171,8 @@ def renderizar_lista_pacientes(
         )
         st.session_state.faixa_idade = faixa_idade
 
-    # Linha 2: Morbidades + Carga + RCV + Grupo de Lacunas + Lacunas
-    fl3, fl4, fl_rcv, fl5a, fl5b = st.columns([2, 1, 1, 1, 2])
+    # Linha 2: Morbidades + Carga + RCV + IPC + Grupo de Lacunas + Lacunas
+    fl3, fl4, fl_rcv, fl_ipc, fl5a, fl5b = st.columns([2, 1, 1, 1, 1, 2])
     with fl3:
         morbidades_selecionadas = st.multiselect(
             "🦠 Filtrar por morbidades",
@@ -2208,6 +2208,18 @@ def renderizar_lista_pacientes(
             placeholder="Todos",
             help="'Não calculado' = pacientes elegíveis (40-80 anos) sem DM/IRC/DCV estabelecida e sem colesterol nem IMC para o cálculo.",
             key="rcv_filtro"
+        )
+    with fl_ipc:
+        ipc_filtro = st.multiselect(
+            "🎯 IPC (priorização)",
+            options=["Crítico", "Alto", "Moderado", "Baixo"],
+            default=[],
+            placeholder="Todos",
+            help="Categoria do Índice de Priorização do Cuidado "
+                 "(IPC): combina Carga de Morbidade, lacunas, dias "
+                 "sem médico, ACB e STOPP. Crítico ≥0,75; Alto "
+                 "0,50–0,74; Moderado 0,25–0,49; Baixo <0,25.",
+            key="ipc_filtro"
         )
     with fl5a:
         grupo_lacuna_sel = st.selectbox(
@@ -2361,6 +2373,8 @@ def renderizar_lista_pacientes(
         filtros_texto += f" | Lacunas: {len(lacunas_selecionadas)}"
     if rcv_filtro:
         filtros_texto += f" | RCV: {', '.join(rcv_filtro)}"
+    if ipc_filtro:
+        filtros_texto += f" | IPC: {', '.join(ipc_filtro)}"
     if apenas_insulina:
         filtros_texto += " | 💉 Em insulina"
 
@@ -2384,9 +2398,14 @@ def renderizar_lista_pacientes(
 
     offset = pagina_atual * PACIENTES_POR_PAGINA
 
+    # IPC é calculado em Python (em load_patient_data_paginated, após
+    # o SQL). Para filtrar por categoria de IPC precisamos carregar
+    # tudo e filtrar localmente — mesmo padrão da busca anônima.
+    filtragem_local = bool(busca_nome_local) or bool(ipc_filtro)
+
     with st.spinner(f"Carregando página {pagina_atual + 1}..."):
-        if busca_nome_local:
-            # Modo anônimo: carregar todos os pacientes e filtrar localmente
+        if filtragem_local:
+            # Carrega tudo (até 5000) e aplica filtros locais.
             df_pacientes = load_patient_data_paginated(
                 area=area_selecionada,
                 clinica=clinica_selecionada,
@@ -2404,8 +2423,16 @@ def renderizar_lista_pacientes(
                 rcv_filtro=tuple(rcv_filtro) if rcv_filtro else None,
                 apenas_insulina=apenas_insulina,
             )
-            # Anonimizar nomes e filtrar
-            if not df_pacientes.empty and 'nome' in df_pacientes.columns:
+            # Filtro de IPC (categoria já vem calculada em
+            # load_patient_data_paginated via calcular_ipc).
+            if ipc_filtro and not df_pacientes.empty \
+               and 'ipc_categoria' in df_pacientes.columns:
+                df_pacientes = df_pacientes[
+                    df_pacientes['ipc_categoria'].isin(ipc_filtro)
+                ]
+            # Busca por nome no modo anônimo
+            if busca_nome_local and not df_pacientes.empty \
+               and 'nome' in df_pacientes.columns:
                 df_pacientes['nome_anon'] = df_pacientes.apply(
                     lambda r: anonimizar_nome(
                         str(r.get('cpf') or r.get('nome', '')),
