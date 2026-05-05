@@ -137,43 +137,55 @@ def renderizar_cabecalho(pagina_atual: str) -> None:
     st.markdown(f"<hr style='border:none; border-top:1px solid {T.DIVIDER}; margin:10px 0 0 0;'>",
                 unsafe_allow_html=True)
 
-    # 5. Menu de navegação
-    selected = option_menu(
-        menu_title=None,
-        options=list(ROTAS.keys()),
-        icons=ICONES_MENU,
-        default_index=list(ROTAS.keys()).index(pagina_atual),
-        orientation="horizontal",
-        styles={
-            "container":         {"padding": "0!important", "background-color": T.NAV_BG},
-            "icon":              {"font-size": "22px", "color": T.TEXT,
-                                  "display": "block", "margin-bottom": "4px"},
-            "nav-link":          {"font-size": "11px", "text-align": "center",
-                                  "margin": "0px", "padding": "10px 18px",
-                                  "color": T.NAV_LINK, "background-color": T.SECONDARY_BG,
-                                  "--hover-color": T.NAV_HOVER, "display": "flex",
-                                  "flex-direction": "column", "align-items": "center",
-                                  "line-height": "1.2", "white-space": "nowrap"},
-            "nav-link-selected": {"background-color": T.NAV_SELECTED_BG,
-                                  "color": T.NAV_SELECTED_TEXT, "font-weight": "600"},
-        }
-    )
-    if selected != pagina_atual:
-        st.switch_page(ROTAS[selected])
+    # 5. Menu de navegação — apenas para perfis com acesso a múltiplas
+    # pages. O perfil 'equipe' (ESF) tem acesso restrito a Visão ESF
+    # (gerenciado por st.navigation no Home.py), então o menu
+    # horizontal e a sidebar de ferramentas ficam ocultos.
+    if perfil != 'equipe':
+        selected = option_menu(
+            menu_title=None,
+            options=list(ROTAS.keys()),
+            icons=ICONES_MENU,
+            default_index=list(ROTAS.keys()).index(pagina_atual),
+            orientation="horizontal",
+            styles={
+                "container":         {"padding": "0!important", "background-color": T.NAV_BG},
+                "icon":              {"font-size": "22px", "color": T.TEXT,
+                                      "display": "block", "margin-bottom": "4px"},
+                "nav-link":          {"font-size": "11px", "text-align": "center",
+                                      "margin": "0px", "padding": "10px 18px",
+                                      "color": T.NAV_LINK, "background-color": T.SECONDARY_BG,
+                                      "--hover-color": T.NAV_HOVER, "display": "flex",
+                                      "flex-direction": "column", "align-items": "center",
+                                      "line-height": "1.2", "white-space": "nowrap"},
+                "nav-link-selected": {"background-color": T.NAV_SELECTED_BG,
+                                      "color": T.NAV_SELECTED_TEXT, "font-weight": "600"},
+            }
+        )
+        if selected != pagina_atual:
+            st.switch_page(ROTAS[selected])
 
-    st.markdown(f"<hr style='border:none; border-top:1px solid {T.DIVIDER}; margin:0 0 16px 0;'>",
-                unsafe_allow_html=True)
+        st.markdown(f"<hr style='border:none; border-top:1px solid {T.DIVIDER}; margin:0 0 16px 0;'>",
+                    unsafe_allow_html=True)
 
-    # 6. Sidebar
-    st.sidebar.markdown(f"### {icone_u} {nome}")
-    st.sidebar.caption(rotulo)
-    st.sidebar.caption(linha_ctx)
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🔧 Ferramentas")
+        # 6. Sidebar (ferramentas) — apenas para perfis não-ESF
+        st.sidebar.markdown(f"### {icone_u} {nome}")
+        st.sidebar.caption(rotulo)
+        st.sidebar.caption(linha_ctx)
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 🔧 Ferramentas")
 
-    if st.sidebar.button("🔄 Limpar Cache", use_container_width=True, key=f"_cache_{pagina_atual}"):
-        limpar_cache()
-        st.sidebar.success("✅ Cache limpo!")
+        if st.sidebar.button("🔄 Limpar Cache", use_container_width=True, key=f"_cache_{pagina_atual}"):
+            limpar_cache()
+            st.sidebar.success("✅ Cache limpo!")
 
-    if st.sidebar.button("🚪 Sair", use_container_width=True, key=f"_logout_{pagina_atual}"):
-        logout()
+        if st.sidebar.button("🚪 Sair", use_container_width=True, key=f"_logout_{pagina_atual}"):
+            logout()
+    else:
+        # ESF: apenas separador visual; sidebar é gerida por
+        # pages/Visao_ESF.py (Sua equipe + botões Trocar/Sair).
+        st.markdown(
+            f"<hr style='border:none; border-top:1px solid {T.DIVIDER}; "
+            f"margin:0 0 16px 0;'>",
+            unsafe_allow_html=True,
+        )

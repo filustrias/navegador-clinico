@@ -20,6 +20,9 @@ from utils.auth import (
     logout,
 )
 from utils.data_loader import carregar_opcoes_filtros
+from utils.anonimizador import (
+    anonimizar_ap, anonimizar_clinica, anonimizar_esf,
+)
 from utils import theme as T
 
 
@@ -211,7 +214,9 @@ def render_selecao_territorial():
         ap = st.selectbox(
             "Área Programática",
             options=[None] + aps,
-            format_func=lambda x: "— Selecione —" if x is None else str(x),
+            format_func=lambda x: (
+                "— Selecione —" if x is None else anonimizar_ap(str(x))
+            ),
             key="seltrr_ap",
         )
 
@@ -219,7 +224,9 @@ def render_selecao_territorial():
         cli = st.selectbox(
             "Clínica da Família",
             options=[None] + clinicas,
-            format_func=lambda x: "— Selecione —" if x is None else x,
+            format_func=lambda x: (
+                "— Selecione —" if x is None else anonimizar_clinica(x)
+            ),
             key="seltrr_cli",
             disabled=not ap,
         )
@@ -228,7 +235,9 @@ def render_selecao_territorial():
         esf = st.selectbox(
             "Equipe ESF",
             options=[None] + esfs,
-            format_func=lambda x: "— Selecione —" if x is None else x,
+            format_func=lambda x: (
+                "— Selecione —" if x is None else anonimizar_esf(x)
+            ),
             key="seltrr_esf",
             disabled=not cli,
         )
