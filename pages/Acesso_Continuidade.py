@@ -37,6 +37,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
+# Bloqueia acesso direto desta page para o perfil ESF.
+# (ESF tem acesso restrito a Visao_ESF.py via aba 'Meus Pacientes'.)
+from utils.auth import bloquear_perfil_esf
+bloquear_perfil_esf()
 # ═══════════════════════════════════════════════════════════════
 # HELPERS
 # ═══════════════════════════════════════════════════════════════

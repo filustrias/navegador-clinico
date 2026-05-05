@@ -36,6 +36,17 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# Esconde o menu nativo de pages (sidebar) — navegação é controlada
+# manualmente com st.switch_page, condicional a perfil + contexto.
+st.markdown(
+    """
+    <style>
+        [data-testid="stSidebarNav"] { display: none; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 # ═══════════════════════════════════════════════════════════════
 # Estado da sessão
@@ -283,29 +294,12 @@ if not st.session_state.get('contexto_territorial'):
     render_selecao_territorial()
     st.stop()
 
-# Etapa 3: logado e com contexto → navegação por perfil
-perfil = usuario.get('perfil', 'equipe')
-
-if perfil == 'equipe':
-    # ESF só vê a Visão ESF. Sidebar de navegação fica oculta;
-    # botões de trocar equipe / sair vivem na sidebar de Visão ESF.
-    pages_nav = [
-        st.Page(
-            "pages/Visao_ESF.py",
-            title="Visão ESF", icon="🩺", default=True,
-        ),
-    ]
-    pg = st.navigation(pages_nav, position="hidden")
-else:
-    # Outros perfis (a serem habilitados quando criarmos suas
-    # visualizações). Por ora, listamos só Visão ESF para que o
-    # admin/gestor logado tenha algo para abrir.
-    pages_nav = [
-        st.Page(
-            "pages/Visao_ESF.py",
-            title="Visão ESF", icon="🩺", default=True,
-        ),
-    ]
-    pg = st.navigation(pages_nav, position="sidebar")
-
-pg.run()
+# Etapa 3: logado e com contexto → redireciona para Visão ESF
+# Arquitetura clássica: cada page é um arquivo independente em
+# pages/, com seu próprio set_page_config. O menu nativo de pages
+# (sidebar) está escondido pelo CSS no topo deste arquivo e pelo
+# _CSS_GLOBAL de components/cabecalho.py. A navegação é controlada
+# por st.switch_page e por verificações de perfil em cada page
+# (utils.auth.bloquear_perfil_esf bloqueia o ESF nas pages que não
+# devem ser acessíveis a esse perfil).
+st.switch_page("pages/Visao_ESF.py")

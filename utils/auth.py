@@ -263,6 +263,31 @@ def set_contexto_territorial(ap=None, clinica=None, esf=None):
     }
 
 
+def bloquear_perfil_esf():
+    """Bloqueia acesso direto desta page para o perfil 'equipe'
+    (ESF). Se o usuário logado for ESF, redireciona para a Visão
+    ESF. Outros perfis seguem normalmente.
+
+    Uso (no topo de cada page que não deve ser acessível ao ESF):
+        from utils.auth import bloquear_perfil_esf
+        bloquear_perfil_esf()
+    """
+    if get_perfil() == 'equipe':
+        try:
+            st.switch_page("pages/Visao_ESF.py")
+        except Exception:
+            st.error(
+                "⛔ Esta visualização não está disponível para o "
+                "perfil ESF."
+            )
+            st.page_link(
+                "pages/Visao_ESF.py",
+                label="↩ Voltar para a Visão ESF",
+                icon="📋",
+            )
+            st.stop()
+
+
 def perfil_permite(acao: str) -> bool:
     """
     Verifica se o perfil atual tem permissão para uma ação.

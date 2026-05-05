@@ -34,8 +34,12 @@ from utils.auth import (
 )
 import config
 
-# Page config único é gerenciado por Home.py (entrypoint via
-# st.navigation). Esta page não declara set_page_config próprio.
+st.set_page_config(
+    page_title="Visão ESF · Navegador Clínico",
+    page_icon="📋",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 # Login obrigatório (redireciona para Home se não houver sessão)
 _usuario = requer_login()
