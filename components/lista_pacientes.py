@@ -1300,22 +1300,31 @@ def create_patient_card(patient_data, key_prefix: str = ''):
 
                 col_esq, col_dir = st.columns([1, 1])
 
+                # Resultado recalculado pelo usuário — persistido em
+                # session_state para sobreviver a reruns subsequentes.
+                # Quando existe, tem precedência visual sobre o WHO do
+                # banco (mostrado com badge "RECALCULADO").
+                _recalc_key = f"{key_prefix}rcv_recalc_{cpk}"
+                _resultado_recalc = st.session_state.get(_recalc_key)
+
                 # ── COLUNA ESQUERDA: Resultado + dados do datalake ──
                 with col_esq:
                     # Mostrar reclassificação direta se aplicável
                     if reclass_direto:
                         _mostrar_resultado_rcv(reclass_direto)
 
-                    # Mostrar WHO do banco se disponível (usa categoria simplificada PAHO/HEARTS).
-                    # Quando há reclassificação direta (DCV/DM/IRC), o score WHO
-                    # NÃO é exibido — pode confundir, pois não é o risco final.
+                    # Mostrar WHO RECALCULADO pelo usuário (se houver)
+                    # ou WHO do banco. Recalculado tem prioridade
+                    # visual.
                     cat_badge = who_cat_simpl if pd.notna(who_cat_simpl) and who_cat_simpl else None
-                    if cat_badge and not reclass_direto:
+                    if _resultado_recalc and not reclass_direto:
+                        _mostrar_resultado_rcv(_resultado_recalc, recalc=True)
+                    elif cat_badge and not reclass_direto:
                         who_res = {'risco_pct': who_risco if pd.notna(who_risco) else None,
                                    'categoria': cat_badge,
                                    'modelo': "Lab-based" if who_modelo == 'lab' else "Non-lab"}
                         _mostrar_resultado_rcv(who_res)
-                    if cat_badge:
+                    if cat_badge or _resultado_recalc:
                         if pac_idade and pac_idade >= 70:
                             st.caption(
                                 "**Nota ≥70 anos:** a idade domina o cálculo. "
@@ -1382,7 +1391,23 @@ def create_patient_card(patient_data, key_prefix: str = ''):
                                 options=["Não", "Sim"], index=0,
                                 key=f"{key_prefix}rcv_tab_{cpk}", horizontal=True)
 
-                        if st.button("🧮 Calcular risco", key=f"{key_prefix}rcv_btn_{cpk}", type="primary"):
+                        bcol1, bcol2 = st.columns([3, 1])
+                        with bcol1:
+                            calcular_clicado = st.button(
+                                "🧮 Calcular risco com estes valores",
+                                key=f"{key_prefix}rcv_btn_{cpk}", type="primary",
+                                use_container_width=True,
+                            )
+                        with bcol2:
+                            if _resultado_recalc and st.button(
+                                "↺ Limpar",
+                                key=f"{key_prefix}rcv_limpar_{cpk}",
+                                use_container_width=True,
+                            ):
+                                st.session_state.pop(_recalc_key, None)
+                                st.rerun()
+
+                        if calcular_clicado:
                             genero_c = pac_genero.lower() if pac_genero else ''
                             tab_c = (input_tabaco == "Sim") if input_tabaco else False
                             col_val = input_col if input_col and input_col > 0 else None
@@ -1397,7 +1422,11 @@ def create_patient_card(patient_data, key_prefix: str = ''):
                             )
 
                             if resultado:
-                                _mostrar_resultado_rcv(resultado, recalc=True)
+                                # Persiste em session_state para sobreviver
+                                # a reruns subsequentes e exibir o badge
+                                # "RECALCULADO" na coluna esquerda.
+                                st.session_state[_recalc_key] = resultado
+                                st.rerun()
                             else:
                                 st.error("❌ Não foi possível calcular.")
                     else:
