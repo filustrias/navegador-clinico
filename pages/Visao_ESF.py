@@ -2088,133 +2088,16 @@ ACB calculado individualmente para cada paciente.
 
     st.markdown("---")
 
-    # ─── Lista nominal dos pacientes com ≥1 critério ───
-    st.markdown("##### Lista de pacientes com critérios positivos")
-
-    with st.spinner("Carregando lista nominal..."):
-        df_nom = carregar_criterios_idoso_nominal(ap_sel, cli_sel, esf_sel)
-
-    if df_nom.empty:
-        st.success("✅ Nenhum paciente da equipe tem critério STOPP/START/Beers/ACB ativo.")
-    else:
-        # Filtro: mostrar pacientes com critérios específicos
-        filtros_sel = st.multiselect(
-            "Mostrar pacientes com:",
-            options=['STOPP', 'START', 'Beers', 'ACB ≥ 3'],
-            default=[],
-            placeholder="Todos os critérios (default)",
-            help="Sem filtro: mostra todos com pelo menos um critério "
-                 "positivo. Selecione um ou mais para restringir — a "
-                 "lógica é OR (paciente aparece se atender a qualquer "
-                 "um dos critérios marcados).",
-            key="pol_filtro_criterios",
-        )
-
-        df_nom_filt = df_nom.copy()
-        if filtros_sel:
-            mask = pd.Series(False, index=df_nom_filt.index)
-            if 'STOPP'   in filtros_sel: mask |= (df_nom_filt['total_stopp'] > 0)
-            if 'START'   in filtros_sel: mask |= (df_nom_filt['total_start'] > 0)
-            if 'Beers'   in filtros_sel: mask |= (df_nom_filt['total_beers'] > 0)
-            if 'ACB ≥ 3' in filtros_sel:
-                mask |= (df_nom_filt['acb_score_total'].fillna(0) >= 3)
-            df_nom_filt = df_nom_filt[mask]
-
-        st.caption(
-            f"**{len(df_nom_filt):,} pacientes** sendo apresentados "
-            f"(de {len(df_nom):,} da equipe com pelo menos um critério "
-            f"STOPP/START/Beers ou ACB ≥ 3)."
-        )
-
-        if df_nom_filt.empty:
-            st.info("Nenhum paciente bate com a combinação de filtros selecionada.")
-        else:
-            df_render = df_nom_filt.copy()
-            todos_codigos = (todos_codigos_stopp() + todos_codigos_start()
-                             + todos_codigos_beers())
-
-            def _linhas_paciente(row):
-                """Lista descrições dos critérios STOPP/START/Beers ativos,
-                separadas por vírgula e sem códigos."""
-                ativos = []
-                for c in todos_codigos:
-                    v = row.get(c)
-                    if v in [True, 1, '1', 'True', 'true', 'TRUE']:
-                        ativos.append(descricao_curta(c))
-                return ", ".join(ativos) if ativos else "—"
-
-            df_render['criterios_ativos'] = df_render.apply(_linhas_paciente, axis=1)
-
-            if MODO_ANONIMO:
-                df_render['nome_exib'] = df_render.apply(
-                    lambda r: anonimizar_nome(
-                        str(r.get('cpf') or r.get('nome', '')),
-                        r.get('genero', '')),
-                    axis=1,
-                )
-            else:
-                df_render['nome_exib'] = df_render['nome']
-
-            df_render['total_critérios'] = (
-                df_render['total_stopp']
-                + df_render['total_start']
-                + df_render['total_beers']
-            )
-            df_render = df_render.sort_values('total_critérios', ascending=False)
-
-            st.dataframe(
-                pd.DataFrame({
-                    'Paciente':   df_render['nome_exib'].values,
-                    'Idade':      df_render['idade'].astype('Int64').values,
-                    'Morbidades': df_render['morbidades_lista'].fillna('—').values,
-                    'Última prescrição crônica':
-                        df_render['medicamentos_lista'].fillna('—').values,
-                    'ACB':        df_render['acb_score_total'].astype('Int64').values,
-                    'STOPP':      df_render['total_stopp'].astype('Int64').values,
-                    'START':      df_render['total_start'].astype('Int64').values,
-                    'Beers':      df_render['total_beers'].astype('Int64').values,
-                    'Total':      df_render['total_critérios'].astype('Int64').values,
-                    'Critérios ativos': df_render['criterios_ativos'].values,
-                }),
-                hide_index=True, use_container_width=True, height=520,
-                column_config={
-                    'Paciente':   st.column_config.TextColumn('Paciente', width='medium'),
-                    'Idade':      st.column_config.NumberColumn('Idade', width='small'),
-                    'Morbidades': st.column_config.TextColumn('Morbidades', width='large'),
-                    'Última prescrição crônica':
-                        st.column_config.TextColumn('Última prescrição crônica',
-                                                    width='large'),
-                    'ACB':        st.column_config.NumberColumn('ACB', width='small'),
-                    'STOPP':      st.column_config.NumberColumn('STOPP', width='small'),
-                    'START':      st.column_config.NumberColumn('START', width='small'),
-                    'Beers':      st.column_config.NumberColumn('Beers', width='small'),
-                    'Total':      st.column_config.NumberColumn('Total', width='small'),
-                    'Critérios ativos':
-                        st.column_config.TextColumn('Critérios ativos', width='large'),
-                },
-            )
-
-            # Legenda das colunas
-            with st.expander("ℹ️ O que significa cada coluna"):
-                st.markdown("""
-- **Paciente** — nome (anonimizado quando o modo está ativo).
-- **Idade** — em anos.
-- **Morbidades** — diagnósticos crônicos ativos no prontuário.
-- **Última prescrição crônica** — medicamentos da prescrição mais recente.
-- **ACB** — *Anticholinergic Cognitive Burden* score, soma da carga
-  anticolinérgica dos medicamentos em uso. **ACB ≥ 3** indica risco
-  clinicamente relevante de confusão, delirium e quedas.
-- **STOPP** — nº de critérios STOPP positivos (medicamentos
-  potencialmente inapropriados que devem ser evitados ou revistos).
-- **START** — nº de critérios START positivos (medicamentos
-  indicados para a condição mas ausentes da prescrição).
-- **Beers** — nº de critérios Beers (AGS 2023) positivos —
-  complementares ao STOPP, focados em situações específicas de risco.
-- **Total** — soma de STOPP + START + Beers.
-- **Critérios ativos** — descrição clínica dos critérios sinalizados.
-  Consulte a tabela **'Detalhe por critério'** acima para a
-  justificativa clínica completa de cada um.
-""")
+    # ─── Lista nominal removida — usuário deve usar a aba "Meus Pacientes" ───
+    st.markdown("---")
+    st.info(
+        "🧑‍⚕️ **Para abrir os pacientes individualmente**, vá para a "
+        "aba **Meus Pacientes**. Lá é possível filtrar a lista "
+        "nominal por **Carga de Morbidade** e por **sinalizadores "
+        "de carga farmacológica** (polifarmácia, hiperpolifarmácia, "
+        "ACB ≥ 3, critérios STOPP/START/Beers ativos) e abrir o "
+        "card completo de cada paciente."
+    )
 
 
 # ─────────────────────────────────────────────────────────────
