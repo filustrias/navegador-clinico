@@ -364,6 +364,7 @@ def load_patient_data_paginated(
     lacunas_filtro=None,
     rcv_filtro=None,
     apenas_insulina=False,
+    apenas_inercia=False,
     cpfs=None,
 ):
     """Carrega pacientes com paginação e filtros.
@@ -459,6 +460,16 @@ def load_patient_data_paginated(
             "OR principio_INSULINA_BASAL_ANALOGICA IS NOT NULL "
             "OR principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL "
             "OR principio_INSULINA_MISTA IS NOT NULL)"
+        )
+
+    # Filtro: apenas pacientes em inércia terapêutica ou tratamento
+    # estagnado em HAS ou DM — abrange as 4 flags do pipeline de inércia.
+    if apenas_inercia:
+        where_clauses.append(
+            "(paciente_em_inercia_HAS = TRUE "
+            "OR paciente_em_inercia_DM = TRUE "
+            "OR paciente_estagnado_HAS = TRUE "
+            "OR paciente_estagnado_DM = TRUE)"
         )
 
     where_sql = " AND ".join(where_clauses)
@@ -590,6 +601,39 @@ def load_patient_data_paginated(
          WHERE s.cpf = `{_fqn(config.TABELA_FATO)}`.cpf),
         0
       ) AS total_criterios_stopp,
+      -- Inércia terapêutica e tratamento estagnado (HAS e DM)
+      paciente_em_inercia_HAS,
+      paciente_em_inercia_DM,
+      paciente_estagnado_HAS,
+      paciente_estagnado_DM,
+      status_atual_HAS,
+      status_atual_DM,
+      padrao_manejo_HAS,
+      padrao_manejo_DM,
+      texto_meus_pacientes_HAS,
+      texto_meus_pacientes_DM,
+      n_consultas_HAS_365d,
+      n_consultas_inercia_HAS,
+      n_consultas_estagnado_HAS,
+      n_consultas_intensificou_HAS,
+      n_consultas_trocou_HAS,
+      n_consultas_desintensificou_HAS,
+      n_consultas_mantido_HAS,
+      n_consultas_sem_comparacao_HAS,
+      n_consultas_pa_controlada,
+      n_consultas_pa_descontrolada,
+      n_consultas_pa_sem_aferi,
+      n_consultas_DM_365d,
+      n_consultas_inercia_DM,
+      n_consultas_estagnado_DM,
+      n_consultas_intensificou_DM,
+      n_consultas_trocou_DM,
+      n_consultas_desintensificou_DM,
+      n_consultas_mantido_DM,
+      n_consultas_sem_comparacao_DM,
+      n_consultas_dm_controlado,
+      n_consultas_dm_descontrolado,
+      n_consultas_dm_sem_aferi,
       -- TODAS as morbidades
       {', '.join(morbidades_select)},
       -- TODAS as lacunas e flags
@@ -725,7 +769,7 @@ def buscar_acb_paciente(cpf: str) -> dict:
     return df.iloc[0].to_dict()
 
 @st.cache_data(show_spinner=False, ttl=900)
-def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR", busca_nome=None, carga_morb=None, lacunas_filtro=None, rcv_filtro=None, apenas_insulina=False):
+def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR", busca_nome=None, carga_morb=None, lacunas_filtro=None, rcv_filtro=None, apenas_insulina=False, apenas_inercia=False):
     """Conta total de pacientes para paginação"""
 
     where_clauses = ["area_programatica_cadastro IS NOT NULL"]
@@ -810,6 +854,16 @@ def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idad
             "OR principio_INSULINA_BASAL_ANALOGICA IS NOT NULL "
             "OR principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL "
             "OR principio_INSULINA_MISTA IS NOT NULL)"
+        )
+
+    # Filtro: apenas pacientes em inércia terapêutica ou tratamento
+    # estagnado em HAS ou DM — abrange as 4 flags do pipeline de inércia.
+    if apenas_inercia:
+        where_clauses.append(
+            "(paciente_em_inercia_HAS = TRUE "
+            "OR paciente_em_inercia_DM = TRUE "
+            "OR paciente_estagnado_HAS = TRUE "
+            "OR paciente_estagnado_DM = TRUE)"
         )
 
     where_sql = " AND ".join(where_clauses)
@@ -918,6 +972,188 @@ def extrair_lacunas_paciente(patient_data):
             flags_ativos.append(descricao)
     
     return lacunas_por_grupo, flags_ativos
+
+
+# ─── Inércia terapêutica e tratamento estagnado ──────────────────
+# Cor + rótulo + descrição curta por status_atual_HAS/DM. As 8
+# categorias vêm do pipeline de inércia (5 etapas) — ver dicionário
+# de variáveis. CONTROLADO_COM_LACUNA_CONSULTA é tratado como vermelho
+# (mesmo tier de tratamento estagnado) porque é também ausência de
+# seguimento, não uma situação tranquila.
+CORES_STATUS_INERCIA = {
+    'INERCIA_PROVAVEL': (
+        '#B71C1C', 'Inércia provável',
+        'Paciente descontrolado e esquema mantido — avalie intensificar.'),
+    'TRATAMENTO_ESTAGNADO': (
+        '#D32F2F', 'Tratamento estagnado',
+        'Tratamento ativo sem aferição/exame em 180d — afira PA / solicite HbA1c.'),
+    'CONTROLADO_COM_LACUNA_CONSULTA': (
+        '#E53935', 'Controlado, mas sem consulta recente',
+        'Na meta na última aferição, mas >180 dias sem nova consulta — risco de seguimento.'),
+    'DESCONTROLE_SEM_COMPARACAO': (
+        '#E69138', 'Descontrole sem comparação',
+        'Descontrolado, mas sem prescrição anterior para classificar a ação.'),
+    'SEM_AFERICAO': (
+        '#F6B26B', 'Sem aferição recente',
+        'Sem aferição de PA/HbA1c em 180 dias.'),
+    'SEM_PRESCRICAO_RECENTE': (
+        '#9E9E9E', 'Sem prescrição recente',
+        'Sem consulta com prescrição da linha em 365 dias.'),
+    'MANEJO_APROPRIADO': (
+        '#43A047', 'Manejo apropriado',
+        'Descontrolado, mas a equipe intensificou ou trocou o esquema.'),
+    'CONTROLADO': (
+        '#198754', 'Controlado',
+        'Na meta e consulta recente.'),
+}
+
+# Padrão de manejo na trajetória 365d (≥2 consultas para ser avaliável).
+CORES_PADRAO_MANEJO = {
+    'PROATIVO':             ('#43A047', 'Manejo proativo (≥50% intensificou/trocou)'),
+    'INERTE':               ('#B71C1C', 'Manejo inerte (≥50% das consultas com inércia)'),
+    'ESTAGNADO':            ('#D32F2F', 'Manejo estagnado (≥50% sem aferição)'),
+    'CONTROLADO':           ('#198754', 'Controlado de modo consistente (≥50%)'),
+    'MISTO':                ('#FBC02D', 'Padrão misto — sem categoria dominante'),
+    'MENOS_DE_2_CONSULTAS': ('#9E9E9E', 'Trajetória não avaliável (<2 consultas em 365d)'),
+}
+
+# Cores dos segmentos da barra horizontal de trajetória 365d.
+CORES_TRAJETORIA = {
+    'intensificou':    ('#66BB6A', 'Intensificou'),
+    'trocou':          ('#43A047', 'Trocou'),
+    'mantido':         ('#FBC02D', 'Mantido'),
+    'desintensificou': ('#E69138', 'Desintensificou'),
+    'sem_comparacao':  ('#BDBDBD', 'Sem comparação'),
+}
+
+
+def _render_inercia_condicao(patient_data, condicao: str):
+    """Renderiza a seção de inércia/estagnação de uma condição (HAS ou
+    DM) dentro da sub-aba 'Inércia terapêutica' do card do paciente.
+
+    Mostra: alerta narrativo (`texto_meus_pacientes_*`), badge do
+    status atual (snapshot da última consulta), badge do padrão de
+    manejo 365d, barra horizontal empilhada com a trajetória das ações
+    farmacológicas e contadores de aferição.
+
+    Retorna True se renderizou algo (i.e., paciente tem a condição).
+    """
+    status = patient_data.get(f'status_atual_{condicao}')
+    if status is None or (isinstance(status, float) and pd.isna(status)):
+        return False
+
+    nome_cond = 'Hipertensão' if condicao == 'HAS' else 'Diabetes'
+    icone = '🩺' if condicao == 'HAS' else '🩸'
+    param = 'PA' if condicao == 'HAS' else 'HbA1c'
+
+    st.markdown(f"##### {icone} {nome_cond}")
+
+    # 1. Alerta narrativo pré-formatado (vem do pipeline) — só aparece
+    # quando há algo a alertar (inércia ou estagnado em 90d/180d).
+    texto = patient_data.get(f'texto_meus_pacientes_{condicao}')
+    if pd.notna(texto) and texto:
+        st.markdown(
+            f"<div style='background:#FFF3E0; border-left:4px solid #E69138; "
+            f"padding:10px 14px; margin:6px 0 14px 0; border-radius:4px; "
+            f"font-size:0.95em; line-height:1.5;'>{texto}</div>",
+            unsafe_allow_html=True,
+        )
+
+    # 2. Badge de status atual (snapshot da última consulta).
+    cor, label, desc = CORES_STATUS_INERCIA.get(
+        str(status), ('#9E9E9E', str(status), ''))
+    st.markdown(
+        f"<div style='margin:6px 0 10px 0;'>"
+        f"<span style='font-size:0.85em; color:#555;'>Status na última consulta:</span><br>"
+        f"<span style='background:{cor}; color:white; padding:4px 10px; "
+        f"border-radius:12px; font-weight:600; font-size:0.95em;'>{label}</span>"
+        f"<div style='font-size:0.9em; color:#555; margin-top:6px;'>{desc}</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    # 3. Badge do padrão de manejo 365d.
+    padrao = patient_data.get(f'padrao_manejo_{condicao}')
+    if pd.notna(padrao) and padrao:
+        cor_p, label_p = CORES_PADRAO_MANEJO.get(
+            str(padrao), ('#9E9E9E', str(padrao)))
+        st.markdown(
+            f"<div style='margin:8px 0 10px 0;'>"
+            f"<span style='font-size:0.85em; color:#555;'>Padrão de manejo nos últimos 365 dias:</span><br>"
+            f"<span style='background:{cor_p}; color:white; padding:4px 10px; "
+            f"border-radius:12px; font-weight:600; font-size:0.95em;'>{label_p}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    # 4. Mini-barra horizontal da trajetória 365d (ações farmacológicas).
+    n_total = patient_data.get(f'n_consultas_{condicao}_365d')
+    n_total = int(n_total) if pd.notna(n_total) else 0
+    if n_total > 0:
+        chaves = [
+            ('intensificou',    f'n_consultas_intensificou_{condicao}'),
+            ('trocou',          f'n_consultas_trocou_{condicao}'),
+            ('mantido',         f'n_consultas_mantido_{condicao}'),
+            ('desintensificou', f'n_consultas_desintensificou_{condicao}'),
+            ('sem_comparacao',  f'n_consultas_sem_comparacao_{condicao}'),
+        ]
+        segmentos, legenda = [], []
+        for chave_cor, col in chaves:
+            v = patient_data.get(col)
+            n = int(v) if pd.notna(v) else 0
+            if n == 0:
+                continue
+            cor_s, label_s = CORES_TRAJETORIA[chave_cor]
+            pct = 100 * n / n_total
+            segmentos.append(
+                f"<div title='{label_s}: {n} consulta(s)' "
+                f"style='flex:{pct}; background:{cor_s}; height:100%;'></div>"
+            )
+            legenda.append(
+                f"<span style='display:inline-block; margin-right:14px; "
+                f"font-size:0.82em;'>"
+                f"<span style='display:inline-block; width:10px; height:10px; "
+                f"background:{cor_s}; border-radius:2px; margin-right:4px; "
+                f"vertical-align:middle;'></span>"
+                f"{label_s} ({n})</span>"
+            )
+        if segmentos:
+            st.markdown(
+                f"<div style='margin:14px 0 4px 0; font-size:0.85em; color:#555;'>"
+                f"Trajetória das {n_total} consulta(s) com prescrição de "
+                f"{nome_cond.lower()} em 365 dias:</div>"
+                f"<div style='display:flex; height:18px; border-radius:4px; "
+                f"overflow:hidden; border:1px solid #E0E0E0;'>"
+                f"{''.join(segmentos)}"
+                f"</div>"
+                f"<div style='margin:6px 0 10px 0;'>{''.join(legenda)}</div>",
+                unsafe_allow_html=True,
+            )
+
+        # 5. Contadores de aferição e in_loco da trajetória.
+        if condicao == 'HAS':
+            n_ctrl = patient_data.get('n_consultas_pa_controlada')
+            n_desc = patient_data.get('n_consultas_pa_descontrolada')
+            n_sem  = patient_data.get('n_consultas_pa_sem_aferi')
+        else:
+            n_ctrl = patient_data.get('n_consultas_dm_controlado')
+            n_desc = patient_data.get('n_consultas_dm_descontrolado')
+            n_sem  = patient_data.get('n_consultas_dm_sem_aferi')
+        n_iner = patient_data.get(f'n_consultas_inercia_{condicao}')
+        n_est  = patient_data.get(f'n_consultas_estagnado_{condicao}')
+
+        def _ic(v):
+            return int(v) if pd.notna(v) else 0
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric(f"{param} controlada", _ic(n_ctrl))
+        c2.metric(f"{param} descontrolada", _ic(n_desc))
+        c3.metric("Sem aferição", _ic(n_sem))
+        c4.metric("Em inércia", _ic(n_iner))
+        c5.metric("Estagnado", _ic(n_est))
+
+    return True
+
 
 def create_patient_card(patient_data, key_prefix: str = ''):
     """Renderiza o card expansível do paciente.
@@ -1166,15 +1402,31 @@ def create_patient_card(patient_data, key_prefix: str = ''):
         # SUB-ABAS DETALHADAS
         # ============================================
 
-        tab1, tab2, tab3, tab4, tab5, tab_hist, tab7 = st.tabs([
+        # A sub-aba 'Inércia terapêutica' só aparece para pacientes com
+        # HAS e/ou DM (sinalizado pelo pipeline via status_atual_*).
+        _mostrar_inercia = (
+            pd.notna(patient_data.get('status_atual_HAS')) or
+            pd.notna(patient_data.get('status_atual_DM'))
+        )
+        _tab_labels = [
             "📊 Carga de Morbidade",
             "❤️ Risco Cardiovascular",
             "🔄 Continuidade do Cuidado",
             "⚠️ Lacunas de Cuidado",
+        ]
+        if _mostrar_inercia:
+            _tab_labels.append("⏱️ Inércia terapêutica")
+        _tab_labels += [
             "💊 Polifarmácia e STOPP-START",
             "📜 Histórico farmacológico",
-            "📝 Relatar Problemas"
-        ])
+            "📝 Relatar Problemas",
+        ]
+        _tabs = st.tabs(_tab_labels)
+        if _mostrar_inercia:
+            tab1, tab2, tab3, tab4, tab_inercia, tab5, tab_hist, tab7 = _tabs
+        else:
+            tab1, tab2, tab3, tab4, tab5, tab_hist, tab7 = _tabs
+            tab_inercia = None
 
         # ========== TAB 1: CARGA DE MORBIDADE ==========
         with tab1:
@@ -1699,7 +1951,27 @@ def create_patient_card(patient_data, key_prefix: str = ''):
                                 + (f"<br>&nbsp;&nbsp;&nbsp;{corpo}" if corpo else ""),
                                 unsafe_allow_html=True
                             )
-        
+
+        # ========== TAB INÉRCIA TERAPÊUTICA (condicional) ==========
+        if tab_inercia is not None:
+            with tab_inercia:
+                st.markdown("#### ⏱️ Inércia terapêutica e tratamento estagnado")
+                st.caption(
+                    "Como o esquema terapêutico tem respondido aos níveis "
+                    "de pressão arterial / HbA1c do paciente, ao longo do "
+                    "último ano. **Inércia provável** = paciente "
+                    "descontrolado e esquema mantido. **Tratamento "
+                    "estagnado** = prescrição renovada sem aferição/exame "
+                    "em 180 dias (o esquema é mantido sem informação "
+                    "para sustentar a decisão)."
+                )
+                _tem_has = _render_inercia_condicao(patient_data, 'HAS')
+                _tem_dm  = _render_inercia_condicao(patient_data, 'DM')
+                if _tem_has and _tem_dm:
+                    pass  # ambos renderizados — seções empilhadas
+                elif not (_tem_has or _tem_dm):
+                    st.info("Paciente sem HAS nem DM ativos no pipeline de inércia.")
+
         # ========== TAB 5: POLIFARMÁCIA E STOPP-START ==========
         with tab5:
             cpf_pac  = str(patient_data.get("cpf", ""))
@@ -2273,6 +2545,15 @@ def renderizar_lista_pacientes(
         help="Considera qualquer tipo de insulina: NPH, regular, análogos basal/prandial e misturas."
     )
 
+    # Linha 2c: filtro de inércia terapêutica / tratamento estagnado
+    apenas_inercia = st.checkbox(
+        "⏱️ Apenas pacientes em inércia terapêutica ou tratamento estagnado (HAS ou DM)",
+        value=False,
+        key="apenas_inercia_filter",
+        help="Inclui as 4 flags do pipeline de inércia: paciente em inércia HAS, "
+             "paciente em inércia DM, paciente estagnado HAS, paciente estagnado DM."
+    )
+
     # Linha 3: Ordenação (6 opções)
     st.markdown("**Ordenar por:**")
     fl6, fl7, fl8, fl9, fl10, fl11 = st.columns(6)
@@ -2373,6 +2654,7 @@ def renderizar_lista_pacientes(
         lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None,
         rcv_filtro=tuple(rcv_filtro) if rcv_filtro else None,
         apenas_insulina=apenas_insulina,
+        apenas_inercia=apenas_inercia,
     )
 
     if total_pacientes == 0:
@@ -2400,6 +2682,8 @@ def renderizar_lista_pacientes(
         filtros_texto += f" | IPC: {', '.join(ipc_filtro)}"
     if apenas_insulina:
         filtros_texto += " | 💉 Em insulina"
+    if apenas_inercia:
+        filtros_texto += " | ⏱️ Inércia ou estagnado"
 
     # Placeholders para o cabeçalho de "X pacientes encontrados" e
     # caption de paginação. Serão preenchidos depois do load para
@@ -2441,6 +2725,7 @@ def renderizar_lista_pacientes(
                 lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None,
                 rcv_filtro=tuple(rcv_filtro) if rcv_filtro else None,
                 apenas_insulina=apenas_insulina,
+                apenas_inercia=apenas_inercia,
             )
             # Filtro de IPC (categoria já vem calculada em
             # load_patient_data_paginated via calcular_ipc).
@@ -2484,6 +2769,7 @@ def renderizar_lista_pacientes(
                 lacunas_filtro=tuple(lacunas_selecionadas) if lacunas_selecionadas else None,
                 rcv_filtro=tuple(rcv_filtro) if rcv_filtro else None,
                 apenas_insulina=apenas_insulina,
+                apenas_inercia=apenas_inercia,
             )
 
     if df_pacientes.empty:
