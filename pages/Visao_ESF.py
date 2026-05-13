@@ -1078,7 +1078,7 @@ def _card_lacuna(col, row):
 # ─── Card mini para indicadores estratificados por carga ──────
 def _card_carga_strat(col, carga_label, emoji, n_eq, den_eq,
                       n_mun, den_mun, indicador_ruim_se_alto=True,
-                      formato_valor='%'):
+                      formato_valor='%', casas_decimais=0):
     """Mini-card por carga (Baixo/Moderado/Alto/Muito Alto) usado na
     aba 'Continuidade do cuidado'. Mostra valor da equipe + benchmark
     município + delta colorido.
@@ -1089,6 +1089,11 @@ def _card_carga_strat(col, carga_label, emoji, n_eq, den_eq,
       'avg' → exibe média numérica direta (n_eq é a média já calculada,
               den_eq é ignorado).
 
+    casas_decimais:
+      Número de casas decimais para porcentagens (`formato_valor='%'`).
+      Default 0 (ex.: 12%) — usado nas abas Continuidade e Resumo.
+      Use 1 (ex.: 12,3%) na aba Carga Farmacológica.
+
     indicador_ruim_se_alto:
       True  → equipe acima do município = vermelho (ex.: sem médico,
               sem consulta, fragmentação).
@@ -1098,8 +1103,10 @@ def _card_carga_strat(col, carga_label, emoji, n_eq, den_eq,
     if formato_valor == '%':
         pct_eq  = (n_eq / den_eq * 100) if den_eq else None
         pct_mun = (n_mun / den_mun * 100) if den_mun else None
-        valor_eq_str  = f"{pct_eq:.0f}%"  if pct_eq  is not None else "—"
-        valor_mun_str = f"{pct_mun:.0f}%" if pct_mun is not None else "—"
+        valor_eq_str  = (f"{pct_eq:.{casas_decimais}f}%"
+                         if pct_eq is not None else "—")
+        valor_mun_str = (f"{pct_mun:.{casas_decimais}f}%"
+                         if pct_mun is not None else "—")
         delta = ((pct_eq - pct_mun)
                  if (pct_eq is not None and pct_mun is not None)
                  else None)
@@ -1187,26 +1194,27 @@ def _detecta_inversao_gradiente(valores, esperado_crescente):
 
 def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
     """Ato 2.5 — Resposta ao descontrole (taxonomia V3, 11 categorias)
-    para HAS ou DM. Estrutura em 4 camadas, espelhando a narrativa
-    do guia conceitual:
+    para HAS ou DM. Estrutura:
 
-      1. Cabeçalho narrativo (3 frentes de cuidado).
-      2. 3 cards grandes de frente: 🩺 médica, 🩹 equipe, 🏠 busca ativa.
-      3. Donut com as 10 categorias detalhadas (denominador completo
-         da população com a condição — `n_pacientes_*`).
-      4. Cards de benchmark das 3 inércias principais (persistente,
-         falta de tratamento, falta de aferição) vs. AP e município.
-      5. Padrão de manejo 365d (trajetória, em barra horizontal).
+      1. Linha-resumo da população em tratamento.
+      2. Três cards de frente: 🩺 médica, 🩹 equipe, 🏠 busca ativa.
+      3. Barra horizontal com as 10 categorias detalhadas + legenda
+         explicativa visível (cada categoria com texto em português).
+      4. Benchmarks vs. AP e município (4 cards com descrição completa
+         do que cada métrica significa e qual o denominador).
+      5. Padrão de manejo 365d em barra horizontal + legenda
+         explicativa visível.
 
-    Denominadores: a maioria usa `n_HAS_tratados`. Exceção crítica:
-    `n_inercia_falta_tratamento_HAS` usa `n_pacientes_HAS` (porque a
+    Denominadores: a maioria usa `n_HAS_tratados`. Exceção:
+    `n_inercia_falta_tratamento_*` usa `n_pacientes_*` (porque a
     flag dispara para quem NÃO tem tratamento).
     """
-    nome   = 'Hipertensão' if condicao == 'HAS' else 'Diabetes'
+    is_has = (condicao == 'HAS')
+    nome   = 'Hipertensão' if is_has else 'Diabetes'
     abrev  = condicao
-    param  = 'PA' if condicao == 'HAS' else 'HbA1c'
-    # Nome assimétrico do contador "sem nenhuma aferição" (V3).
-    suf_sem_nenhuma = 'sem_nenhuma_PA' if condicao == 'HAS' else 'sem_nenhuma_HbA1c'
+    param  = 'PA' if is_has else 'HbA1c'
+    nome_pop  = 'hipertensos' if is_has else 'diabéticos'
+    suf_sem_nenhuma = 'sem_nenhuma_PA' if is_has else 'sem_nenhuma_HbA1c'
 
     def _v(k):
         v = ag_in.get(k)
@@ -1216,8 +1224,8 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
         return (100 * num / den) if den else 0
 
     # ── Denominadores ────────────────────────────────────────────
-    n_pac  = _v(f'n_pacientes_{abrev}')   # universo completo
-    n_trat = _v(f'n_{abrev}_tratados')    # com prescrição em 365d
+    n_pac  = _v(f'n_pacientes_{abrev}')
+    n_trat = _v(f'n_{abrev}_tratados')
 
     # ── Status atual (10 categorias) ─────────────────────────────
     n_pers    = _v(f'n_inercia_persistente_{abrev}')
@@ -1240,47 +1248,26 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
     n_p_lt2   = _v(f'n_padrao_menos_2_consultas_{abrev}')
 
     # ── Agrupamento por FRENTE de cuidado ────────────────────────
-    # Frente médica → decisão clínica diante do descontrole.
     n_frente_med = n_pers + n_drec
-    # Frente da equipe → aferição/exame de rotina não acontece.
     n_frente_eqp = n_faferi + n_cego + n_ratras
-    # Frente da busca ativa → paciente saiu da rede (ACS).
     n_frente_ba  = n_ftrat + n_clac
-    # Sem alerta de inércia (apenas informativo).
     n_sem_alerta = n_mapr + n_ctrl + n_dsc
 
     pct_frente_med = _pct(n_frente_med, n_pac)
     pct_frente_eqp = _pct(n_frente_eqp, n_pac)
     pct_frente_ba  = _pct(n_frente_ba,  n_pac)
 
-    # ── Taxas das 3 inércias principais (com denominador correto) ─
-    pct_pers   = _pct(n_pers,   n_trat)   # denominador: tratados
-    pct_ftrat  = _pct(n_ftrat,  n_pac)    # denominador: TODOS os HAS
+    pct_pers   = _pct(n_pers,   n_trat)
+    pct_ftrat  = _pct(n_ftrat,  n_pac)
     pct_faferi = _pct(n_faferi, n_trat)
     pct_ctrl_t = _pct(n_ctrl,   n_trat)
 
-    # ───────── 1. Narrativa em texto ─────────────────────────────
+    # ───────── 1. Linha-resumo da população ──────────────────────
     st.markdown(
         f"<div style='font-size:1.0em; line-height:1.65;'>"
         f"Dos <b>{n_pac:,}</b> pacientes com {nome.lower()} da equipe, "
         f"<b>{n_trat:,}</b> têm prescrição registrada em 365 dias "
-        f"(<b>{_pct(n_trat, n_pac):.0f}%</b>). O resto não aparece "
-        f"como em tratamento — é, em si, uma das formas mais "
-        f"frequentes de inércia.<br><br>"
-        f"A leitura do dicionário de inércia separa os pacientes em "
-        f"<b>3 frentes de cuidado</b>, conforme onde está o "
-        f"obstáculo:"
-        f"<ul style='margin:6px 0; padding-left:22px; line-height:1.6;'>"
-        f"<li><b>🩺 Frente médica</b> — decisão clínica diante do "
-        f"descontrole (intensificar, trocar, confirmar);</li>"
-        f"<li><b>🩹 Frente da equipe</b> — aferir PA e solicitar "
-        f"exames de rotina;</li>"
-        f"<li><b>🏠 Frente da busca ativa</b> — reativar o vínculo "
-        f"de pacientes que sumiram da rede (ACS / visita domiciliar)."
-        f"</li></ul>"
-        f"<i>A maior parte da inércia não é \"médico não age\" — é "
-        f"\"o sistema perde pacientes antes que o médico tenha "
-        f"como agir\".</i>"
+        f"(<b>{_pct(n_trat, n_pac):.1f}%</b>)."
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -1304,7 +1291,7 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
                 f"color:{cor}; line-height:1.1;'>{valor_n:,}</div>"
                 f"<div style='font-size:0.92em; color:#555; "
                 f"margin-bottom:8px;'>"
-                f"{valor_pct:.0f}% dos {nome.lower()}s da equipe</div>"
+                f"{valor_pct:.1f}% dos {nome_pop} da equipe</div>"
                 f"<div style='font-size:0.85em; color:#666; line-height:1.5;'>"
                 f"{detalhe}</div>"
                 f"</div>",
@@ -1335,28 +1322,106 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
     st.markdown(
         f"<div style='margin:10px 0 0 0; font-size:0.92em; color:#555;'>"
         f"Os outros <b>{n_sem_alerta:,}</b> pacientes "
-        f"(<b>{_pct(n_sem_alerta, n_pac):.0f}%</b>) estão sem alerta "
+        f"(<b>{_pct(n_sem_alerta, n_pac):.1f}%</b>) estão sem alerta "
         f"de inércia — controlados, em manejo apropriado pela equipe "
         f"ou descontrolados sem histórico para comparar (caso de "
         f"paciente novo ou retorno de hiato).</div>",
         unsafe_allow_html=True,
     )
 
-    # ───────── 3. Donut detalhado (10 categorias) ────────────────
+    # ───────── 3. Barra horizontal das 10 categorias + legenda ───
     st.markdown(
-        "<div style='margin:18px 0 6px 0; font-size:1.0em; color:#444;'>"
+        "<div style='margin:22px 0 6px 0; font-size:1.0em; color:#444;'>"
         "<b>Distribuição detalhada — 10 categorias de status</b> "
         "<span style='color:#777; font-size:0.85em;'>"
-        "(soma para o total de pacientes com a condição)</span></div>",
+        "(denominador = todos os pacientes com a condição)</span></div>",
         unsafe_allow_html=True,
     )
 
+    # Descrições adaptadas para HAS / DM — texto literalmente como o
+    # usuário pediu, com os termos clínicos corretos para cada linha.
+    if is_has:
+        descricoes_status = {
+            'Inércia persistente':
+                ('Paciente com pressão arterial descontrolada confirmada '
+                 'e médico manteve o esquema terapêutico sem modificações.'),
+            'Inércia por falta de tratamento':
+                ('Paciente diagnosticado com hipertensão, mas sem '
+                 'prescrição de anti-hipertensivo registrada nos últimos '
+                 '365 dias.'),
+            'Inércia por falta de aferição':
+                ('Paciente em tratamento com histórico de pressão arterial '
+                 'descontrolada, mas sem nova aferição nos últimos 180 '
+                 'dias e esquema mantido.'),
+            'Descontrole recente sem ação':
+                ('Paciente que estava controlado anteriormente e '
+                 'descontrolou agora, mas o médico ainda não modificou '
+                 'o esquema.'),
+            'Em tratamento sem nenhuma PA':
+                ('Paciente em uso de anti-hipertensivo, mas nunca teve '
+                 'pressão arterial aferida nos últimos 730 dias.'),
+            'Renovado controlado atrasado':
+                ('Paciente com pressão controlada em aferição antiga '
+                 '(entre 180 e 730 dias), receita renovada sem nova '
+                 'aferição recente.'),
+            'Controlado com lacuna de consulta':
+                ('Paciente com pressão na meta na última aferição, mas '
+                 'há mais de 180 dias sem nova consulta médica.'),
+            'Manejo apropriado':
+                ('Paciente descontrolado em que o médico intensificou a '
+                 'dose, adicionou nova droga ou trocou o esquema.'),
+            'Controlado':
+                ('Paciente com pressão arterial na meta e em seguimento '
+                 'regular.'),
+            'Descontrole sem comparação':
+                ('Paciente descontrolado, mas sem prescrição anterior '
+                 'registrada para avaliar se houve mudança no manejo.'),
+        }
+    else:
+        descricoes_status = {
+            'Inércia persistente':
+                ('Paciente com HbA1c descontrolada confirmada e médico '
+                 'manteve o esquema terapêutico sem modificações.'),
+            'Inércia por falta de tratamento':
+                ('Paciente diagnosticado com diabetes, mas sem '
+                 'prescrição de antidiabético registrada nos últimos '
+                 '365 dias.'),
+            'Inércia por falta de aferição':
+                ('Paciente em tratamento com histórico de HbA1c '
+                 'descontrolada, mas sem nova HbA1c nos últimos 180 '
+                 'dias e esquema mantido.'),
+            'Descontrole recente sem ação':
+                ('Paciente que estava controlado anteriormente e '
+                 'descontrolou agora, mas o médico ainda não modificou '
+                 'o esquema.'),
+            'Em tratamento sem nenhuma HbA1c':
+                ('Paciente em uso de antidiabético, mas nunca teve HbA1c '
+                 'registrada nos últimos 730 dias.'),
+            'Renovado controlado atrasado':
+                ('Paciente com HbA1c controlada em exame antigo (entre '
+                 '180 e 730 dias), receita renovada sem nova HbA1c '
+                 'recente.'),
+            'Controlado com lacuna de consulta':
+                ('Paciente com HbA1c na meta na última aferição, mas há '
+                 'mais de 180 dias sem nova consulta médica.'),
+            'Manejo apropriado':
+                ('Paciente descontrolado em que o médico intensificou a '
+                 'dose, adicionou nova droga ou trocou o esquema.'),
+            'Controlado':
+                ('Paciente com HbA1c na meta e em seguimento regular.'),
+            'Descontrole sem comparação':
+                ('Paciente descontrolado, mas sem prescrição anterior '
+                 'registrada para avaliar se houve mudança no manejo.'),
+        }
+
+    nome_cego = 'Em tratamento sem nenhuma PA' if is_has \
+                else 'Em tratamento sem nenhuma HbA1c'
     status_rows = [
         ('Inércia persistente',                n_pers,   '#c0392b'),
         ('Inércia por falta de tratamento',    n_ftrat,  '#d35400'),
         ('Inércia por falta de aferição',      n_faferi, '#e67e22'),
         ('Descontrole recente sem ação',       n_drec,   '#e74c3c'),
-        (f'Em tratamento sem nenhuma {param}', n_cego,   '#f39c12'),
+        (nome_cego,                            n_cego,   '#f39c12'),
         ('Renovado controlado atrasado',       n_ratras, '#f1c40f'),
         ('Controlado com lacuna de consulta',  n_clac,   '#bdc3c7'),
         ('Manejo apropriado',                  n_mapr,   '#27ae60'),
@@ -1364,30 +1429,63 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
         ('Descontrole sem comparação',         n_dsc,    '#95a5a6'),
     ]
     df_status = pd.DataFrame(
-        [{'Status': lab, 'n': n, 'cor': c}
+        [{'Status': lab, 'n': n, 'cor': c, 'pct': _pct(n, n_pac)}
          for lab, n, c in status_rows if n > 0]
     )
     if not df_status.empty:
-        cor_map = dict(zip(df_status['Status'], df_status['cor']))
-        fig = px.pie(df_status, values='n', names='Status',
-                     hole=0.45,
-                     color='Status',
-                     color_discrete_map=cor_map)
-        fig.update_traces(
-            textposition='inside', textinfo='percent',
-            hovertemplate='%{label}<br>%{value} pacientes (%{percent})<extra></extra>',
-            sort=False,
+        df_status_sorted = df_status.sort_values('n', ascending=True)
+        cor_map = dict(zip(df_status_sorted['Status'],
+                           df_status_sorted['cor']))
+        fig = px.bar(
+            df_status_sorted, x='n', y='Status',
+            orientation='h', color='Status',
+            color_discrete_map=cor_map,
+            text=df_status_sorted.apply(
+                lambda r: f"{int(r['n']):,} ({r['pct']:.1f}%)", axis=1),
+            custom_data=['pct'],
         )
-        fig.update_layout(margin=dict(t=10, b=10, l=10, r=10),
-                          height=360, legend=dict(font=dict(size=11)))
+        fig.update_traces(
+            textposition='outside',
+            hovertemplate='%{y}<br>%{x:,} pacientes (%{customdata[0]:.1f}%)<extra></extra>',
+        )
+        fig.update_layout(
+            showlegend=False,
+            margin=dict(t=10, b=10, l=10, r=80),
+            height=380,
+            xaxis_title='Pacientes',
+            yaxis_title='',
+        )
         st.plotly_chart(fig, use_container_width=True,
                         key=f"inercia_status_{abrev}")
+
+        # ── Legenda explicativa de cada categoria ────────────────
+        st.markdown(
+            "<div style='margin:8px 0 4px 0; font-size:0.9em; color:#666;'>"
+            "<b>O que cada categoria significa:</b></div>",
+            unsafe_allow_html=True,
+        )
+        # Mantém a ordem clínica original das categorias (não a ordenada
+        # pela barra) — fica mais fácil para o leitor estudar.
+        legenda_html = "".join(
+            f"<div style='display:flex; align-items:flex-start; "
+            f"margin-bottom:6px; font-size:0.88em; line-height:1.5;'>"
+            f"<span style='display:inline-block; width:14px; height:14px; "
+            f"background:{cor}; border-radius:3px; margin-right:8px; "
+            f"margin-top:4px; flex-shrink:0;'></span>"
+            f"<div><b>{lab}.</b> {descricoes_status[lab]}</div></div>"
+            for lab, _n, cor in status_rows
+        )
+        st.markdown(
+            f"<div style='padding:10px 14px; background:#FAFAFA; "
+            f"border-radius:4px; border:1px solid #EEE;'>{legenda_html}</div>",
+            unsafe_allow_html=True,
+        )
     else:
         st.info("Sem dados de status para esta equipe.")
 
     # ───────── 4. Benchmarks vs. AP e município ──────────────────
     st.markdown(
-        "<div style='margin:14px 0 8px 0; font-size:1.0em; color:#444;'>"
+        "<div style='margin:22px 0 8px 0; font-size:1.0em; color:#444;'>"
         "<b>Comparação com a área programática e com o município</b> "
         "<span style='color:#777; font-size:0.85em;'>"
         "(mediana entre clínicas com n ≥ 50)</span></div>",
@@ -1405,8 +1503,8 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
         return (f"<span style='color:{cor}; font-weight:700;'>"
                 f"{sinal}{d:.1f} pp</span>")
 
-    def _bm_card(col, titulo, valor_equipe, valor_ap, valor_mun,
-                 cor_destaque, invertido=True):
+    def _bm_card(col, titulo_curto, descricao, valor_equipe,
+                 valor_ap, valor_mun, cor_destaque, invertido=True):
         with col:
             v = valor_equipe
             vap = valor_ap if valor_ap is not None and pd.notna(valor_ap) else 0
@@ -1416,7 +1514,10 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
             st.markdown(
                 f"<div style='border:1px solid #E0E0E0; border-radius:6px; "
                 f"padding:12px; background:#FAFAFA; height:100%;'>"
-                f"<div style='font-size:0.85em; color:#555;'>{titulo}</div>"
+                f"<div style='font-size:0.92em; color:#333; "
+                f"font-weight:600;'>{titulo_curto}</div>"
+                f"<div style='font-size:0.83em; color:#666; "
+                f"line-height:1.45; margin:4px 0 8px 0;'>{descricao}</div>"
                 f"<div style='font-size:1.4em; font-weight:700; "
                 f"color:{cor_destaque}; line-height:1.2;'>"
                 f"Sua equipe: {v:.1f}%</div>"
@@ -1430,16 +1531,67 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
                 unsafe_allow_html=True,
             )
 
+    # Descrições completas dos 4 indicadores (HAS / DM).
+    if is_has:
+        desc_bm_pers = (
+            "Proporção de pacientes hipertensos com inércia persistente, "
+            "calculada apenas entre os hipertensos que estão em "
+            "tratamento ativo (≥1 prescrição de anti-hipertensivo em 365 "
+            "dias)."
+        )
+        desc_bm_ftrat = (
+            "Proporção de pacientes hipertensos sem nenhuma prescrição "
+            "de anti-hipertensivo registrada em 365 dias, sobre o total "
+            "de hipertensos da equipe (denominador inclui também os não "
+            "tratados)."
+        )
+        desc_bm_faferi = (
+            "Proporção de pacientes hipertensos em tratamento com "
+            "histórico de pressão arterial descontrolada e sem nova "
+            "aferição em 180 dias, calculada entre os hipertensos em "
+            "tratamento ativo."
+        )
+        desc_bm_ctrl = (
+            "Proporção de pacientes hipertensos com pressão arterial na "
+            "meta e em seguimento regular, calculada entre os "
+            "hipertensos em tratamento ativo."
+        )
+    else:
+        desc_bm_pers = (
+            "Proporção de pacientes diabéticos com inércia persistente, "
+            "calculada apenas entre os diabéticos que estão em "
+            "tratamento ativo (≥1 prescrição de antidiabético em 365 "
+            "dias)."
+        )
+        desc_bm_ftrat = (
+            "Proporção de pacientes diabéticos sem nenhuma prescrição "
+            "de antidiabético registrada em 365 dias, sobre o total de "
+            "diabéticos da equipe (denominador inclui também os não "
+            "tratados)."
+        )
+        desc_bm_faferi = (
+            "Proporção de pacientes diabéticos em tratamento com "
+            "histórico de HbA1c descontrolada e sem nova HbA1c em 180 "
+            "dias, calculada entre os diabéticos em tratamento ativo."
+        )
+        desc_bm_ctrl = (
+            "Proporção de pacientes diabéticos com HbA1c na meta e em "
+            "seguimento regular, calculada entre os diabéticos em "
+            "tratamento ativo."
+        )
+
     b1, b2 = st.columns(2)
     _bm_card(
         b1,
         f"🩺 Inércia persistente {abrev} (sobre tratados)",
+        desc_bm_pers,
         pct_pers, bm.get(f'ap_pers_{abrev}'), bm.get(f'mun_pers_{abrev}'),
         '#c0392b', invertido=True,
     )
     _bm_card(
         b2,
         f"🏠 Sem prescrição em 365d {abrev} (sobre todos os {abrev})",
+        desc_bm_ftrat,
         pct_ftrat, bm.get(f'ap_falta_trat_{abrev}'),
         bm.get(f'mun_falta_trat_{abrev}'),
         '#d35400', invertido=True,
@@ -1448,6 +1600,7 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
     _bm_card(
         b3,
         f"🩹 Falta de aferição {abrev} (sobre tratados)",
+        desc_bm_faferi,
         pct_faferi, bm.get(f'ap_falta_aferi_{abrev}'),
         bm.get(f'mun_falta_aferi_{abrev}'),
         '#e67e22', invertido=True,
@@ -1455,18 +1608,69 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
     _bm_card(
         b4,
         f"🟢 Controlado {abrev} (sobre tratados)",
+        desc_bm_ctrl,
         pct_ctrl_t, bm.get(f'ap_ctrl_{abrev}'), bm.get(f'mun_ctrl_{abrev}'),
         '#16a085', invertido=False,
     )
 
-    # ───────── 5. Padrão de manejo 365d ──────────────────────────
+    # ───────── 5. Padrão de manejo 365d + legenda ────────────────
     st.markdown(
-        "<div style='margin:18px 0 6px 0; font-size:1.0em; color:#444;'>"
+        "<div style='margin:22px 0 6px 0; font-size:1.0em; color:#444;'>"
         "<b>Padrão de manejo na trajetória de 365 dias</b> "
         "<span style='color:#777; font-size:0.85em;'>"
         "(comportamento ao longo do ano, não snapshot)</span></div>",
         unsafe_allow_html=True,
     )
+
+    if is_has:
+        descricoes_padrao = {
+            'Manejo proativo':
+                ('Em pelo menos metade das consultas com descontrole, o '
+                 'médico intensificou ou trocou o esquema terapêutico.'),
+            'Manejo inerte':
+                ('Em pelo menos metade das consultas com descontrole, o '
+                 'médico manteve o esquema sem agir diante da pressão '
+                 'alta.'),
+            'Manejo estagnado':
+                ('Em pelo menos metade das consultas, o paciente estava '
+                 'em tratamento sem aferição de pressão e o esquema foi '
+                 'mantido sem mudanças.'),
+            'Controlado consistente':
+                ('Em pelo menos metade das consultas, o paciente estava '
+                 'com a pressão arterial na meta.'),
+            'Padrão misto':
+                ('Trajetória heterogênea ao longo do ano, sem '
+                 'predomínio claro de nenhum dos padrões anteriores.'),
+            '<2 consultas em 365d':
+                ('Paciente com menos de duas consultas no último ano, '
+                 'número insuficiente para avaliar a trajetória do '
+                 'cuidado.'),
+        }
+    else:
+        descricoes_padrao = {
+            'Manejo proativo':
+                ('Em pelo menos metade das consultas com descontrole, o '
+                 'médico intensificou ou trocou o esquema terapêutico.'),
+            'Manejo inerte':
+                ('Em pelo menos metade das consultas com descontrole, o '
+                 'médico manteve o esquema sem agir diante da HbA1c '
+                 'alta.'),
+            'Manejo estagnado':
+                ('Em pelo menos metade das consultas, o paciente estava '
+                 'em tratamento sem nova HbA1c e o esquema foi mantido '
+                 'sem mudanças.'),
+            'Controlado consistente':
+                ('Em pelo menos metade das consultas, o paciente estava '
+                 'com a HbA1c na meta.'),
+            'Padrão misto':
+                ('Trajetória heterogênea ao longo do ano, sem '
+                 'predomínio claro de nenhum dos padrões anteriores.'),
+            '<2 consultas em 365d':
+                ('Paciente com menos de duas consultas no último ano, '
+                 'número insuficiente para avaliar a trajetória do '
+                 'cuidado.'),
+        }
+
     pad_rows = [
         ('Manejo proativo',          n_p_pro,  '#27ae60'),
         ('Manejo inerte',            n_p_in,   '#c0392b'),
@@ -1476,27 +1680,55 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
         ('<2 consultas em 365d',     n_p_lt2,  '#bdc3c7'),
     ]
     df_pad = pd.DataFrame(
-        [{'Padrão': lab, 'n': n, 'cor': c}
+        [{'Padrão': lab, 'n': n, 'cor': c, 'pct': _pct(n, n_pac)}
          for lab, n, c in pad_rows if n > 0]
     )
     if not df_pad.empty:
         df_pad_sorted = df_pad.sort_values('n', ascending=True)
         cor_map_p = dict(zip(df_pad_sorted['Padrão'],
                              df_pad_sorted['cor']))
-        fig2 = px.bar(df_pad_sorted, x='n', y='Padrão',
-                      orientation='h', color='Padrão',
-                      color_discrete_map=cor_map_p,
-                      text='n')
-        fig2.update_traces(textposition='outside')
+        fig2 = px.bar(
+            df_pad_sorted, x='n', y='Padrão',
+            orientation='h', color='Padrão',
+            color_discrete_map=cor_map_p,
+            text=df_pad_sorted.apply(
+                lambda r: f"{int(r['n']):,} ({r['pct']:.1f}%)", axis=1),
+            custom_data=['pct'],
+        )
+        fig2.update_traces(
+            textposition='outside',
+            hovertemplate='%{y}<br>%{x:,} pacientes (%{customdata[0]:.1f}%)<extra></extra>',
+        )
         fig2.update_layout(
             showlegend=False,
-            margin=dict(t=10, b=10, l=10, r=40),
+            margin=dict(t=10, b=10, l=10, r=80),
             height=300,
             xaxis_title='Pacientes',
             yaxis_title='',
         )
         st.plotly_chart(fig2, use_container_width=True,
                         key=f"inercia_padrao_{abrev}")
+
+        # ── Legenda explicativa do padrão de manejo ──────────────
+        st.markdown(
+            "<div style='margin:8px 0 4px 0; font-size:0.9em; color:#666;'>"
+            "<b>O que cada padrão significa:</b></div>",
+            unsafe_allow_html=True,
+        )
+        legenda_pad_html = "".join(
+            f"<div style='display:flex; align-items:flex-start; "
+            f"margin-bottom:6px; font-size:0.88em; line-height:1.5;'>"
+            f"<span style='display:inline-block; width:14px; height:14px; "
+            f"background:{cor}; border-radius:3px; margin-right:8px; "
+            f"margin-top:4px; flex-shrink:0;'></span>"
+            f"<div><b>{lab}.</b> {descricoes_padrao[lab]}</div></div>"
+            for lab, _n, cor in pad_rows
+        )
+        st.markdown(
+            f"<div style='padding:10px 14px; background:#FAFAFA; "
+            f"border-radius:4px; border:1px solid #EEE;'>{legenda_pad_html}</div>",
+            unsafe_allow_html=True,
+        )
     else:
         st.info("Sem dados de padrão de manejo.")
 
@@ -2329,12 +2561,14 @@ ACB calculado individualmente para cada paciente.
             pf_eq.get('n_polifarm'), n_total_eq,
             pf_mun.get('n_polifarm'), n_total_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
         _card_carga_strat(
             c2, "Hiperpolifarmácia (≥10 meds crônicos)", "💊💊",
             pf_eq.get('n_hiperpoli'), n_total_eq,
             pf_mun.get('n_hiperpoli'), n_total_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
         c3, c4 = st.columns(2)
         _card_carga_strat(
@@ -2342,12 +2576,14 @@ ACB calculado individualmente para cada paciente.
             pf_eq.get('n_polifarm_idosos'), n_idosos_eq,
             pf_mun.get('n_polifarm_idosos'), n_idosos_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
         _card_carga_strat(
             c4, "Idosos (≥65a) em hiperpolifarmácia", "👴",
             pf_eq.get('n_hiperpoli_idosos'), n_idosos_eq,
             pf_mun.get('n_hiperpoli_idosos'), n_idosos_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
 
     # ═════════════════════════════════════════════════════════════
@@ -2382,12 +2618,14 @@ ACB calculado individualmente para cada paciente.
             pf_eq.get('n_com_stopp'), n_total_eq,
             pf_mun.get('n_com_stopp'), n_total_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
         _card_carga_strat(
             c2, "Idosos (≥65a) com ≥1 critério STOPP", "👴",
             pf_eq.get('n_com_stopp_idosos'), n_idosos_eq,
             pf_mun.get('n_com_stopp_idosos'), n_idosos_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
     _top5_criterios(
         'STOPP',
@@ -2426,12 +2664,14 @@ ACB calculado individualmente para cada paciente.
             pf_eq.get('n_com_start'), n_total_eq,
             pf_mun.get('n_com_start'), n_total_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
         _card_carga_strat(
             c2, "Idosos (≥65a) com ≥1 critério START", "👴",
             pf_eq.get('n_com_start_idosos'), n_idosos_eq,
             pf_mun.get('n_com_start_idosos'), n_idosos_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
     _top5_criterios(
         'START',
@@ -2472,12 +2712,14 @@ ACB calculado individualmente para cada paciente.
             pf_eq.get('n_com_beers'), n_total_eq,
             pf_mun.get('n_com_beers'), n_total_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
         _card_carga_strat(
             c2, "Idosos (≥65a) com ≥1 critério Beers", "👴",
             pf_eq.get('n_com_beers_idosos'), n_idosos_eq,
             pf_mun.get('n_com_beers_idosos'), n_idosos_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
     _top5_criterios(
         'Beers',
@@ -2516,12 +2758,14 @@ ACB calculado individualmente para cada paciente.
             pf_eq.get('n_acb_ge1'), n_total_eq,
             pf_mun.get('n_acb_ge1'), n_total_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
         _card_carga_strat(
             c2, "Pacientes com ACB ≥ 3 (risco relevante)", "🚨",
             pf_eq.get('n_acb_ge3'), n_total_eq,
             pf_mun.get('n_acb_ge3'), n_total_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
         c3, c4 = st.columns(2)
         _card_carga_strat(
@@ -2529,12 +2773,14 @@ ACB calculado individualmente para cada paciente.
             pf_eq.get('n_acb_ge1_idosos'), n_idosos_eq,
             pf_mun.get('n_acb_ge1_idosos'), n_idosos_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
         _card_carga_strat(
             c4, "Idosos (≥65a) com ACB ≥ 3", "👴",
             pf_eq.get('n_acb_ge3_idosos'), n_idosos_eq,
             pf_mun.get('n_acb_ge3_idosos'), n_idosos_mun,
             indicador_ruim_se_alto=True,
+            casas_decimais=1,
         )
 
     st.markdown("---")
