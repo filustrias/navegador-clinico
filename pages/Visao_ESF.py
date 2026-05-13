@@ -794,53 +794,65 @@ def carregar_diabetes_nominal(ap: str, clinica: str, esf: str) -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False, ttl=900)
 def carregar_inercia_agregado(ap: str, clinica: str, esf: str) -> dict:
-    """Indicadores de inércia terapêutica e tratamento estagnado da
-    equipe (grão sexo × faixa × AP × clínica × ESF, agregado por equipe).
+    """Indicadores de inércia terapêutica da equipe (taxonomia V3 —
+    11 categorias do status_atual + 6 padrões de manejo, para HAS e DM).
 
-    Lê de MM_consultas_agregado, que já é pré-agregada por essas
-    dimensões. Inclui denominadores, distribuição dos 8 status atuais
-    e dos 6 padrões de manejo 365d, tanto para HAS quanto para DM.
+    Lê de `MM_consultas_agregado` (grão sexo × faixa × AP × clínica ×
+    ESF), agregando para a ESF da equipe selecionada.
+
+    **Atenção aos denominadores** (dicionário, seção 0.2):
+      • Quase tudo usa `n_HAS_tratados` (denominador = pacientes com
+        ≥1 prescrição em 365d).
+      • EXCETO `n_inercia_falta_tratamento_HAS`, que usa
+        `n_pacientes_HAS` (universo = TODOS os HAS, porque a flag
+        dispara justamente para quem NÃO tem tratamento).
+      • Mesma lógica para DM.
     """
     sql = f"""
     SELECT
         -- HAS — denominadores
-        SUM(n_pacientes_HAS)            AS n_pacientes_HAS,
-        SUM(n_HAS_tratados)             AS n_HAS_tratados,
-        -- HAS — status atual (8 categorias mutuamente exclusivas)
-        SUM(n_em_inercia_HAS)           AS n_em_inercia_HAS,
-        SUM(n_estagnado_HAS)            AS n_estagnado_HAS,
-        SUM(n_manejo_apropriado_HAS)    AS n_manejo_apropriado_HAS,
-        SUM(n_controlado_HAS)           AS n_controlado_HAS,
-        SUM(n_controlado_lacuna_HAS)    AS n_controlado_lacuna_HAS,
-        SUM(n_descontrole_sem_comp_HAS) AS n_descontrole_sem_comp_HAS,
-        SUM(n_sem_afericao_HAS)         AS n_sem_afericao_HAS,
-        SUM(n_sem_prescricao_HAS)       AS n_sem_prescricao_HAS,
+        SUM(n_pacientes_HAS)                       AS n_pacientes_HAS,
+        SUM(n_HAS_tratados)                        AS n_HAS_tratados,
+        -- HAS — status atual (10 categorias mutuamente exclusivas;
+        -- OUTRO é residual e não tem contador no agregado)
+        SUM(n_inercia_persistente_HAS)             AS n_inercia_persistente_HAS,
+        SUM(n_inercia_falta_tratamento_HAS)        AS n_inercia_falta_tratamento_HAS,
+        SUM(n_inercia_falta_aferi_HAS)             AS n_inercia_falta_aferi_HAS,
+        SUM(n_descontrole_recente_HAS)             AS n_descontrole_recente_HAS,
+        SUM(n_renovado_controlado_atrasado_HAS)    AS n_renovado_controlado_atrasado_HAS,
+        SUM(n_sem_nenhuma_PA_HAS)                  AS n_sem_nenhuma_PA_HAS,
+        SUM(n_manejo_apropriado_HAS)               AS n_manejo_apropriado_HAS,
+        SUM(n_controlado_HAS)                      AS n_controlado_HAS,
+        SUM(n_controlado_lacuna_HAS)               AS n_controlado_lacuna_HAS,
+        SUM(n_descontrole_sem_comp_HAS)            AS n_descontrole_sem_comp_HAS,
         -- HAS — padrão de manejo 365d (6 categorias)
-        SUM(n_padrao_proativo_HAS)            AS n_padrao_proativo_HAS,
-        SUM(n_padrao_inerte_HAS)              AS n_padrao_inerte_HAS,
-        SUM(n_padrao_estagnado_HAS)           AS n_padrao_estagnado_HAS,
-        SUM(n_padrao_controlado_HAS)          AS n_padrao_controlado_HAS,
-        SUM(n_padrao_misto_HAS)               AS n_padrao_misto_HAS,
-        SUM(n_padrao_menos_2_consultas_HAS)   AS n_padrao_menos_2_consultas_HAS,
+        SUM(n_padrao_proativo_HAS)                 AS n_padrao_proativo_HAS,
+        SUM(n_padrao_inerte_HAS)                   AS n_padrao_inerte_HAS,
+        SUM(n_padrao_estagnado_HAS)                AS n_padrao_estagnado_HAS,
+        SUM(n_padrao_controlado_HAS)               AS n_padrao_controlado_HAS,
+        SUM(n_padrao_misto_HAS)                    AS n_padrao_misto_HAS,
+        SUM(n_padrao_menos_2_consultas_HAS)        AS n_padrao_menos_2_consultas_HAS,
         -- DM — denominadores
-        SUM(n_pacientes_DM)             AS n_pacientes_DM,
-        SUM(n_DM_tratados)              AS n_DM_tratados,
-        -- DM — status atual (8 categorias)
-        SUM(n_em_inercia_DM)            AS n_em_inercia_DM,
-        SUM(n_estagnado_DM)             AS n_estagnado_DM,
-        SUM(n_manejo_apropriado_DM)     AS n_manejo_apropriado_DM,
-        SUM(n_controlado_DM)            AS n_controlado_DM,
-        SUM(n_controlado_lacuna_DM)     AS n_controlado_lacuna_DM,
-        SUM(n_descontrole_sem_comp_DM)  AS n_descontrole_sem_comp_DM,
-        SUM(n_sem_afericao_DM)          AS n_sem_afericao_DM,
-        SUM(n_sem_prescricao_DM)        AS n_sem_prescricao_DM,
+        SUM(n_pacientes_DM)                        AS n_pacientes_DM,
+        SUM(n_DM_tratados)                         AS n_DM_tratados,
+        -- DM — status atual (atenção ao nome _HbA1c_DM, não _PA_DM)
+        SUM(n_inercia_persistente_DM)              AS n_inercia_persistente_DM,
+        SUM(n_inercia_falta_tratamento_DM)         AS n_inercia_falta_tratamento_DM,
+        SUM(n_inercia_falta_aferi_DM)              AS n_inercia_falta_aferi_DM,
+        SUM(n_descontrole_recente_DM)              AS n_descontrole_recente_DM,
+        SUM(n_renovado_controlado_atrasado_DM)     AS n_renovado_controlado_atrasado_DM,
+        SUM(n_sem_nenhuma_HbA1c_DM)                AS n_sem_nenhuma_HbA1c_DM,
+        SUM(n_manejo_apropriado_DM)                AS n_manejo_apropriado_DM,
+        SUM(n_controlado_DM)                       AS n_controlado_DM,
+        SUM(n_controlado_lacuna_DM)                AS n_controlado_lacuna_DM,
+        SUM(n_descontrole_sem_comp_DM)             AS n_descontrole_sem_comp_DM,
         -- DM — padrão de manejo 365d
-        SUM(n_padrao_proativo_DM)            AS n_padrao_proativo_DM,
-        SUM(n_padrao_inerte_DM)              AS n_padrao_inerte_DM,
-        SUM(n_padrao_estagnado_DM)           AS n_padrao_estagnado_DM,
-        SUM(n_padrao_controlado_DM)          AS n_padrao_controlado_DM,
-        SUM(n_padrao_misto_DM)               AS n_padrao_misto_DM,
-        SUM(n_padrao_menos_2_consultas_DM)   AS n_padrao_menos_2_consultas_DM
+        SUM(n_padrao_proativo_DM)                  AS n_padrao_proativo_DM,
+        SUM(n_padrao_inerte_DM)                    AS n_padrao_inerte_DM,
+        SUM(n_padrao_estagnado_DM)                 AS n_padrao_estagnado_DM,
+        SUM(n_padrao_controlado_DM)                AS n_padrao_controlado_DM,
+        SUM(n_padrao_misto_DM)                     AS n_padrao_misto_DM,
+        SUM(n_padrao_menos_2_consultas_DM)         AS n_padrao_menos_2_consultas_DM
     FROM `{_fqn('MM_consultas_agregado')}`
     WHERE area_programatica_cadastro = '{ap}'
       AND nome_clinica_cadastro     = '{clinica}'
@@ -852,70 +864,99 @@ def carregar_inercia_agregado(ap: str, clinica: str, esf: str) -> dict:
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def carregar_inercia_benchmarks(ap: str) -> dict:
-    """Medianas de % de inércia e % de estagnação entre clínicas — no
-    município e na AP da equipe — para benchmark contextual.
+    """Medianas das taxas das 3 inércias principais (V3) entre as
+    clínicas do município e da AP da equipe.
 
-    Cada clínica é uma observação (soma das células sexo × faixa × ESF
-    da clínica). Filtro de n_tratados ≥ 50 evita ruído de clínicas com
-    poucos pacientes, conforme recomendação do dicionário de inércia.
+    Cada clínica é uma observação (soma das células do agregado).
+    Filtro de n ≥ 50 evita ruído de clínicas pequenas (dicionário
+    seção 4.5).
+
+    Denominadores — atenção:
+      • `inercia_persistente`     → denominador `n_HAS_tratados`
+      • `inercia_falta_tratamento`→ denominador `n_pacientes_HAS`
+      • `inercia_falta_aferi`     → denominador `n_HAS_tratados`
+      • `controlado`              → denominador `n_HAS_tratados`
+      (idem para DM, com nomes assimétricos: `_HbA1c_DM`).
     """
     sql = f"""
     WITH por_clinica AS (
       SELECT
         area_programatica_cadastro AS ap,
         nome_clinica_cadastro      AS clinica,
-        SUM(n_HAS_tratados)        AS n_HAS_t,
-        SUM(n_em_inercia_HAS)      AS n_in_HAS,
-        SUM(n_estagnado_HAS)       AS n_est_HAS,
-        SUM(n_controlado_HAS)      AS n_ctrl_HAS,
-        SUM(n_DM_tratados)         AS n_DM_t,
-        SUM(n_em_inercia_DM)       AS n_in_DM,
-        SUM(n_estagnado_DM)        AS n_est_DM,
-        SUM(n_controlado_DM)       AS n_ctrl_DM
+        -- HAS
+        SUM(n_pacientes_HAS)                       AS n_HAS_pac,
+        SUM(n_HAS_tratados)                        AS n_HAS_t,
+        SUM(n_inercia_persistente_HAS)             AS n_pers_HAS,
+        SUM(n_inercia_falta_tratamento_HAS)        AS n_falta_trat_HAS,
+        SUM(n_inercia_falta_aferi_HAS)             AS n_falta_aferi_HAS,
+        SUM(n_controlado_HAS)                      AS n_ctrl_HAS,
+        -- DM
+        SUM(n_pacientes_DM)                        AS n_DM_pac,
+        SUM(n_DM_tratados)                         AS n_DM_t,
+        SUM(n_inercia_persistente_DM)              AS n_pers_DM,
+        SUM(n_inercia_falta_tratamento_DM)         AS n_falta_trat_DM,
+        SUM(n_inercia_falta_aferi_DM)              AS n_falta_aferi_DM,
+        SUM(n_controlado_DM)                       AS n_ctrl_DM
       FROM `{_fqn('MM_consultas_agregado')}`
       GROUP BY ap, clinica
     )
     SELECT
-      -- Município
+      -- ===== HAS — Município =====
       APPROX_QUANTILES(
-        IF(n_HAS_t >= 50, SAFE_DIVIDE(n_in_HAS, n_HAS_t)*100, NULL),
-        100 IGNORE NULLS)[OFFSET(50)] AS mun_in_HAS,
+        IF(n_HAS_t >= 50,    SAFE_DIVIDE(n_pers_HAS, n_HAS_t)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS mun_pers_HAS,
       APPROX_QUANTILES(
-        IF(n_HAS_t >= 50, SAFE_DIVIDE(n_est_HAS, n_HAS_t)*100, NULL),
-        100 IGNORE NULLS)[OFFSET(50)] AS mun_est_HAS,
+        IF(n_HAS_pac >= 50,  SAFE_DIVIDE(n_falta_trat_HAS, n_HAS_pac)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS mun_falta_trat_HAS,
       APPROX_QUANTILES(
-        IF(n_HAS_t >= 50, SAFE_DIVIDE(n_ctrl_HAS, n_HAS_t)*100, NULL),
+        IF(n_HAS_t >= 50,    SAFE_DIVIDE(n_falta_aferi_HAS, n_HAS_t)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS mun_falta_aferi_HAS,
+      APPROX_QUANTILES(
+        IF(n_HAS_t >= 50,    SAFE_DIVIDE(n_ctrl_HAS, n_HAS_t)*100, NULL),
         100 IGNORE NULLS)[OFFSET(50)] AS mun_ctrl_HAS,
-      APPROX_QUANTILES(
-        IF(n_DM_t >= 50, SAFE_DIVIDE(n_in_DM, n_DM_t)*100, NULL),
-        100 IGNORE NULLS)[OFFSET(50)] AS mun_in_DM,
-      APPROX_QUANTILES(
-        IF(n_DM_t >= 50, SAFE_DIVIDE(n_est_DM, n_DM_t)*100, NULL),
-        100 IGNORE NULLS)[OFFSET(50)] AS mun_est_DM,
-      APPROX_QUANTILES(
-        IF(n_DM_t >= 50, SAFE_DIVIDE(n_ctrl_DM, n_DM_t)*100, NULL),
-        100 IGNORE NULLS)[OFFSET(50)] AS mun_ctrl_DM,
-      -- AP
+      -- ===== HAS — AP =====
       APPROX_QUANTILES(
         IF(ap = '{ap}' AND n_HAS_t >= 50,
-           SAFE_DIVIDE(n_in_HAS, n_HAS_t)*100, NULL),
-        100 IGNORE NULLS)[OFFSET(50)] AS ap_in_HAS,
+           SAFE_DIVIDE(n_pers_HAS, n_HAS_t)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS ap_pers_HAS,
+      APPROX_QUANTILES(
+        IF(ap = '{ap}' AND n_HAS_pac >= 50,
+           SAFE_DIVIDE(n_falta_trat_HAS, n_HAS_pac)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS ap_falta_trat_HAS,
       APPROX_QUANTILES(
         IF(ap = '{ap}' AND n_HAS_t >= 50,
-           SAFE_DIVIDE(n_est_HAS, n_HAS_t)*100, NULL),
-        100 IGNORE NULLS)[OFFSET(50)] AS ap_est_HAS,
+           SAFE_DIVIDE(n_falta_aferi_HAS, n_HAS_t)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS ap_falta_aferi_HAS,
       APPROX_QUANTILES(
         IF(ap = '{ap}' AND n_HAS_t >= 50,
            SAFE_DIVIDE(n_ctrl_HAS, n_HAS_t)*100, NULL),
         100 IGNORE NULLS)[OFFSET(50)] AS ap_ctrl_HAS,
+      -- ===== DM — Município =====
+      APPROX_QUANTILES(
+        IF(n_DM_t >= 50,    SAFE_DIVIDE(n_pers_DM, n_DM_t)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS mun_pers_DM,
+      APPROX_QUANTILES(
+        IF(n_DM_pac >= 50,  SAFE_DIVIDE(n_falta_trat_DM, n_DM_pac)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS mun_falta_trat_DM,
+      APPROX_QUANTILES(
+        IF(n_DM_t >= 50,    SAFE_DIVIDE(n_falta_aferi_DM, n_DM_t)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS mun_falta_aferi_DM,
+      APPROX_QUANTILES(
+        IF(n_DM_t >= 50,    SAFE_DIVIDE(n_ctrl_DM, n_DM_t)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS mun_ctrl_DM,
+      -- ===== DM — AP =====
       APPROX_QUANTILES(
         IF(ap = '{ap}' AND n_DM_t >= 50,
-           SAFE_DIVIDE(n_in_DM, n_DM_t)*100, NULL),
-        100 IGNORE NULLS)[OFFSET(50)] AS ap_in_DM,
+           SAFE_DIVIDE(n_pers_DM, n_DM_t)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS ap_pers_DM,
+      APPROX_QUANTILES(
+        IF(ap = '{ap}' AND n_DM_pac >= 50,
+           SAFE_DIVIDE(n_falta_trat_DM, n_DM_pac)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS ap_falta_trat_DM,
       APPROX_QUANTILES(
         IF(ap = '{ap}' AND n_DM_t >= 50,
-           SAFE_DIVIDE(n_est_DM, n_DM_t)*100, NULL),
-        100 IGNORE NULLS)[OFFSET(50)] AS ap_est_DM,
+           SAFE_DIVIDE(n_falta_aferi_DM, n_DM_t)*100, NULL),
+        100 IGNORE NULLS)[OFFSET(50)] AS ap_falta_aferi_DM,
       APPROX_QUANTILES(
         IF(ap = '{ap}' AND n_DM_t >= 50,
            SAFE_DIVIDE(n_ctrl_DM, n_DM_t)*100, NULL),
@@ -1144,205 +1185,239 @@ def _detecta_inversao_gradiente(valores, esperado_crescente):
     return None
 
 
-def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict,
-                        n_cond_total: int):
-    """Ato 2.5 — Resposta ao descontrole (inércia / tratamento
-    estagnado) — para HAS ou DM. Espelha o estilo dos demais atos
-    (texto à esquerda, KPIs à direita) e adiciona dois gráficos
-    plotly (distribuição de status atual + padrão de manejo 365d)
-    e cards de benchmark vs. AP e município.
+def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
+    """Ato 2.5 — Resposta ao descontrole (taxonomia V3, 11 categorias)
+    para HAS ou DM. Estrutura em 4 camadas, espelhando a narrativa
+    do guia conceitual:
 
-    Recebe:
-      condicao: 'HAS' ou 'DM'.
-      ag_in:    dict retornado por carregar_inercia_agregado().
-      bm:       dict retornado por carregar_inercia_benchmarks().
-      n_cond_total: nº total da população com a condição na equipe.
+      1. Cabeçalho narrativo (3 frentes de cuidado).
+      2. 3 cards grandes de frente: 🩺 médica, 🩹 equipe, 🏠 busca ativa.
+      3. Donut com as 10 categorias detalhadas (denominador completo
+         da população com a condição — `n_pacientes_*`).
+      4. Cards de benchmark das 3 inércias principais (persistente,
+         falta de tratamento, falta de aferição) vs. AP e município.
+      5. Padrão de manejo 365d (trajetória, em barra horizontal).
+
+    Denominadores: a maioria usa `n_HAS_tratados`. Exceção crítica:
+    `n_inercia_falta_tratamento_HAS` usa `n_pacientes_HAS` (porque a
+    flag dispara para quem NÃO tem tratamento).
     """
     nome   = 'Hipertensão' if condicao == 'HAS' else 'Diabetes'
     abrev  = condicao
-    param  = 'PA'    if condicao == 'HAS' else 'HbA1c'
+    param  = 'PA' if condicao == 'HAS' else 'HbA1c'
+    # Nome assimétrico do contador "sem nenhuma aferição" (V3).
+    suf_sem_nenhuma = 'sem_nenhuma_PA' if condicao == 'HAS' else 'sem_nenhuma_HbA1c'
 
     def _v(k):
         v = ag_in.get(k)
         return int(v) if (v is not None and pd.notna(v)) else 0
 
-    n_trat = _v(f'n_{abrev}_tratados')
-    n_iner = _v(f'n_em_inercia_{abrev}')
-    n_est  = _v(f'n_estagnado_{abrev}')
-    n_mapr = _v(f'n_manejo_apropriado_{abrev}')
-    n_ctrl = _v(f'n_controlado_{abrev}')
-    n_clac = _v(f'n_controlado_lacuna_{abrev}')
-    n_dsc  = _v(f'n_descontrole_sem_comp_{abrev}')
-    n_safe = _v(f'n_sem_afericao_{abrev}')
-    n_spr  = _v(f'n_sem_prescricao_{abrev}')
-
-    n_p_pro  = _v(f'n_padrao_proativo_{abrev}')
-    n_p_in   = _v(f'n_padrao_inerte_{abrev}')
-    n_p_est  = _v(f'n_padrao_estagnado_{abrev}')
-    n_p_ctrl = _v(f'n_padrao_controlado_{abrev}')
-    n_p_mix  = _v(f'n_padrao_misto_{abrev}')
-    n_p_lt2  = _v(f'n_padrao_menos_2_consultas_{abrev}')
-
     def _pct(num, den):
         return (100 * num / den) if den else 0
 
-    pct_iner = _pct(n_iner, n_trat)
-    pct_est  = _pct(n_est,  n_trat)
-    pct_mapr = _pct(n_mapr, n_trat)
-    pct_ctrl = _pct(n_ctrl, n_trat)
+    # ── Denominadores ────────────────────────────────────────────
+    n_pac  = _v(f'n_pacientes_{abrev}')   # universo completo
+    n_trat = _v(f'n_{abrev}_tratados')    # com prescrição em 365d
 
-    def _b(v):     return f"<b>{v}</b>"
-    def _br(v):    return f"<span style='color:#B71C1C; font-weight:700;'>{v}</span>"
-    def _bg(v):    return f"<span style='color:#198754; font-weight:700;'>{v}</span>"
+    # ── Status atual (10 categorias) ─────────────────────────────
+    n_pers    = _v(f'n_inercia_persistente_{abrev}')
+    n_ftrat   = _v(f'n_inercia_falta_tratamento_{abrev}')
+    n_faferi  = _v(f'n_inercia_falta_aferi_{abrev}')
+    n_drec    = _v(f'n_descontrole_recente_{abrev}')
+    n_ratras  = _v(f'n_renovado_controlado_atrasado_{abrev}')
+    n_cego    = _v(f'n_{suf_sem_nenhuma}_{abrev}')
+    n_mapr    = _v(f'n_manejo_apropriado_{abrev}')
+    n_ctrl    = _v(f'n_controlado_{abrev}')
+    n_clac    = _v(f'n_controlado_lacuna_{abrev}')
+    n_dsc     = _v(f'n_descontrole_sem_comp_{abrev}')
 
-    ai_e, ai_d = st.columns([1, 1.1])
-    with ai_e:
-        st.markdown(
-            f"<div style='font-size:1.0em; line-height:1.65;'>"
-            f"Dos {_b(n_cond_total)} pacientes com {nome.lower()} "
-            f"da equipe, {_b(n_trat)} têm <b>tratamento ativo</b> "
-            f"(≥1 prescrição em 365 dias) — esse é o denominador "
-            f"para avaliar a resposta do esquema ao controle de "
-            f"{param}.<br><br>"
-            f"<b>Inércia provável:</b> {_br(n_iner)} "
-            f"({_b(f'{pct_iner:.1f}%')}) — paciente descontrolado e "
-            f"esquema mantido na última consulta.<br>"
-            f"<b>Tratamento estagnado:</b> {_br(n_est)} "
-            f"({_b(f'{pct_est:.0f}%')}) — prescrição renovada sem "
-            f"{param} aferida em 180 dias.<br>"
-            f"<b>Manejo apropriado:</b> {_bg(n_mapr)} "
-            f"({_b(f'{pct_mapr:.0f}%')}) — descontrolado, e a "
-            f"equipe intensificou ou trocou o esquema.<br>"
-            f"<b>Controlado:</b> {_bg(n_ctrl)} "
-            f"({_b(f'{pct_ctrl:.0f}%')}).<br><br>"
-            f"<i>No conjunto do município, a <b>estagnação</b> é "
-            f"muito mais frequente que a inércia médica propriamente "
-            f"dita — em geral, a maior alavanca não é mudar o "
-            f"esquema dos descontrolados, e sim retomar aferições e "
-            f"exames dos pacientes em renovação sem seguimento.</i>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-    with ai_d:
-        c1, c2 = st.columns(2)
-        _kpi(c1, f"⏱️ Em inércia {abrev}",
-             f"{n_iner:,}", f"{pct_iner:.1f}% dos tratados")
-        _kpi(c2, f"🚧 Tratamento estagnado {abrev}",
-             f"{n_est:,}", f"{pct_est:.0f}% dos tratados")
-        c3, c4 = st.columns(2)
-        _kpi(c3, "✅ Manejo apropriado",
-             f"{n_mapr:,}", f"{pct_mapr:.0f}% dos tratados")
-        _kpi(c4, "🟢 Controlado",
-             f"{n_ctrl:,}", f"{pct_ctrl:.0f}% dos tratados")
-        c5, c6 = st.columns(2)
-        _kpi(c5, "🟡 Controlado c/ lacuna de consulta",
-             f"{n_clac:,}", f"{_pct(n_clac, n_trat):.0f}% dos tratados")
-        _kpi(c6, "🔴 Sem aferição (180d)",
-             f"{n_safe:,}", f"{_pct(n_safe, n_trat):.0f}% dos tratados")
+    # ── Padrão de manejo 365d ────────────────────────────────────
+    n_p_pro   = _v(f'n_padrao_proativo_{abrev}')
+    n_p_in    = _v(f'n_padrao_inerte_{abrev}')
+    n_p_est   = _v(f'n_padrao_estagnado_{abrev}')
+    n_p_ctrl  = _v(f'n_padrao_controlado_{abrev}')
+    n_p_mix   = _v(f'n_padrao_misto_{abrev}')
+    n_p_lt2   = _v(f'n_padrao_menos_2_consultas_{abrev}')
 
-    # ── Gráficos: distribuição de status (donut) + padrão manejo (bar)
-    g1, g2 = st.columns(2)
+    # ── Agrupamento por FRENTE de cuidado ────────────────────────
+    # Frente médica → decisão clínica diante do descontrole.
+    n_frente_med = n_pers + n_drec
+    # Frente da equipe → aferição/exame de rotina não acontece.
+    n_frente_eqp = n_faferi + n_cego + n_ratras
+    # Frente da busca ativa → paciente saiu da rede (ACS).
+    n_frente_ba  = n_ftrat + n_clac
+    # Sem alerta de inércia (apenas informativo).
+    n_sem_alerta = n_mapr + n_ctrl + n_dsc
+
+    pct_frente_med = _pct(n_frente_med, n_pac)
+    pct_frente_eqp = _pct(n_frente_eqp, n_pac)
+    pct_frente_ba  = _pct(n_frente_ba,  n_pac)
+
+    # ── Taxas das 3 inércias principais (com denominador correto) ─
+    pct_pers   = _pct(n_pers,   n_trat)   # denominador: tratados
+    pct_ftrat  = _pct(n_ftrat,  n_pac)    # denominador: TODOS os HAS
+    pct_faferi = _pct(n_faferi, n_trat)
+    pct_ctrl_t = _pct(n_ctrl,   n_trat)
+
+    # ───────── 1. Narrativa em texto ─────────────────────────────
+    st.markdown(
+        f"<div style='font-size:1.0em; line-height:1.65;'>"
+        f"Dos <b>{n_pac:,}</b> pacientes com {nome.lower()} da equipe, "
+        f"<b>{n_trat:,}</b> têm prescrição registrada em 365 dias "
+        f"(<b>{_pct(n_trat, n_pac):.0f}%</b>). O resto não aparece "
+        f"como em tratamento — é, em si, uma das formas mais "
+        f"frequentes de inércia.<br><br>"
+        f"A leitura do dicionário de inércia separa os pacientes em "
+        f"<b>3 frentes de cuidado</b>, conforme onde está o "
+        f"obstáculo:"
+        f"<ul style='margin:6px 0; padding-left:22px; line-height:1.6;'>"
+        f"<li><b>🩺 Frente médica</b> — decisão clínica diante do "
+        f"descontrole (intensificar, trocar, confirmar);</li>"
+        f"<li><b>🩹 Frente da equipe</b> — aferir PA e solicitar "
+        f"exames de rotina;</li>"
+        f"<li><b>🏠 Frente da busca ativa</b> — reativar o vínculo "
+        f"de pacientes que sumiram da rede (ACS / visita domiciliar)."
+        f"</li></ul>"
+        f"<i>A maior parte da inércia não é \"médico não age\" — é "
+        f"\"o sistema perde pacientes antes que o médico tenha "
+        f"como agir\".</i>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ───────── 2. Cards grandes das 3 frentes ────────────────────
+    st.markdown(
+        "<div style='margin:14px 0 8px 0; font-size:1.0em; color:#444;'>"
+        "<b>Onde está a inércia desta equipe?</b></div>",
+        unsafe_allow_html=True,
+    )
+
+    def _card_frente(col, titulo, valor_n, valor_pct, cor, detalhe):
+        with col:
+            st.markdown(
+                f"<div style='border:1px solid #E0E0E0; border-left:6px "
+                f"solid {cor}; border-radius:6px; padding:14px 16px; "
+                f"background:#FAFAFA; height:100%;'>"
+                f"<div style='font-size:0.92em; color:#444; "
+                f"font-weight:600; margin-bottom:6px;'>{titulo}</div>"
+                f"<div style='font-size:1.7em; font-weight:700; "
+                f"color:{cor}; line-height:1.1;'>{valor_n:,}</div>"
+                f"<div style='font-size:0.92em; color:#555; "
+                f"margin-bottom:8px;'>"
+                f"{valor_pct:.0f}% dos {nome.lower()}s da equipe</div>"
+                f"<div style='font-size:0.85em; color:#666; line-height:1.5;'>"
+                f"{detalhe}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+    cf1, cf2, cf3 = st.columns(3)
+    _card_frente(
+        cf1, "🩺 Frente médica", n_frente_med, pct_frente_med, '#c0392b',
+        f"Pacientes descontrolados em que a decisão sobre o esquema "
+        f"está pendente. Inclui {n_pers:,} em inércia persistente e "
+        f"{n_drec:,} com descontrole recente sem ação registrada."
+    )
+    _card_frente(
+        cf2, "🩹 Frente da equipe", n_frente_eqp, pct_frente_eqp, '#e67e22',
+        f"Pacientes em tratamento, mas {param} não é aferida/"
+        f"solicitada. Inclui {n_faferi:,} com histórico ruim sem nova "
+        f"aferição, {n_cego:,} que nunca foram aferidos em 730 dias "
+        f"e {n_ratras:,} renovados sem nova {param}."
+    )
+    _card_frente(
+        cf3, "🏠 Frente da busca ativa", n_frente_ba, pct_frente_ba, '#d35400',
+        f"Pacientes que sumiram da rede. Inclui {n_ftrat:,} sem "
+        f"prescrição em 365 dias e {n_clac:,} controlados na última "
+        f"aferição mas sem nova consulta há mais de 180 dias."
+    )
+
+    st.markdown(
+        f"<div style='margin:10px 0 0 0; font-size:0.92em; color:#555;'>"
+        f"Os outros <b>{n_sem_alerta:,}</b> pacientes "
+        f"(<b>{_pct(n_sem_alerta, n_pac):.0f}%</b>) estão sem alerta "
+        f"de inércia — controlados, em manejo apropriado pela equipe "
+        f"ou descontrolados sem histórico para comparar (caso de "
+        f"paciente novo ou retorno de hiato).</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ───────── 3. Donut detalhado (10 categorias) ────────────────
+    st.markdown(
+        "<div style='margin:18px 0 6px 0; font-size:1.0em; color:#444;'>"
+        "<b>Distribuição detalhada — 10 categorias de status</b> "
+        "<span style='color:#777; font-size:0.85em;'>"
+        "(soma para o total de pacientes com a condição)</span></div>",
+        unsafe_allow_html=True,
+    )
+
     status_rows = [
-        ('Inércia provável',                n_iner, '#B71C1C'),
-        ('Tratamento estagnado',            n_est,  '#D32F2F'),
-        ('Controlado c/ lacuna consulta',   n_clac, '#E53935'),
-        ('Descontrole sem comparação',      n_dsc,  '#E69138'),
-        ('Sem aferição',                    n_safe, '#F6B26B'),
-        ('Sem prescrição recente',          n_spr,  '#9E9E9E'),
-        ('Manejo apropriado',               n_mapr, '#43A047'),
-        ('Controlado',                      n_ctrl, '#198754'),
+        ('Inércia persistente',                n_pers,   '#c0392b'),
+        ('Inércia por falta de tratamento',    n_ftrat,  '#d35400'),
+        ('Inércia por falta de aferição',      n_faferi, '#e67e22'),
+        ('Descontrole recente sem ação',       n_drec,   '#e74c3c'),
+        (f'Em tratamento sem nenhuma {param}', n_cego,   '#f39c12'),
+        ('Renovado controlado atrasado',       n_ratras, '#f1c40f'),
+        ('Controlado com lacuna de consulta',  n_clac,   '#bdc3c7'),
+        ('Manejo apropriado',                  n_mapr,   '#27ae60'),
+        ('Controlado',                         n_ctrl,   '#16a085'),
+        ('Descontrole sem comparação',         n_dsc,    '#95a5a6'),
     ]
     df_status = pd.DataFrame(
         [{'Status': lab, 'n': n, 'cor': c}
          for lab, n, c in status_rows if n > 0]
     )
-    with g1:
-        st.markdown("**Distribuição do status atual** "
-                    "(snapshot da última consulta)")
-        if not df_status.empty:
-            cor_map = dict(zip(df_status['Status'], df_status['cor']))
-            fig = px.pie(df_status, values='n', names='Status',
-                         hole=0.45,
-                         color='Status',
-                         color_discrete_map=cor_map)
-            fig.update_traces(textposition='inside', textinfo='percent',
-                              hovertemplate='%{label}<br>%{value} pacientes (%{percent})<extra></extra>')
-            fig.update_layout(margin=dict(t=10, b=10, l=10, r=10),
-                              height=320, legend=dict(font=dict(size=11)))
-            st.plotly_chart(fig, use_container_width=True,
-                            key=f"inercia_status_{abrev}")
-        else:
-            st.info("Sem dados de status.")
+    if not df_status.empty:
+        cor_map = dict(zip(df_status['Status'], df_status['cor']))
+        fig = px.pie(df_status, values='n', names='Status',
+                     hole=0.45,
+                     color='Status',
+                     color_discrete_map=cor_map)
+        fig.update_traces(
+            textposition='inside', textinfo='percent',
+            hovertemplate='%{label}<br>%{value} pacientes (%{percent})<extra></extra>',
+            sort=False,
+        )
+        fig.update_layout(margin=dict(t=10, b=10, l=10, r=10),
+                          height=360, legend=dict(font=dict(size=11)))
+        st.plotly_chart(fig, use_container_width=True,
+                        key=f"inercia_status_{abrev}")
+    else:
+        st.info("Sem dados de status para esta equipe.")
 
-    pad_rows = [
-        ('Manejo proativo',        n_p_pro,  '#43A047'),
-        ('Manejo inerte',          n_p_in,   '#B71C1C'),
-        ('Manejo estagnado',       n_p_est,  '#D32F2F'),
-        ('Controlado consistente', n_p_ctrl, '#198754'),
-        ('Padrão misto',           n_p_mix,  '#FBC02D'),
-        ('<2 consultas em 365d',   n_p_lt2,  '#9E9E9E'),
-    ]
-    df_pad = pd.DataFrame(
-        [{'Padrão': lab, 'n': n, 'cor': c}
-         for lab, n, c in pad_rows if n > 0]
-    )
-    with g2:
-        st.markdown("**Padrão de manejo nos últimos 365 dias** "
-                    "(trajetória, não snapshot)")
-        if not df_pad.empty:
-            df_pad_sorted = df_pad.sort_values('n', ascending=True)
-            cor_map_p = dict(zip(df_pad_sorted['Padrão'],
-                                 df_pad_sorted['cor']))
-            fig2 = px.bar(df_pad_sorted, x='n', y='Padrão',
-                          orientation='h', color='Padrão',
-                          color_discrete_map=cor_map_p,
-                          text='n')
-            fig2.update_traces(textposition='outside')
-            fig2.update_layout(
-                showlegend=False,
-                margin=dict(t=10, b=10, l=10, r=30),
-                height=320,
-                xaxis_title='Pacientes',
-                yaxis_title='',
-            )
-            st.plotly_chart(fig2, use_container_width=True,
-                            key=f"inercia_padrao_{abrev}")
-        else:
-            st.info("Sem dados de padrão de manejo.")
-
-    # ── Benchmarks vs. AP e município ─────────────────────────────
+    # ───────── 4. Benchmarks vs. AP e município ──────────────────
     st.markdown(
-        "**Comparação com a área programática e com o município** "
+        "<div style='margin:14px 0 8px 0; font-size:1.0em; color:#444;'>"
+        "<b>Comparação com a área programática e com o município</b> "
         "<span style='color:#777; font-size:0.85em;'>"
-        "(mediana entre clínicas com n_tratados ≥ 50)</span>",
+        "(mediana entre clínicas com n ≥ 50)</span></div>",
         unsafe_allow_html=True,
     )
 
     def _delta_chip(d, invertido=True):
-        # invertido=True: positivo é ruim (inércia, estagnado)
         if d is None or pd.isna(d):
             return "<span style='color:#999;'>—</span>"
-        sinal = '+' if d > 0 else ('' if d == 0 else '')
         if invertido:
-            cor = '#B71C1C' if d > 0.5 else ('#198754' if d < -0.5 else '#666')
+            cor = '#c0392b' if d > 0.5 else ('#27ae60' if d < -0.5 else '#666')
         else:
-            cor = '#198754' if d > 0.5 else ('#B71C1C' if d < -0.5 else '#666')
+            cor = '#27ae60' if d > 0.5 else ('#c0392b' if d < -0.5 else '#666')
+        sinal = '+' if d > 0 else ''
         return (f"<span style='color:{cor}; font-weight:700;'>"
-                f"{sinal}{d:+.1f} pp</span>".replace('++', '+'))
+                f"{sinal}{d:.1f} pp</span>")
 
     def _bm_card(col, titulo, valor_equipe, valor_ap, valor_mun,
                  cor_destaque, invertido=True):
         with col:
             v = valor_equipe
-            vap = valor_ap if valor_ap is not None else 0
-            vmun = valor_mun if valor_mun is not None else 0
+            vap = valor_ap if valor_ap is not None and pd.notna(valor_ap) else 0
+            vmun = valor_mun if valor_mun is not None and pd.notna(valor_mun) else 0
             d_ap = v - vap
             d_mun = v - vmun
             st.markdown(
                 f"<div style='border:1px solid #E0E0E0; border-radius:6px; "
                 f"padding:12px; background:#FAFAFA; height:100%;'>"
                 f"<div style='font-size:0.85em; color:#555;'>{titulo}</div>"
-                f"<div style='font-size:1.45em; font-weight:700; "
+                f"<div style='font-size:1.4em; font-weight:700; "
                 f"color:{cor_destaque}; line-height:1.2;'>"
                 f"Sua equipe: {v:.1f}%</div>"
                 f"<div style='font-size:0.88em; color:#555; "
@@ -1355,19 +1430,75 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict,
                 unsafe_allow_html=True,
             )
 
-    b1, b2, b3 = st.columns(3)
-    _bm_card(b1, f"⏱️ % em inércia {abrev}",
-             pct_iner, bm.get(f'ap_in_{abrev}'),
-             bm.get(f'mun_in_{abrev}'),
-             '#B71C1C', invertido=True)
-    _bm_card(b2, f"🚧 % em tratamento estagnado {abrev}",
-             pct_est, bm.get(f'ap_est_{abrev}'),
-             bm.get(f'mun_est_{abrev}'),
-             '#D32F2F', invertido=True)
-    _bm_card(b3, f"🟢 % controlado {abrev}",
-             pct_ctrl, bm.get(f'ap_ctrl_{abrev}'),
-             bm.get(f'mun_ctrl_{abrev}'),
-             '#198754', invertido=False)
+    b1, b2 = st.columns(2)
+    _bm_card(
+        b1,
+        f"🩺 Inércia persistente {abrev} (sobre tratados)",
+        pct_pers, bm.get(f'ap_pers_{abrev}'), bm.get(f'mun_pers_{abrev}'),
+        '#c0392b', invertido=True,
+    )
+    _bm_card(
+        b2,
+        f"🏠 Sem prescrição em 365d {abrev} (sobre todos os {abrev})",
+        pct_ftrat, bm.get(f'ap_falta_trat_{abrev}'),
+        bm.get(f'mun_falta_trat_{abrev}'),
+        '#d35400', invertido=True,
+    )
+    b3, b4 = st.columns(2)
+    _bm_card(
+        b3,
+        f"🩹 Falta de aferição {abrev} (sobre tratados)",
+        pct_faferi, bm.get(f'ap_falta_aferi_{abrev}'),
+        bm.get(f'mun_falta_aferi_{abrev}'),
+        '#e67e22', invertido=True,
+    )
+    _bm_card(
+        b4,
+        f"🟢 Controlado {abrev} (sobre tratados)",
+        pct_ctrl_t, bm.get(f'ap_ctrl_{abrev}'), bm.get(f'mun_ctrl_{abrev}'),
+        '#16a085', invertido=False,
+    )
+
+    # ───────── 5. Padrão de manejo 365d ──────────────────────────
+    st.markdown(
+        "<div style='margin:18px 0 6px 0; font-size:1.0em; color:#444;'>"
+        "<b>Padrão de manejo na trajetória de 365 dias</b> "
+        "<span style='color:#777; font-size:0.85em;'>"
+        "(comportamento ao longo do ano, não snapshot)</span></div>",
+        unsafe_allow_html=True,
+    )
+    pad_rows = [
+        ('Manejo proativo',          n_p_pro,  '#27ae60'),
+        ('Manejo inerte',            n_p_in,   '#c0392b'),
+        ('Manejo estagnado',         n_p_est,  '#e67e22'),
+        ('Controlado consistente',   n_p_ctrl, '#16a085'),
+        ('Padrão misto',             n_p_mix,  '#f1c40f'),
+        ('<2 consultas em 365d',     n_p_lt2,  '#bdc3c7'),
+    ]
+    df_pad = pd.DataFrame(
+        [{'Padrão': lab, 'n': n, 'cor': c}
+         for lab, n, c in pad_rows if n > 0]
+    )
+    if not df_pad.empty:
+        df_pad_sorted = df_pad.sort_values('n', ascending=True)
+        cor_map_p = dict(zip(df_pad_sorted['Padrão'],
+                             df_pad_sorted['cor']))
+        fig2 = px.bar(df_pad_sorted, x='n', y='Padrão',
+                      orientation='h', color='Padrão',
+                      color_discrete_map=cor_map_p,
+                      text='n')
+        fig2.update_traces(textposition='outside')
+        fig2.update_layout(
+            showlegend=False,
+            margin=dict(t=10, b=10, l=10, r=40),
+            height=300,
+            xaxis_title='Pacientes',
+            yaxis_title='',
+        )
+        st.plotly_chart(fig2, use_container_width=True,
+                        key=f"inercia_padrao_{abrev}")
+    else:
+        st.info("Sem dados de padrão de manejo.")
 
 
 # Ordem de exibição dos grupos de lacunas na aba narrativa. Difere
@@ -2677,19 +2808,21 @@ with tab_has:
 
     # ───────── ATO 2.5 — RESPOSTA AO DESCONTROLE (INÉRCIA / ESTAGNADO) ─
     st.markdown("---")
-    st.markdown("##### 2.5 Resposta ao descontrole — "
-                "inércia e tratamento estagnado")
+    st.markdown("##### 2.5 Inércia terapêutica — onde o cuidado "
+                "está travando")
     st.caption(
-        "Como o esquema terapêutico tem respondido ao controle "
-        "pressórico, ao longo do último ano. Denominador são os "
-        "hipertensos em tratamento ativo (≥1 prescrição em 365 "
-        "dias); pacientes sem prescrição recente aparecem como "
-        "categoria à parte."
+        "A taxonomia V3 separa os hipertensos em **11 categorias** "
+        "agrupadas em três frentes de cuidado: 🩺 frente médica "
+        "(decisão clínica diante do descontrole), 🩹 frente da "
+        "equipe (aferir PA e solicitar exames), e 🏠 frente da busca "
+        "ativa (reativar pacientes que sumiram da rede). A maior "
+        "parte da inércia não é \"médico não age\" — é o sistema "
+        "perder pacientes antes que o médico tenha como agir."
     )
     with st.spinner("Carregando indicadores de inércia (HAS)..."):
         ag_in_has = carregar_inercia_agregado(ap_sel, cli_sel, esf_sel)
         bm_inercia = carregar_inercia_benchmarks(ap_sel)
-    _render_ato_inercia('HAS', ag_in_has, bm_inercia, n_has_total)
+    _render_ato_inercia('HAS', ag_in_has, bm_inercia)
 
     # ───────── ATO 3 — LACUNAS DE CUIDADO ─────────
     st.markdown("---")
@@ -3110,20 +3243,19 @@ with tab_dm:
 
     # ───────── ATO 2.5 — RESPOSTA AO DESCONTROLE (INÉRCIA / ESTAGNADO) ─
     st.markdown("---")
-    st.markdown("##### 2.5 Resposta ao descontrole — "
-                "inércia e tratamento estagnado")
+    st.markdown("##### 2.5 Inércia terapêutica — onde o cuidado "
+                "está travando")
     st.caption(
-        "Como o esquema terapêutico tem respondido ao controle "
-        "glicêmico, ao longo do último ano. Denominador são os "
-        "diabéticos em tratamento ativo (≥1 prescrição em 365 "
-        "dias); pacientes sem prescrição recente aparecem como "
-        "categoria à parte. No diabetes o problema dominante "
-        "costuma ser a estagnação, não a inércia médica."
+        "Mesma taxonomia da aba de HAS, aplicada ao diabetes: **11 "
+        "categorias** em três frentes — 🩺 médica, 🩹 equipe e 🏠 "
+        "busca ativa. No DM, o ponto crítico costuma ser a solicitação "
+        "de HbA1c (a cobertura municipal do exame é baixa, então a "
+        "frente da equipe pesa muito mais do que no HAS)."
     )
     with st.spinner("Carregando indicadores de inércia (DM)..."):
         ag_in_dm = carregar_inercia_agregado(ap_sel, cli_sel, esf_sel)
         bm_inercia_dm = carregar_inercia_benchmarks(ap_sel)
-    _render_ato_inercia('DM', ag_in_dm, bm_inercia_dm, n_dm_total)
+    _render_ato_inercia('DM', ag_in_dm, bm_inercia_dm)
 
     # ───────── ATO 3 — LACUNAS DE EXAMES DE ROTINA ─────────
     st.markdown("---")
