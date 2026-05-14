@@ -1279,7 +1279,8 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
         unsafe_allow_html=True,
     )
 
-    def _card_frente(col, titulo, valor_n, valor_pct, cor, detalhe):
+    def _card_frente(col, titulo, valor_n, valor_den, valor_pct, cor,
+                     detalhe):
         with col:
             st.markdown(
                 f"<div style='border:1px solid #E0E0E0; border-left:6px "
@@ -1290,8 +1291,14 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
                 f"<div style='font-size:1.7em; font-weight:700; "
                 f"color:{cor}; line-height:1.1;'>{valor_n:,}</div>"
                 f"<div style='font-size:0.92em; color:#555; "
-                f"margin-bottom:8px;'>"
-                f"{valor_pct:.1f}% dos {nome_pop} da equipe</div>"
+                f"margin-bottom:4px;'>"
+                f"<b>{valor_n:,}</b> de <b>{valor_den:,}</b> {nome_pop} "
+                f"da equipe — <b>{valor_pct:.1f}%</b></div>"
+                f"<div style='font-size:0.78em; color:#888; "
+                f"margin-bottom:8px; line-height:1.4;'>"
+                f"Numerador: pacientes desta frente de cuidado. "
+                f"Denominador: todos os {nome_pop} cadastrados na "
+                f"equipe.</div>"
                 f"<div style='font-size:0.85em; color:#666; line-height:1.5;'>"
                 f"{detalhe}</div>"
                 f"</div>",
@@ -1300,20 +1307,23 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
 
     cf1, cf2, cf3 = st.columns(3)
     _card_frente(
-        cf1, "🩺 Frente médica", n_frente_med, pct_frente_med, '#c0392b',
+        cf1, "🩺 Frente médica", n_frente_med, n_pac, pct_frente_med,
+        '#c0392b',
         f"Pacientes descontrolados em que a decisão sobre o esquema "
         f"está pendente. Inclui {n_pers:,} em inércia persistente e "
         f"{n_drec:,} com descontrole recente sem ação registrada."
     )
     _card_frente(
-        cf2, "🩹 Frente da equipe", n_frente_eqp, pct_frente_eqp, '#e67e22',
+        cf2, "🩹 Frente da equipe", n_frente_eqp, n_pac, pct_frente_eqp,
+        '#e67e22',
         f"Pacientes em tratamento, mas {param} não é aferida/"
         f"solicitada. Inclui {n_faferi:,} com histórico ruim sem nova "
         f"aferição, {n_cego:,} que nunca foram aferidos em 730 dias "
         f"e {n_ratras:,} renovados sem nova {param}."
     )
     _card_frente(
-        cf3, "🏠 Frente da busca ativa", n_frente_ba, pct_frente_ba, '#d35400',
+        cf3, "🏠 Frente da busca ativa", n_frente_ba, n_pac, pct_frente_ba,
+        '#d35400',
         f"Pacientes que sumiram da rede. Inclui {n_ftrat:,} sem "
         f"prescrição em 365 dias e {n_clac:,} controlados na última "
         f"aferição mas sem nova consulta há mais de 180 dias."
@@ -1329,12 +1339,13 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
         unsafe_allow_html=True,
     )
 
-    # ───────── 3. Barra horizontal das 10 categorias + legenda ───
+    # ───────── 3. Barra vertical agrupada (10 categorias) + legenda ─
     st.markdown(
         "<div style='margin:22px 0 6px 0; font-size:1.0em; color:#444;'>"
         "<b>Distribuição detalhada — 10 categorias de status</b> "
         "<span style='color:#777; font-size:0.85em;'>"
-        "(denominador = todos os pacientes com a condição)</span></div>",
+        "(agrupadas em 4 famílias, com espaço entre elas; "
+        "denominador = todos os pacientes com a condição)</span></div>",
         unsafe_allow_html=True,
     )
 
@@ -1423,38 +1434,106 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
         ('Descontrole recente sem ação',       n_drec,   '#e74c3c'),
         (nome_cego,                            n_cego,   '#f39c12'),
         ('Renovado controlado atrasado',       n_ratras, '#f1c40f'),
-        ('Controlado com lacuna de consulta',  n_clac,   '#bdc3c7'),
+        ('Controlado com lacuna de consulta',  n_clac,   '#f4d03f'),
         ('Manejo apropriado',                  n_mapr,   '#27ae60'),
         ('Controlado',                         n_ctrl,   '#16a085'),
-        ('Descontrole sem comparação',         n_dsc,    '#95a5a6'),
+        ('Descontrole sem comparação',         n_dsc,    '#d4ac0d'),
     ]
-    df_status = pd.DataFrame(
-        [{'Status': lab, 'n': n, 'cor': c, 'pct': _pct(n, n_pac)}
-         for lab, n, c in status_rows if n > 0]
-    )
-    if not df_status.empty:
-        df_status_sorted = df_status.sort_values('n', ascending=True)
-        cor_map = dict(zip(df_status_sorted['Status'],
-                           df_status_sorted['cor']))
+
+    # As 10 categorias são organizadas em 4 famílias clínicas. O
+    # gráfico é uma barra vertical por categoria, com espaço entre as
+    # famílias para comparar a altura DENTRO de cada grupo. As barras
+    # não são somadas — cada categoria mantém seu próprio valor.
+    _GRUPO_STATUS = {
+        'Controlado':                        'verde',
+        'Manejo apropriado':                 'verde',
+        'Renovado controlado atrasado':      'amarelo',
+        'Controlado com lacuna de consulta': 'amarelo',
+        'Descontrole sem comparação':        'amarelo',
+        'Inércia por falta de tratamento':   'vermelho',
+        'Inércia por falta de aferição':     'vermelho',
+        'Descontrole recente sem ação':      'vermelho',
+        nome_cego:                           'vermelho',
+        'Inércia persistente':               'vermelho_escuro',
+    }
+    _LABEL_GRUPO = {
+        'verde':           '🟢 Sem alerta de inércia',
+        'amarelo':         '🟡 Atenção branda',
+        'vermelho':        '🟠 Inércia estrutural',
+        'vermelho_escuro': '🔴 Inércia persistente',
+    }
+    _ORDEM_GRUPOS = ['verde', 'amarelo', 'vermelho', 'vermelho_escuro']
+
+    def _wrap_lbl(s, larg=15):
+        palavras, linhas, atual = s.split(), [], ''
+        for p in palavras:
+            if atual and len(atual) + len(p) + 1 > larg:
+                linhas.append(atual)
+                atual = p
+            else:
+                atual = f"{atual} {p}".strip()
+        if atual:
+            linhas.append(atual)
+        return '<br>'.join(linhas)
+
+    grupos_com_cats = []
+    for _g in _ORDEM_GRUPOS:
+        _cats = [(lab, n, cor) for lab, n, cor in status_rows
+                 if _GRUPO_STATUS.get(lab) == _g and n > 0]
+        _cats.sort(key=lambda t: t[1], reverse=True)
+        if _cats:
+            grupos_com_cats.append((_g, _cats))
+
+    if grupos_com_cats:
+        # Insere um "spacer" invisível (barra de altura 0) entre os
+        # grupos para criar o espaço pedido.
+        plot_rows = []
+        for _gi, (_g, _cats) in enumerate(grupos_com_cats):
+            if _gi > 0:
+                plot_rows.append({
+                    'x': '⠀' * _gi, 'n': 0, 'cor': 'rgba(0,0,0,0)',
+                    'pct': 0.0, 'rotulo': '', 'grupo': None,
+                })
+            for lab, n, cor in _cats:
+                plot_rows.append({
+                    'x': _wrap_lbl(lab), 'n': n, 'cor': cor,
+                    'pct': _pct(n, n_pac),
+                    'rotulo': f"{int(n):,}<br>({_pct(n, n_pac):.1f}%)",
+                    'grupo': _g,
+                })
+        df_plot = pd.DataFrame(plot_rows)
+        ordem_x = df_plot['x'].tolist()
+        cor_map = dict(zip(df_plot['x'], df_plot['cor']))
+
         fig = px.bar(
-            df_status_sorted, x='n', y='Status',
-            orientation='h', color='Status',
+            df_plot, x='x', y='n', color='x',
             color_discrete_map=cor_map,
-            text=df_status_sorted.apply(
-                lambda r: f"{int(r['n']):,} ({r['pct']:.1f}%)", axis=1),
-            custom_data=['pct'],
+            category_orders={'x': ordem_x},
+            text='rotulo', custom_data=['pct'],
         )
         fig.update_traces(
             textposition='outside',
-            hovertemplate='%{y}<br>%{x:,} pacientes (%{customdata[0]:.1f}%)<extra></extra>',
+            hovertemplate='%{x}<br>%{y:,} pacientes '
+                          '(%{customdata[0]:.1f}%)<extra></extra>',
         )
+        # Cabeçalho de cada família, centralizado acima de suas barras.
+        for _g, _cats in grupos_com_cats:
+            _idxs = df_plot.index[df_plot['grupo'] == _g].tolist()
+            _centro = sum(_idxs) / len(_idxs)
+            fig.add_annotation(
+                x=_centro, y=1.0, xref='x', yref='paper',
+                text=f"<b>{_LABEL_GRUPO[_g]}</b>", showarrow=False,
+                yanchor='bottom', font=dict(size=11, color='#555'),
+            )
         fig.update_layout(
             showlegend=False,
-            margin=dict(t=10, b=10, l=10, r=80),
-            height=380,
-            xaxis_title='Pacientes',
-            yaxis_title='',
+            margin=dict(t=48, b=10, l=10, r=10),
+            height=460,
+            xaxis_title='',
+            yaxis_title='Pacientes',
+            bargap=0.18,
         )
+        fig.update_xaxes(tickangle=-30, tickfont=dict(size=10))
         st.plotly_chart(fig, use_container_width=True,
                         key=f"inercia_status_{abrev}")
 
@@ -1504,7 +1583,8 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
                 f"{sinal}{d:.1f} pp</span>")
 
     def _bm_card(col, titulo_curto, descricao, valor_equipe,
-                 valor_ap, valor_mun, cor_destaque, invertido=True):
+                 valor_ap, valor_mun, cor_destaque, num, den,
+                 rotulo_den, invertido=True):
         with col:
             v = valor_equipe
             vap = valor_ap if valor_ap is not None and pd.notna(valor_ap) else 0
@@ -1521,6 +1601,9 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
                 f"<div style='font-size:1.4em; font-weight:700; "
                 f"color:{cor_destaque}; line-height:1.2;'>"
                 f"Sua equipe: {v:.1f}%</div>"
+                f"<div style='font-size:0.85em; color:#444; "
+                f"margin-top:2px;'>"
+                f"<b>{num:,}</b> de <b>{den:,}</b> {rotulo_den}</div>"
                 f"<div style='font-size:0.88em; color:#555; "
                 f"margin-top:6px; line-height:1.5;'>"
                 f"Mediana da AP: {vap:.1f}% &nbsp; "
@@ -1580,13 +1663,16 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
             "tratamento ativo."
         )
 
+    rotulo_tratados = f"{nome_pop} em tratamento ativo"
+    rotulo_todos    = f"{nome_pop} da equipe"
+
     b1, b2 = st.columns(2)
     _bm_card(
         b1,
         f"🩺 Inércia persistente {abrev} (sobre tratados)",
         desc_bm_pers,
         pct_pers, bm.get(f'ap_pers_{abrev}'), bm.get(f'mun_pers_{abrev}'),
-        '#c0392b', invertido=True,
+        '#c0392b', n_pers, n_trat, rotulo_tratados, invertido=True,
     )
     _bm_card(
         b2,
@@ -1594,7 +1680,7 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
         desc_bm_ftrat,
         pct_ftrat, bm.get(f'ap_falta_trat_{abrev}'),
         bm.get(f'mun_falta_trat_{abrev}'),
-        '#d35400', invertido=True,
+        '#d35400', n_ftrat, n_pac, rotulo_todos, invertido=True,
     )
     b3, b4 = st.columns(2)
     _bm_card(
@@ -1603,14 +1689,14 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
         desc_bm_faferi,
         pct_faferi, bm.get(f'ap_falta_aferi_{abrev}'),
         bm.get(f'mun_falta_aferi_{abrev}'),
-        '#e67e22', invertido=True,
+        '#e67e22', n_faferi, n_trat, rotulo_tratados, invertido=True,
     )
     _bm_card(
         b4,
         f"🟢 Controlado {abrev} (sobre tratados)",
         desc_bm_ctrl,
         pct_ctrl_t, bm.get(f'ap_ctrl_{abrev}'), bm.get(f'mun_ctrl_{abrev}'),
-        '#16a085', invertido=False,
+        '#16a085', n_ctrl, n_trat, rotulo_tratados, invertido=False,
     )
 
     # ───────── 5. Padrão de manejo 365d + legenda ────────────────
