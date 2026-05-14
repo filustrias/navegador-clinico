@@ -546,8 +546,35 @@ def carregar_hipertensao_narrativa_agregado(ap: str, clinica: str, esf: str) -> 
     """Indicadores ampliados de HAS para a aba narrativa — inclui
     medicamentos, combinações, intensidade do tratamento, recência da
     PA, tendência, risco CV e comorbidades. Espelha os campos da page
-    Hipertensão (abas 2 'Controle pressórico', 3 'Medicamentos
-    prescritos' e 5 'Lacunas')."""
+    Hipertensão (abas 3 'Medicamentos prescritos' e 5 'Lacunas').
+
+    O controle pressórico NÃO usa `status_controle_pressorio` da fato
+    (que aplica meta 140/90 a todos, inclusive DM+HAS — erro clínico).
+    É recalculado inline com meta individualizada e janela de 180d.
+    """
+    # Critério de "PA na meta" individualizado — recomputado no
+    # dashboard. Precedência: DM+HAS (<130/80) → ≥80a sem DM (<150/90)
+    # → demais (<140/90). Só vale para quem tem PA aferida.
+    _pa_na_meta = (
+        "((DM IS NOT NULL AND pressao_sistolica <= 130 "
+        "AND pressao_diastolica <= 80) "
+        "OR (DM IS NULL AND idade >= 80 AND pressao_sistolica <= 150 "
+        "AND pressao_diastolica <= 90) "
+        "OR (DM IS NULL AND idade < 80 AND pressao_sistolica <= 140 "
+        "AND pressao_diastolica <= 90))"
+    )
+    # As 4 categorias do controle corrigido particionam todos os
+    # hipertensos: nunca_aferido | desatualizado | controlado_recente
+    # | descontrolado_recente. COALESCE garante que PA recente sem
+    # valor de PAS/PAD caia em descontrolado (espelha o ELSE do CASE).
+    _controlado_recente = (
+        f"(dias_desde_ultima_pa <= 180 "
+        f"AND COALESCE({_pa_na_meta}, FALSE))"
+    )
+    _descontrolado_recente = (
+        f"(dias_desde_ultima_pa <= 180 "
+        f"AND NOT COALESCE({_pa_na_meta}, FALSE))"
+    )
     sql = f"""
     SELECT
         COUNT(*)                                                       AS n_total,
@@ -557,35 +584,65 @@ def carregar_hipertensao_narrativa_agregado(ap: str, clinica: str, esf: str) -> 
         COUNTIF(has_por_medida_critica IS NOT NULL)                    AS n_por_medida_critica,
         COUNTIF(has_por_medidas_repetidas IS NOT NULL)                 AS n_por_medidas_rep,
         COUNTIF(has_por_medicamento IS NOT NULL)                       AS n_por_medicamento,
-        -- Controle pressórico
-        COUNTIF(HAS IS NOT NULL AND status_controle_pressorio = 'controlado')    AS n_ctrl,
-        COUNTIF(HAS IS NOT NULL AND status_controle_pressorio = 'descontrolado') AS n_desc,
-        COUNTIF(HAS IS NOT NULL AND status_controle_pressorio IS NULL)           AS n_sem_info,
-        -- Faixa etária
-        COUNTIF(HAS IS NOT NULL AND idade < 80)                        AS n_menor80,
-        COUNTIF(HAS IS NOT NULL AND idade < 80
-                AND status_controle_pressorio = 'controlado')          AS n_ctrl_menor80,
-        COUNTIF(HAS IS NOT NULL AND idade >= 80)                       AS n_80mais,
-        COUNTIF(HAS IS NOT NULL AND idade >= 80
-                AND status_controle_pressorio = 'controlado')          AS n_ctrl_80mais,
-        -- Recência da PA
+        -- ── Controle pressórico CORRIGIDO ──────────────────────
+        -- 4 categorias mutuamente exclusivas que particionam todos
+        -- os hipertensos. Meta individualizada + janela de 180d.
+        COUNTIF(HAS IS NOT NULL AND {_controlado_recente})
+                                                       AS n_controlado_recente,
+        COUNTIF(HAS IS NOT NULL AND {_descontrolado_recente})
+                                                       AS n_descontrolado_recente,
+        COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa > 180)
+                                                       AS n_desatualizado,
+        -- "Nunca aferido" ancorado em dias_desde_ultima_pa IS NULL
+        -- (e não data_ultima_pa) para garantir que as 4 categorias
+        -- particionem exatamente n_has — todas as 4 chaveiam pela
+        -- mesma coluna.
+        COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa IS NULL)
+                                                       AS n_nunca_aferido,
+        -- Estratificação por meta clínica (só entre aferidos recentes)
+        COUNTIF(HAS IS NOT NULL AND DM IS NOT NULL
+                AND dias_desde_ultima_pa <= 180)               AS n_dm_has_recente,
+        COUNTIF(HAS IS NOT NULL AND DM IS NOT NULL
+                AND dias_desde_ultima_pa <= 180
+                AND pressao_sistolica <= 130
+                AND pressao_diastolica <= 80)                  AS n_dm_has_controlado,
+        COUNTIF(HAS IS NOT NULL AND DM IS NULL AND idade < 80
+                AND dias_desde_ultima_pa <= 180)               AS n_lt80_recente,
+        COUNTIF(HAS IS NOT NULL AND DM IS NULL AND idade < 80
+                AND dias_desde_ultima_pa <= 180
+                AND pressao_sistolica <= 140
+                AND pressao_diastolica <= 90)                  AS n_lt80_controlado,
+        COUNTIF(HAS IS NOT NULL AND DM IS NULL AND idade >= 80
+                AND dias_desde_ultima_pa <= 180)               AS n_ge80_recente,
+        COUNTIF(HAS IS NOT NULL AND DM IS NULL AND idade >= 80
+                AND dias_desde_ultima_pa <= 180
+                AND pressao_sistolica <= 150
+                AND pressao_diastolica <= 90)                  AS n_ge80_controlado,
+        -- Recência da PA — 5 buckets que somam n_has
         COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa <= 90)        AS n_pa_90d,
         COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa BETWEEN 91 AND 180)
                                                                         AS n_pa_91_180,
         COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa BETWEEN 181 AND 365)
                                                                         AS n_pa_181_365,
-        COUNTIF(HAS IS NOT NULL AND
-                (dias_desde_ultima_pa > 365 OR dias_desde_ultima_pa IS NULL))
-                                                                        AS n_pa_365mais,
-        -- Tendência
-        COUNTIF(HAS IS NOT NULL AND tendencia_pa = 'melhorando')       AS n_melhorando,
-        COUNTIF(HAS IS NOT NULL AND tendencia_pa = 'estavel')          AS n_estavel,
-        COUNTIF(HAS IS NOT NULL AND tendencia_pa = 'piorando')         AS n_piorando,
-        -- Médias
-        ROUND(AVG(CASE WHEN HAS IS NOT NULL THEN pressao_sistolica END), 0)  AS media_pas,
-        ROUND(AVG(CASE WHEN HAS IS NOT NULL THEN pressao_diastolica END), 0) AS media_pad,
+        COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa > 365)        AS n_pa_gt365,
+        COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa IS NULL)      AS n_pa_nunca,
+        -- Tendência — só entre aferidos recentes (janela de 180d).
+        -- Versão mínima viável do spec: tendencia_pa restrita a 180d
+        -- (a fato não expõe pas_anterior; tendencia_pa IN (...) já
+        -- implica que houve aferição anterior para comparar).
+        COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa <= 180
+                AND tendencia_pa = 'melhorando')               AS n_tend_melhorando,
+        COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa <= 180
+                AND tendencia_pa = 'estavel')                  AS n_tend_estavel,
+        COUNTIF(HAS IS NOT NULL AND dias_desde_ultima_pa <= 180
+                AND tendencia_pa = 'piorando')                 AS n_tend_piorando,
+        -- Médias — só entre aferidos recentes (≤180d)
+        ROUND(AVG(CASE WHEN HAS IS NOT NULL AND dias_desde_ultima_pa <= 180
+                       THEN pressao_sistolica END), 0)         AS media_pas_recente,
+        ROUND(AVG(CASE WHEN HAS IS NOT NULL AND dias_desde_ultima_pa <= 180
+                       THEN pressao_diastolica END), 0)        AS media_pad_recente,
         ROUND(AVG(CASE WHEN HAS IS NOT NULL THEN pct_dias_has_controlado_365d END), 1)
-                                                                        AS media_pct_ctrl,
+                                                                AS media_pct_ctrl,
         -- Lacunas
         COUNTIF(HAS IS NOT NULL AND lacuna_PA_hipertenso_180d = TRUE)  AS n_sem_pa_180d,
         COUNTIF(HAS IS NOT NULL AND lacuna_DM_HAS_PA_descontrolada = TRUE)
@@ -967,14 +1024,23 @@ def carregar_inercia_benchmarks(ap: str) -> dict:
     return df.iloc[0].to_dict() if not df.empty else {}
 
 
-def _kpi(col, label, valor, delta=None, ajuda=None):
-    """Card KPI com label que quebra linha (não trunca como st.metric)."""
+def _kpi(col, label, valor, delta=None, ajuda=None, info=None):
+    """Card KPI com label que quebra linha (não trunca como st.metric).
+
+    delta → linha secundária verde com ↑ (uso para variações positivas).
+    info  → linha secundária neutra (cinza), para texto descritivo que
+            não é uma variação (ex.: 'X% dos N aferidos recentes')."""
     with col:
         delta_html = ""
         if delta:
             delta_html = (
                 f"<div style='color:#09ab3b; font-size:0.85em; "
                 f"margin-top:4px;'>↑ {delta}</div>"
+            )
+        elif info:
+            delta_html = (
+                f"<div style='color:{T.TEXT_MUTED}; font-size:0.82em; "
+                f"margin-top:4px; line-height:1.35;'>{info}</div>"
             )
         ajuda_attr = f' title="{ajuda}"' if ajuda else ""
         st.markdown(
@@ -2935,9 +3001,11 @@ with tab_has:
     st.caption(
         "Mesma base da aba 🩺 Hipertensão, ampliada com medicamentos, "
         "combinações, intensidade do tratamento, recência da PA, "
-        "tendência e risco cardiovascular — apresentada como história "
-        "em 5 atos. Status do controle pressórico vem da fato "
-        "(status_controle_pressorio) e considera as últimas aferições."
+        "tendência e risco cardiovascular. O controle pressórico é "
+        "recalculado no painel com meta individualizada (DM+HAS "
+        "<130/80; ≥80a <150/90; demais <140/90) e exige aferição nos "
+        "últimos 180 dias — não usa o status_controle_pressorio da "
+        "base, que aplica 140/90 a todos."
     )
 
     with st.spinner("Carregando indicadores de HAS..."):
@@ -2967,22 +3035,35 @@ with tab_has:
     n_por_med        = _vh('n_por_medicamento')
     pct_eq_has       = (n_has_total / n_total_eq_h * 100) if n_total_eq_h else 0
 
-    n_ctrl_h    = _vh('n_ctrl')
-    n_desc_h    = _vh('n_desc')
-    n_sem_info  = _vh('n_sem_info')
-    n_menor80   = _vh('n_menor80')
-    n_ctrl_m80  = _vh('n_ctrl_menor80')
-    n_80mais    = _vh('n_80mais')
-    n_ctrl_80   = _vh('n_ctrl_80mais')
+    # ── Ato 2 — Controle pressórico (taxonomia corrigida) ──
+    # 4 categorias mutuamente exclusivas que somam n_has_total.
+    n_ctrl_rec    = _vh('n_controlado_recente')
+    n_desc_rec    = _vh('n_descontrolado_recente')
+    n_desatual    = _vh('n_desatualizado')
+    n_nunca_pa    = _vh('n_nunca_aferido')
+    n_aferido_rec = n_ctrl_rec + n_desc_rec
+    n_sem_pa_rec  = n_desatual + n_nunca_pa
+    # Estratificação por meta clínica (entre aferidos recentes)
+    n_dmhas_rec   = _vh('n_dm_has_recente')
+    n_dmhas_ctrl  = _vh('n_dm_has_controlado')
+    n_lt80_rec    = _vh('n_lt80_recente')
+    n_lt80_ctrl   = _vh('n_lt80_controlado')
+    n_ge80_rec    = _vh('n_ge80_recente')
+    n_ge80_ctrl   = _vh('n_ge80_controlado')
+    # Recência da PA — 5 buckets que somam n_has_total
     n_pa_90d    = _vh('n_pa_90d')
     n_pa_180    = _vh('n_pa_91_180')
     n_pa_365    = _vh('n_pa_181_365')
-    n_pa_old    = _vh('n_pa_365mais')
-    n_melh      = _vh('n_melhorando')
-    n_est_h     = _vh('n_estavel')
-    n_pio_h     = _vh('n_piorando')
-    media_pas   = ag_hn.get('media_pas')
-    media_pad   = ag_hn.get('media_pad')
+    n_pa_gt365  = _vh('n_pa_gt365')
+    n_pa_nunca  = _vh('n_pa_nunca')
+    # Tendência — só entre aferidos recentes
+    n_melh      = _vh('n_tend_melhorando')
+    n_est_h     = _vh('n_tend_estavel')
+    n_pio_h     = _vh('n_tend_piorando')
+    n_com_tend  = n_melh + n_est_h + n_pio_h
+    # Médias — só entre aferidos recentes
+    media_pas   = ag_hn.get('media_pas_recente')
+    media_pad   = ag_hn.get('media_pad_recente')
     media_pct_c = ag_hn.get('media_pct_ctrl')
 
     n_sem_pa180 = _vh('n_sem_pa_180d')
@@ -3076,67 +3157,117 @@ with tab_has:
     st.markdown("---")
     st.markdown("##### 2. Controle pressórico")
     a2e, a2d = st.columns([1, 1.1])
+
+    def _ph(n, d):
+        """Percentual seguro, 0 casas decimais, como string."""
+        return f"{(100 * n / d):.0f}" if d else "0"
+
+    pct_ctrl_verd = (100 * n_ctrl_rec / n_aferido_rec) if n_aferido_rec else 0
+    pct_desc_verd = (100 * n_desc_rec / n_aferido_rec) if n_aferido_rec else 0
+    pct_cobertura = (100 * n_aferido_rec / n_has_total) if n_has_total else 0
+    media_pa_str  = (f"{int(media_pas)}/{int(media_pad)} mmHg"
+                     if media_pas and media_pad else "—")
+    media_pct_str = (f"{float(media_pct_c):.0f}%"
+                     if media_pct_c is not None else "—")
+
     with a2e:
-        media_pa_str = (f"{int(media_pas)}/{int(media_pad)} mmHg"
-                        if media_pas and media_pad else "—")
-        media_pct_str = (f"{float(media_pct_c):.0f}%"
-                         if media_pct_c is not None else "—")
-        pct_m80  = (n_ctrl_m80 / n_menor80 * 100) if n_menor80 else 0
-        pct_80   = (n_ctrl_80  / n_80mais * 100)  if n_80mais  else 0
         st.markdown(
             f"<div style='font-size:1.0em; line-height:1.65;'>"
-            f"Dos {_bh(n_has_total)} hipertensos, {_bh_green(n_ctrl_h)} "
-            f"estão <b>controlados</b> (PA dentro da meta), "
-            f"{_bh_red(n_desc_h)} <b>não-controlados</b> e "
-            f"{_bh_orange(n_sem_info)} sem informação suficiente.<br><br>"
-            f"<b>Por faixa etária:</b><br>"
-            f"• Menores de 80a (meta &lt;140/90): {_bh_green(n_ctrl_m80)} "
-            f"controlados de {_bh(n_menor80)} ({_bh(f'{pct_m80:.0f}%')});<br>"
-            f"• 80a ou mais (meta &lt;150/90): {_bh_green(n_ctrl_80)} "
-            f"controlados de {_bh(n_80mais)} ({_bh(f'{pct_80:.0f}%')}).<br><br>"
-            f"<b>Recência da última aferição:</b> {_bh_green(n_pa_90d)} "
-            f"≤90 dias, {_bh(n_pa_180)} entre 91–180d, "
-            f"{_bh_orange(n_pa_365)} entre 181–365d, "
-            f"{_bh_red(n_pa_old)} <b>há mais de 365 dias ou nunca</b>.<br><br>"
-            f"<b>Tendência de controle da AP:</b> 📈 "
-            f"{_bh_green(n_melh)} estão melhorando, ➡️ {_bh(n_est_h)} "
-            f"estão estáveis, 📉 {_bh_red(n_pio_h)} estão piorando.<br><br>"
-            f"O <b>valor médio de PA da equipe</b> é {_bh(media_pa_str)} "
-            f"e seus pacientes têm passado, em média, "
-            f"{_bh(media_pct_str)} dos dias do ano com a PA dentro dos "
-            f"valores desejados."
+            # P1 — Volumetria principal
+            f"<b>Dos {_bh(n_has_total)} hipertensos da equipe:</b><br>"
+            f"• {_bh_green(n_ctrl_rec)} "
+            f"({_ph(n_ctrl_rec, n_has_total)}%) estão "
+            f"<b>controlados</b> — PA na meta, aferida nos últimos "
+            f"180 dias;<br>"
+            f"• {_bh_red(n_desc_rec)} "
+            f"({_ph(n_desc_rec, n_has_total)}%) estão "
+            f"<b>não-controlados</b> — PA fora da meta, aferida nos "
+            f"últimos 180 dias;<br>"
+            f"• {_bh_orange(n_desatual)} "
+            f"({_ph(n_desatual, n_has_total)}%) têm "
+            f"<b>aferição desatualizada</b> (&gt;180 dias) — controle "
+            f"não pode ser afirmado;<br>"
+            f"• {_bh_red(n_nunca_pa)} "
+            f"({_ph(n_nunca_pa, n_has_total)}%) "
+            f"<b>nunca foram aferidos</b>.<br><br>"
+            # P2 — Cobertura e taxa de controle "verdadeira"
+            f"Entre os {_bh(n_aferido_rec)} hipertensos com PA aferida "
+            f"nos últimos 180 dias, a <b>taxa de controle é de "
+            f"{_bh(f'{pct_ctrl_verd:.0f}%')}</b>. Os "
+            f"{_bh_red(n_sem_pa_rec)} sem aferição recente representam "
+            f"a maior oportunidade de busca ativa da equipe.<br><br>"
+            # P3 — Estratificação por meta clínica
+            f"<b>Entre os {n_aferido_rec} com PA recente, por meta "
+            f"clínica:</b><br>"
+            f"• <b>DM+HAS</b> (meta &lt;130/80): "
+            f"{_bh_green(n_dmhas_ctrl)} controlados de "
+            f"{_bh(n_dmhas_rec)} "
+            f"({_bh(f'{_ph(n_dmhas_ctrl, n_dmhas_rec)}%')});<br>"
+            f"• <b>&lt;80a sem DM</b> (meta &lt;140/90): "
+            f"{_bh_green(n_lt80_ctrl)} controlados de "
+            f"{_bh(n_lt80_rec)} "
+            f"({_bh(f'{_ph(n_lt80_ctrl, n_lt80_rec)}%')});<br>"
+            f"• <b>≥80a sem DM</b> (meta &lt;150/90): "
+            f"{_bh_green(n_ge80_ctrl)} controlados de "
+            f"{_bh(n_ge80_rec)} "
+            f"({_bh(f'{_ph(n_ge80_ctrl, n_ge80_rec)}%')}).<br><br>"
+            # P4 — Recência da aferição (5 buckets)
+            f"<b>Recência da última aferição:</b> "
+            f"{_bh_green(n_pa_90d)} ≤90d, {_bh(n_pa_180)} entre "
+            f"91–180d, {_bh_orange(n_pa_365)} entre 181–365d, "
+            f"{_bh_red(n_pa_gt365)} &gt;365d, "
+            f"{_bh_red(n_pa_nunca)} nunca aferidos.<br><br>"
+            # P5 — Tendência (entre aferidos recentes)
+            f"<b>Tendência</b> — entre os {_bh(n_com_tend)} pacientes "
+            f"com tendência avaliável e PA recente: 📈 "
+            f"{_bh_green(n_melh)} melhorando, ➡️ {_bh(n_est_h)} "
+            f"estáveis, 📉 {_bh_red(n_pio_h)} piorando.<br><br>"
+            # P6 — Médias (entre aferidos recentes)
+            f"<b>PAS/PAD média</b> (entre os {n_aferido_rec} com PA "
+            f"recente): {_bh(media_pa_str)}. Em média, os hipertensos "
+            f"da equipe passaram {_bh(media_pct_str)} do último ano "
+            f"com a PA dentro da meta."
             f"</div>",
             unsafe_allow_html=True,
         )
     with a2d:
-        c1, c2 = st.columns(2)
-        _kpi(c1, "✅ PA controlada",
-             f"{n_ctrl_h:,}", _pct_hn(n_ctrl_h))
-        _kpi(c2, "❌ PA descontrolada",
-             f"{n_desc_h:,}", _pct_hn(n_desc_h))
-        c3, c4 = st.columns(2)
-        _kpi(c3, "🧑 Controlados <80a",
-             f"{n_ctrl_m80:,}/{n_menor80:,}",
-             f"{(n_ctrl_m80/n_menor80*100 if n_menor80 else 0):.0f}% da faixa")
-        _kpi(c4, "👴 Controlados ≥80a",
-             f"{n_ctrl_80:,}/{n_80mais:,}",
-             f"{(n_ctrl_80/n_80mais*100 if n_80mais else 0):.0f}% da faixa")
-        c5, c6 = st.columns(2)
-        _kpi(c5, "🟢 PA aferida ≤90d",
-             f"{n_pa_90d:,}", _pct_hn(n_pa_90d))
-        _kpi(c6, "🔴 PA >365d ou nunca",
-             f"{n_pa_old:,}", _pct_hn(n_pa_old))
-        c7, c8 = st.columns(2)
-        _kpi(c7, "📈 Melhorando",
-             f"{n_melh:,}", _pct_hn(n_melh))
-        _kpi(c8, "📉 Piorando",
-             f"{n_pio_h:,}", _pct_hn(n_pio_h))
-        c9, _c10 = st.columns(2)
-        _kpi(c9, "PAS / PAD média",
-             f"{int(media_pas)}/{int(media_pad)}"
-             if media_pas and media_pad else "—",
-             f"{float(media_pct_c):.0f}% dias controlado (365d)"
-             if media_pct_c is not None else None)
+        # Coluna esquerda: 4 cards de controle. Direita: 3 estruturais.
+        kpi_e, kpi_d = st.columns(2)
+        _kpi(kpi_e, "✅ Controlados (PA recente)",
+             f"{n_ctrl_rec:,}",
+             info=f"{pct_ctrl_verd:.0f}% dos {n_aferido_rec:,} "
+                  f"aferidos recentes",
+             ajuda="PA aferida nos últimos 180 dias dentro da meta "
+                   "individualizada (DM+HAS <130/80; ≥80a <150/90; "
+                   "demais <140/90).")
+        _kpi(kpi_e, "❌ Descontrolados (PA recente)",
+             f"{n_desc_rec:,}",
+             info=f"{pct_desc_verd:.0f}% dos {n_aferido_rec:,} "
+                  f"aferidos recentes")
+        _kpi(kpi_e, "🩺 DM+HAS na meta <130/80",
+             f"{n_dmhas_ctrl:,}",
+             info=f"de {n_dmhas_rec:,} DM+HAS com PA recente "
+                  f"({_ph(n_dmhas_ctrl, n_dmhas_rec)}%)")
+        _kpi(kpi_e, "📉 Piorando",
+             f"{n_pio_h:,}",
+             info=f"{_ph(n_pio_h, n_com_tend)}% dos {n_com_tend:,} "
+                  f"com tendência avaliável")
+        _kpi(kpi_d, "🔍 Cobertura de aferição",
+             f"{pct_cobertura:.0f}%",
+             info=f"{n_aferido_rec:,} de {n_has_total:,} com PA "
+                  f"aferida nos últimos 180 dias")
+        _kpi(kpi_d, "⚠️ Sem PA recente",
+             f"{n_sem_pa_rec:,}",
+             info=f"{n_desatual:,} desatualizados + {n_nunca_pa:,} "
+                  f"nunca aferidos",
+             ajuda="Desatualizado: última aferição há mais de 180 "
+                   "dias — não é possível afirmar o controle atual. "
+                   "Nunca aferido: HAS sem nenhum registro de PA "
+                   "na base.")
+        _kpi(kpi_d, "📊 PAS/PAD média",
+             media_pa_str.replace(" mmHg", ""),
+             info=(f"{media_pct_str} dos dias na meta (últimos 365d)"
+                   if media_pct_c is not None else None))
 
     # ───────── ATO 2.5 — RESPOSTA AO DESCONTROLE (INÉRCIA / ESTAGNADO) ─
     st.markdown("---")
