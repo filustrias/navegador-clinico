@@ -1766,11 +1766,18 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
     )
 
     # ───────── 5. Padrão de manejo 365d + legenda ────────────────
+    # Nota sobre denominador: a soma dos 6 contadores n_padrao_*_*
+    # vinda do agregado pode ser maior que n_pacientes_* (o pipeline
+    # parece contar 'menos de 2 consultas' num universo mais amplo
+    # que só os pacientes com a condição). Para a barra fechar em
+    # 100% e a leitura ser internamente consistente, o denominador
+    # aqui é a SOMA das 6 categorias — não n_pacientes_*.
     st.markdown(
         "<div style='margin:22px 0 6px 0; font-size:1.0em; color:#444;'>"
         "<b>Padrão de manejo na trajetória de 365 dias</b> "
         "<span style='color:#777; font-size:0.85em;'>"
-        "(comportamento ao longo do ano, não snapshot)</span></div>",
+        "(comportamento ao longo do ano, não snapshot; denominador = "
+        "total de pacientes com padrão atribuído)</span></div>",
         unsafe_allow_html=True,
     )
 
@@ -1831,8 +1838,13 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
         ('Padrão misto',             n_p_mix,  '#f1c40f'),
         ('<2 consultas em 365d',     n_p_lt2,  '#bdc3c7'),
     ]
+    # Denominador = soma das 6 categorias (não n_pac), para a barra
+    # fechar em 100% mesmo quando o agregado conta categorias num
+    # universo mais amplo que só a condição.
+    n_pad_total = sum(n for _lab, n, _c in pad_rows)
     df_pad = pd.DataFrame(
-        [{'Padrão': lab, 'n': n, 'cor': c, 'pct': _pct(n, n_pac)}
+        [{'Padrão': lab, 'n': n, 'cor': c,
+          'pct': _pct(n, n_pad_total)}
          for lab, n, c in pad_rows if n > 0]
     )
     if not df_pad.empty:
@@ -3274,13 +3286,15 @@ with tab_has:
     st.markdown("##### 2.5 Inércia terapêutica — onde o cuidado "
                 "está travando")
     st.caption(
-        "A taxonomia V3 separa os hipertensos em **11 categorias** "
-        "agrupadas em três frentes de cuidado: 🩺 frente médica "
-        "(decisão clínica diante do descontrole), 🩹 frente da "
-        "equipe (aferir PA e solicitar exames), e 🏠 frente da busca "
-        "ativa (reativar pacientes que sumiram da rede). A maior "
-        "parte da inércia não é \"médico não age\" — é o sistema "
-        "perder pacientes antes que o médico tenha como agir."
+        "Hipertensos são agrupados em 11 categorias em três frentes "
+        "de cuidado distintas: 🩺 frente médica (decisão clínica do "
+        "médico diante do descontrole), 🩹 frente da equipe (ações "
+        "rotineiras da equipe aferindo PA, solicitando exames), e "
+        "🏠 frente da busca ativa (retomar o cuidado de pacientes "
+        "que perderam continuidade do cuidado). A maior parte da "
+        "inércia não acontece por falta de ação médica frente ao "
+        "paciente, mas por falta de coordenação da equipe no "
+        "acompanhamento dos casos."
     )
     with st.spinner("Carregando indicadores de inércia (HAS)..."):
         ag_in_has = carregar_inercia_agregado(ap_sel, cli_sel, esf_sel)
@@ -3709,11 +3723,15 @@ with tab_dm:
     st.markdown("##### 2.5 Inércia terapêutica — onde o cuidado "
                 "está travando")
     st.caption(
-        "Mesma taxonomia da aba de HAS, aplicada ao diabetes: **11 "
-        "categorias** em três frentes — 🩺 médica, 🩹 equipe e 🏠 "
-        "busca ativa. No DM, o ponto crítico costuma ser a solicitação "
-        "de HbA1c (a cobertura municipal do exame é baixa, então a "
-        "frente da equipe pesa muito mais do que no HAS)."
+        "Diabéticos são agrupados em 11 categorias em três frentes "
+        "de cuidado distintas: 🩺 frente médica (decisão clínica do "
+        "médico diante do descontrole), 🩹 frente da equipe (ações "
+        "rotineiras da equipe solicitando HbA1c e demais exames de "
+        "rotina), e 🏠 frente da busca ativa (retomar o cuidado de "
+        "pacientes que perderam continuidade do cuidado). A maior "
+        "parte da inércia não acontece por falta de ação médica "
+        "frente ao paciente, mas por falta de coordenação da equipe "
+        "no acompanhamento dos casos."
     )
     with st.spinner("Carregando indicadores de inércia (DM)..."):
         ag_in_dm = carregar_inercia_agregado(ap_sel, cli_sel, esf_sel)
