@@ -1454,6 +1454,7 @@ def _render_inercia_condicao(patient_data, condicao: str):
     return True
 
 
+@st.fragment
 def create_patient_card(patient_data, key_prefix: str = ''):
     """Renderiza o card expansível do paciente.
 
@@ -1461,6 +1462,13 @@ def create_patient_card(patient_data, key_prefix: str = ''):
     renderizado em mais de um lugar na mesma page (ex.: aba 'Abertura
     - teste' e aba 'Meus Pacientes' da Visão ESF, que renderizam
     simultaneamente porque o Streamlit instancia ambas as abas).
+
+    Decorado com ``@st.fragment``: interações dentro do card
+    (expandir, mudar de aba, recalcular RCV, enviar relato) só
+    re-executam ESTE card, não a página toda. Sem o fragment cada
+    clique disparava rerun global → re-fetch da lista de pacientes
+    no BigQuery → travamento percebido como 'triatleta correndo
+    sem fim' enquanto o cliente BQ ficava pendurado.
     """
 
     # Preserva original (não-anonimizado) para formulário de relato —
@@ -1997,7 +2005,7 @@ def create_patient_card(patient_data, key_prefix: str = ''):
                                 key=f"{key_prefix}rcv_limpar_{cpk}",
                             ):
                                 st.session_state.pop(_recalc_key, None)
-                                st.rerun()
+                                st.rerun(scope="fragment")
                     else:
                         st.success("✅ Todos os dados disponíveis no datalake.")
             
