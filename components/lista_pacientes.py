@@ -729,6 +729,27 @@ def get_statistics_summary(area=None, clinica=None, esf=None, idade_min=None, id
     return {'total': 0, 'multimorbidos': 0, 'polifarmacia': 0, 'hiperpolifarmacia': 0}
 
 
+def _limpar_nan(d: dict) -> dict:
+    """Converte NaN/NaT/NA → None num dict de valores escalares.
+
+    Query de 1 linha (`WHERE cpf = 'X'`) traz coluna NULL como dtype
+    `object` → valor `None`. Query em lote (`WHERE cpf IN (...)`) com
+    mix de valores/NULL traz a mesma coluna como `float64` → valor
+    `NaN`. O código de render faz `int(x or 0)`, e `int(NaN)` estoura
+    ValueError (enquanto `int(None or 0)` = 0). Normalizar aqui
+    mantém o mesmo formato dos dois caminhos.
+    """
+    limpo = {}
+    for k, v in d.items():
+        try:
+            if pd.isna(v):
+                v = None
+        except (ValueError, TypeError):
+            pass  # arrays/listas — não são escalares, mantém
+        limpo[k] = v
+    return limpo
+
+
 @st.cache_data(show_spinner=False, ttl=900)
 def buscar_stopp_paciente(cpf: str) -> dict:
     """Busca flags STOPP/START/Beers individuais de um paciente na MM_stopp_start."""
@@ -775,7 +796,7 @@ def buscar_stopp_paciente(cpf: str) -> dict:
     df = bq_query(sql)
     if df.empty:
         return {}
-    return df.iloc[0].to_dict()
+    return _limpar_nan(df.iloc[0].to_dict())
 
 
 @st.cache_data(show_spinner=False, ttl=900)
@@ -796,7 +817,7 @@ def buscar_acb_paciente(cpf: str) -> dict:
     df = bq_query(sql)
     if df.empty:
         return {}
-    return df.iloc[0].to_dict()
+    return _limpar_nan(df.iloc[0].to_dict())
 
 
 @st.cache_data(show_spinner=False, ttl=900)
@@ -823,7 +844,8 @@ def buscar_acb_lote(cpfs: tuple) -> dict:
     df = bq_query(sql)
     if df.empty:
         return {}
-    return {str(row['cpf']): row.to_dict() for _, row in df.iterrows()}
+    return {str(row['cpf']): _limpar_nan(row.to_dict())
+            for _, row in df.iterrows()}
 
 
 @st.cache_data(show_spinner=False, ttl=900)
@@ -875,7 +897,8 @@ def buscar_stopp_lote(cpfs: tuple) -> dict:
     df = bq_query(sql)
     if df.empty:
         return {}
-    return {str(row['cpf']): row.to_dict() for _, row in df.iterrows()}
+    return {str(row['cpf']): _limpar_nan(row.to_dict())
+            for _, row in df.iterrows()}
 
 @st.cache_data(show_spinner=False, ttl=900)
 def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR", busca_nome=None, carga_morb=None, lacunas_filtro=None, rcv_filtro=None, apenas_insulina=False, apenas_inercia_clinica=False, apenas_inercia_estrutural=False):
