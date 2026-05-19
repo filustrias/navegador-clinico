@@ -798,6 +798,85 @@ def buscar_acb_paciente(cpf: str) -> dict:
         return {}
     return df.iloc[0].to_dict()
 
+
+@st.cache_data(show_spinner=False, ttl=900)
+def buscar_acb_lote(cpfs: tuple) -> dict:
+    """ACB para múltiplos pacientes numa só query — substitui N chamadas
+    seriais a `buscar_acb_paciente` na renderização da lista. Retorna
+    `{cpf: dict_dados}` (chaves em string p/ casar com `str(cpf)`).
+    """
+    if not cpfs:
+        return {}
+    cpfs_sql = ", ".join(f"'{c}'" for c in cpfs)
+    sql = f"""
+    SELECT
+        cpf,
+        score_acb_total,
+        n_meds_acb_positivo,
+        n_meds_acb_alto,
+        medicamentos_acb,
+        categoria_acb,
+        lista_medicamentos
+    FROM `rj-sms-sandbox.sub_pav_us.MM_mantidos_alterados_ultimas`
+    WHERE cpf IN ({cpfs_sql})
+    """
+    df = bq_query(sql)
+    if df.empty:
+        return {}
+    return {str(row['cpf']): row.to_dict() for _, row in df.iterrows()}
+
+
+@st.cache_data(show_spinner=False, ttl=900)
+def buscar_stopp_lote(cpfs: tuple) -> dict:
+    """STOPP/START/Beers para múltiplos pacientes numa só query —
+    substitui N chamadas a `buscar_stopp_paciente`. Filtra ≥60a no
+    chamador (esta função apenas faz fan-out por CPF). Retorna
+    `{cpf: dict_dados}`.
+    """
+    if not cpfs:
+        return {}
+    cpfs_sql = ", ".join(f"'{c}'" for c in cpfs)
+    sql = f"""
+    SELECT
+        cpf,
+        COALESCE(total_criterios_stopp, 0) AS total_stopp,
+        COALESCE(total_criterios_start,  0) AS total_start,
+        COALESCE(total_criterios_beers,  0) AS total_beers,
+        alerta_prescricao_idoso_ativo,
+        alerta_queda_medicamentos,
+        alerta_warfarina_fa,
+        alerta_egfr_ausente_gabapentinoide,
+        alerta_egfr_ausente_metformina,
+        alerta_cascata_biperideno,
+        stopp_cv_001_365d, stopp_cv_002_365d, stopp_cv_003_365d,
+        stopp_cv_004_365d, stopp_cv_005_365d, stopp_cv_006_365d,
+        stopp_cv_007_365d, stopp_cv_008_365d, stopp_cv_009_365d,
+        stopp_cv_010,
+        stopp_snc_001_365d, stopp_snc_002_365d, stopp_snc_003_365d,
+        stopp_snc_004_365d, stopp_snc_005_365d, stopp_snc_006_365d,
+        stopp_snc_007_365d, stopp_snc_008_365d, stopp_snc_009_365d,
+        stopp_snc_010_365d, stopp_snc_011_365d,
+        stopp_end_001_365d, stopp_end_002_365d, stopp_end_003_365d,
+        stopp_end_004_365d,
+        stopp_mus_001_365d, stopp_mus_002_365d, stopp_mus_003_365d,
+        stopp_mus_004_365d, stopp_mus_005_365d, stopp_mus_006_365d,
+        stopp_acb_001_365d, stopp_acb_002_365d, stopp_acb_003_365d,
+        stopp_acb_004_365d,
+        stopp_ren_001_365d, stopp_ren_002_365d, stopp_ren_003_365d,
+        start_cv_001_365d, start_cv_002_365d, start_cv_003_365d,
+        start_cv_004_365d, start_cv_005_365d, start_cv_006_365d,
+        start_snc_001_365d, start_snc_002_365d, start_snc_003_365d,
+        start_resp_001_365d,
+        beers_001_365d, beers_002_365d, beers_003_365d,
+        beers_004_365d, beers_005_365d, beers_006_365d, beers_007_365d
+    FROM `rj-sms-sandbox.sub_pav_us.MM_stopp_start`
+    WHERE cpf IN ({cpfs_sql})
+    """
+    df = bq_query(sql)
+    if df.empty:
+        return {}
+    return {str(row['cpf']): row.to_dict() for _, row in df.iterrows()}
+
 @st.cache_data(show_spinner=False, ttl=900)
 def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR", busca_nome=None, carga_morb=None, lacunas_filtro=None, rcv_filtro=None, apenas_insulina=False, apenas_inercia_clinica=False, apenas_inercia_estrutural=False):
     """Conta total de pacientes para paginação"""
@@ -1455,13 +1534,20 @@ def _render_inercia_condicao(patient_data, condicao: str):
 
 
 @st.fragment
-def create_patient_card(patient_data, key_prefix: str = ''):
+def create_patient_card(patient_data, key_prefix: str = '',
+                        dados_acb=None, dados_stopp=None):
     """Renderiza o card expansível do paciente.
 
     ``key_prefix`` evita colisão de keys quando o mesmo paciente é
     renderizado em mais de um lugar na mesma page (ex.: aba 'Abertura
     - teste' e aba 'Meus Pacientes' da Visão ESF, que renderizam
     simultaneamente porque o Streamlit instancia ambas as abas).
+
+    ``dados_acb`` e ``dados_stopp`` são opcionais e servem para
+    pré-injetar os dados farmacológicos já buscados em lote
+    (`buscar_acb_lote` / `buscar_stopp_lote`) no chamador — evita N
+    queries seriais quando a lista renderiza N cards. Se vier None,
+    o card faz fallback para a query por-paciente (compat).
 
     Decorado com ``@st.fragment``: interações dentro do card
     (expandir, mudar de aba, recalcular RCV, enviar relato) só
@@ -2293,9 +2379,19 @@ def create_patient_card(patient_data, key_prefix: str = ''):
             cpf_pac  = str(patient_data.get("cpf", ""))
             idade_pac = int(patient_data.get("idade", 0) or 0)
 
-            with st.spinner("Carregando dados farmacológicos..."):
-                dados_acb = buscar_acb_paciente(cpf_pac)
-                dados_ss  = buscar_stopp_paciente(cpf_pac) if idade_pac >= 60 else {}
+            # Prioriza dados pré-buscados em lote (chamador fez
+            # `buscar_*_lote` antes do loop). Se None, cai pra query
+            # por-paciente — só ocorre em cenários sem batch.
+            if dados_acb is None:
+                with st.spinner("Carregando dados farmacológicos..."):
+                    dados_acb = buscar_acb_paciente(cpf_pac)
+            if dados_stopp is None:
+                if idade_pac >= 60:
+                    with st.spinner("Carregando dados farmacológicos..."):
+                        dados_stopp = buscar_stopp_paciente(cpf_pac)
+                else:
+                    dados_stopp = {}
+            dados_ss = dados_stopp
 
             # ── 5 colunas ──────────────────────────────────────────
             c_rx, c_stopp, c_start, c_beers, c_acb = st.columns([2, 2, 2, 2, 1.5])
@@ -3167,9 +3263,29 @@ def renderizar_lista_pacientes(
 
     # Exibir cards
     st.markdown("### 👥 Pacientes")
+
+    # Pré-busca farmacológica em lote (1 query ACB + 1 STOPP p/ todos
+    # os pacientes da página, em vez de 2 queries por card). Reduz de
+    # ~20 queries seriais para 2 quando a página tem 10 pacientes —
+    # bottleneck principal da renderização da lista.
+    _cpfs_pagina = tuple(
+        str(p.get('cpf', '')) for _, p in df_pacientes.iterrows() if p.get('cpf')
+    )
+    _cpfs_idosos = tuple(
+        str(p.get('cpf', '')) for _, p in df_pacientes.iterrows()
+        if p.get('cpf') and int(p.get('idade', 0) or 0) >= 60
+    )
+    _mapa_acb   = buscar_acb_lote(_cpfs_pagina)
+    _mapa_stopp = buscar_stopp_lote(_cpfs_idosos)
+
     for idx, (_, paciente) in enumerate(df_pacientes.iterrows()):
         paciente_dict = paciente.to_dict()
-        create_patient_card(paciente_dict, key_prefix=f"{scope}_")
+        _cpf = str(paciente_dict.get('cpf', ''))
+        create_patient_card(
+            paciente_dict, key_prefix=f"{scope}_",
+            dados_acb=_mapa_acb.get(_cpf, {}),
+            dados_stopp=_mapa_stopp.get(_cpf, {}),
+        )
 
     # Botões de navegação (rodapé)
     st.markdown("---")

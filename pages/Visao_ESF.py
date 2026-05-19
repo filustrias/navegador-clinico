@@ -2149,6 +2149,7 @@ with tab_resumo:
     else:
         from components.lista_pacientes import (
             load_patient_data_paginated, create_patient_card,
+            buscar_acb_lote, buscar_stopp_lote,
         )
 
         df_top10 = load_patient_data_paginated(
@@ -2167,8 +2168,26 @@ with tab_resumo:
             df_top10 = df_top10.sort_values(
                 ['ipc', 'charlson_score'], ascending=[False, False]
             )
+            # Pré-busca farmacológica em lote (2 queries p/ os 10
+            # pacientes, em vez de 2 por card = 20 queries seriais).
+            _cpfs_t10 = tuple(
+                str(p.get('cpf', '')) for _, p in df_top10.iterrows()
+                if p.get('cpf')
+            )
+            _cpfs_t10_idosos = tuple(
+                str(p.get('cpf', '')) for _, p in df_top10.iterrows()
+                if p.get('cpf') and int(p.get('idade', 0) or 0) >= 60
+            )
+            _mapa_acb   = buscar_acb_lote(_cpfs_t10)
+            _mapa_stopp = buscar_stopp_lote(_cpfs_t10_idosos)
             for _, paciente in df_top10.iterrows():
-                create_patient_card(paciente.to_dict(), key_prefix='resumo_')
+                _p = paciente.to_dict()
+                _cpf = str(_p.get('cpf', ''))
+                create_patient_card(
+                    _p, key_prefix='resumo_',
+                    dados_acb=_mapa_acb.get(_cpf, {}),
+                    dados_stopp=_mapa_stopp.get(_cpf, {}),
+                )
 
     st.markdown("---")
 
