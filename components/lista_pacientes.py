@@ -1945,34 +1945,45 @@ def create_patient_card(patient_data, key_prefix: str = ''):
                             key=f"{key_prefix}rcv_btn_{cpk}", type="primary",
                             use_container_width=True,
                         ):
-                            genero_c = pac_genero.lower() if pac_genero else ''
+                            genero_c = str(pac_genero).lower().strip() if pac_genero else ''
                             tab_c = (input_tabaco == "Sim") if input_tabaco else False
                             col_val = input_col if input_col and input_col > 0 else None
+                            imc_val = input_imc if input_imc and input_imc > 0 else None
+                            idade_c = int(pac_idade) if pd.notna(pac_idade) else None
+                            pas_c = int(input_pas) if input_pas else None
 
                             resultado = calcular_risco_completo(
-                                genero=genero_c, idade=pac_idade,
-                                pressao_sistolica=input_pas,
+                                genero=genero_c, idade=idade_c,
+                                pressao_sistolica=pas_c,
                                 colesterol_total_mgdl=col_val,
-                                imc=input_imc if input_imc and input_imc > 0 else None,
+                                imc=imc_val,
                                 dm=pac_dm, tabaco=tab_c,
                                 irc=pac_irc, ci=pac_ci, avc=pac_avc, dap=pac_dap,
                             )
 
                             if resultado:
-                                # Persiste em session_state para sobreviver
-                                # a reruns subsequentes; a exibição
-                                # acontece logo abaixo (mesmo render),
-                                # sem precisar de st.rerun() — assim a
-                                # aba 'Risco CV' permanece ativa.
                                 st.session_state[_recalc_key] = resultado
-                                _resultado_recalc = resultado
                             else:
-                                st.error("❌ Não foi possível calcular.")
+                                st.session_state.pop(_recalc_key, None)
+                                falta_motivos = []
+                                if not genero_c or genero_c not in ('m', 'f', 'masculino', 'feminino'):
+                                    falta_motivos.append(f"gênero ('{pac_genero}' inválido)")
+                                if idade_c is None or not (40 <= idade_c <= 80):
+                                    falta_motivos.append(f"idade ({pac_idade}) fora da faixa 40-80")
+                                if pas_c is None:
+                                    falta_motivos.append("PAS")
+                                if col_val is None and imc_val is None:
+                                    falta_motivos.append("colesterol e IMC (ao menos um)")
+                                motivo = "; ".join(falta_motivos) if falta_motivos else "dados insuficientes"
+                                st.error(f"❌ Não foi possível calcular — {motivo}.")
 
-                        # Mostra o resultado recalculado (se houver)
-                        # logo abaixo do botão, na coluna direita. A
-                        # coluna esquerda preserva o valor original do
-                        # banco — útil para comparar antes/depois.
+                        # Lê o resultado da session_state (canônica) em
+                        # vez de variável local — garante que a exibição
+                        # capte o valor recém-gravado pelo clique no
+                        # mesmo render, sem depender de continuidade de
+                        # escopo entre blocos `with`/`if` aninhados.
+                        _resultado_recalc = st.session_state.get(_recalc_key)
+
                         if _resultado_recalc:
                             st.markdown(
                                 "<div style='margin-top:10px;'></div>",
