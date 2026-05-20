@@ -1576,7 +1576,6 @@ def _render_inercia_condicao(patient_data, condicao: str):
     return True
 
 
-@st.fragment
 def create_patient_card(patient_data, key_prefix: str = '',
                         dados_acb=None, dados_stopp=None):
     """Renderiza o card expansível do paciente.
@@ -1592,12 +1591,14 @@ def create_patient_card(patient_data, key_prefix: str = '',
     queries seriais quando a lista renderiza N cards. Se vier None,
     o card faz fallback para a query por-paciente (compat).
 
-    Decorado com ``@st.fragment``: interações dentro do card
-    (expandir, mudar de aba, recalcular RCV, enviar relato) só
-    re-executam ESTE card, não a página toda. Sem o fragment cada
-    clique disparava rerun global → re-fetch da lista de pacientes
-    no BigQuery → travamento percebido como 'triatleta correndo
-    sem fim' enquanto o cliente BQ ficava pendurado.
+    NOTA: já foi decorado com ``@st.fragment`` para isolar reruns,
+    mas isso causava travamento da renderização da lista (o render
+    parava no meio, ~card 7-10, sem retornar). `@st.fragment` em
+    loop de muitos cards com layout aninhado pesado é instável.
+    Removido. O isolamento de rerun deixou de ser necessário porque
+    o batch (`buscar_*_lote`) tornou o rerun global barato — 2
+    queries em vez de N. NÃO re-adicionar `@st.fragment` aqui sem
+    resolver a instabilidade.
     """
 
     # Preserva original (não-anonimizado) para formulário de relato —
@@ -2134,7 +2135,7 @@ def create_patient_card(patient_data, key_prefix: str = '',
                                 key=f"{key_prefix}rcv_limpar_{cpk}",
                             ):
                                 st.session_state.pop(_recalc_key, None)
-                                st.rerun(scope="fragment")
+                                st.rerun()
                     else:
                         st.success("✅ Todos os dados disponíveis no datalake.")
             
