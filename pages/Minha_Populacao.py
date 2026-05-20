@@ -1961,11 +1961,13 @@ def _grouped_bar_territorio(df, cols, labels, cores, titulo, eixo_y='% dos pacie
 # TABS COM VISUALIZAÇÕES
 # ============================================
 
-# st.tabs para navegação visual — sincronizado com o radio da sidebar
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(NOMES_ABAS)
+# Render preguiçoso: a navegação já é feita pelo radio da sidebar
+# (aba_escolhida, 0-5). st.tabs renderizava as 6 abas em todo
+# rerun — removido. Cada `with tabX:` virou `if aba_escolhida ==
+# N:`, então só a aba selecionada executa.
 
 # TAB 1 — Perfil da População (pirâmide + morbidades prevalentes)
-with tab1:
+if aba_escolhida == 0:
     # ── Pirâmide populacional ─────────────────────────────────────
     fig_piramide = criar_piramide_populacional(df_dados)
     if fig_piramide:
@@ -2030,7 +2032,7 @@ with tab1:
 
 
 # TAB 2 — CARGA DE MORBIDADE
-with tab2:
+if aba_escolhida == 1:
     st.markdown("### 📈 Carga de Morbidade")
 
     # ── BLOCO 1: Explicação e pontuação ─────────────────────────
@@ -2250,7 +2252,7 @@ O escore integrado combina três componentes:
             st.caption(cap_c)
 
 # TAB 3 — COMPLEXIDADE FARMACOLÓGICA
-with tab3:
+if aba_escolhida == 2:
     st.caption(
         "Polifarmácia: ≥5 medicamentos crônicos · Hiperpolifarmácia: ≥10 · "
         "ACB: Anticholinergic Cognitive Burden (≥3 = risco clínico) · "
@@ -2516,7 +2518,7 @@ American Geriatrics Society, 2023.
 # ─────────────────────────────────────────────────────────────
 # TAB 2 — HIPERTENSÃO
 # ─────────────────────────────────────────────────────────────
-with tab4:
+if aba_escolhida == 3:
     if not sumario:
         st.warning("Dados clínicos indisponíveis.")
     else:
@@ -3110,7 +3112,7 @@ with tab4:
 # ─────────────────────────────────────────────────────────────
 # TAB 5 — DIABETES
 # ─────────────────────────────────────────────────────────────
-with tab5:
+if aba_escolhida == 4:
     if not sumario:
         st.warning("Dados clínicos indisponíveis.")
     else:
@@ -3681,7 +3683,7 @@ with tab5:
 
 # TAB 6 — ACESSO E CONTINUIDADE
 # ─────────────────────────────────────────────────────────────
-with tab6:
+if aba_escolhida == 5:
     if not sumario:
         st.warning("Dados clínicos indisponíveis.")
     else:
