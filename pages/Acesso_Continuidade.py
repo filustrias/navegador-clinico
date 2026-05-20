@@ -717,22 +717,26 @@ st.markdown("---")
 # ═══════════════════════════════════════════════════════════════
 # ABAS — renderização condicional pela aba ativa
 # ═══════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4 = st.tabs(NOMES_ABAS)
+# Render preguiçoso: navegação pelo radio da sidebar
+# (aba_escolhida, 0-3). st.tabs renderizava as 4 abas em todo
+# rerun — removido; cada `with tabX:` virou `if aba_escolhida ==`.
+# df_pan (panorama) é usado pelas abas 1 e 4, então é carregado
+# aqui, antes das abas — carregar_panorama é cacheada (ttl 900),
+# custo desprezível em reruns.
+with st.spinner("Carregando panorama..."):
+    df_pan = carregar_panorama(
+        ap=territorio['ap'],
+        clinica=territorio['clinica'],
+        esf=territorio['esf']
+    )
+if df_pan.empty:
+    st.warning("Nenhum dado encontrado para os filtros selecionados.")
+    st.stop()
 
 # ──────────────────────────────────────────────────────────────
 # ABA 1 — PANORAMA
 # ──────────────────────────────────────────────────────────────
-with tab1:
-    with st.spinner("Carregando panorama..."):
-        df_pan = carregar_panorama(
-            ap=territorio['ap'],
-            clinica=territorio['clinica'],
-            esf=territorio['esf']
-        )
-
-    if df_pan.empty:
-        st.warning("Nenhum dado encontrado para os filtros selecionados.")
-        st.stop()
+if aba_escolhida == 0:
 
     # Agregar totais (somando sexos) para os cards
     df_tot = df_pan.groupby('charlson_categoria').agg(
@@ -881,7 +885,7 @@ with tab1:
 # ──────────────────────────────────────────────────────────────
 # ABA 2 — VIOLIN PLOTS
 # ──────────────────────────────────────────────────────────────
-with tab2:
+if aba_escolhida == 1:
 
     st.markdown("""
     ### 🗺️ Acesso e Continuidade por Território
@@ -998,7 +1002,7 @@ with tab2:
 # ──────────────────────────────────────────────────────────────
 # ABA 3 — LISTA DE PACIENTES
 # ──────────────────────────────────────────────────────────────
-with tab3:
+if aba_escolhida == 2:
     col_f1, col_f2 = st.columns([3, 1])
     with col_f1:
         categorias_sel = st.multiselect(
@@ -1263,7 +1267,7 @@ with tab3:
 # ──────────────────────────────────────────────────────────────
 # ABA 4 — FREQUÊNCIA E ABANDONO (unificada)
 # ──────────────────────────────────────────────────────────────
-with tab4:
+if aba_escolhida == 3:
     st.markdown("""
     ### ⏱️ Frequência de Acesso e Abandono do Cuidado
 
