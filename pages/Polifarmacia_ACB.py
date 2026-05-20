@@ -621,7 +621,11 @@ st.markdown("---")
 # ═══════════════════════════════════════════════════════════════
 # ABAS
 # ═══════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(NOMES_ABAS_POLI)
+# Render preguiçoso: a navegação já é feita pelo radio da sidebar
+# (aba_sel, 0-5). st.tabs renderizava as 6 abas em todo rerun —
+# removido. Cada `with tabX:` virou `if aba_sel == N:`, então só a
+# aba selecionada executa. (As sub-abas de Referência, st.tabs
+# aninhado, ficam — conteúdo estático leve, só roda na aba 5.)
 
 ap      = territorio.get('ap')
 clinica = territorio.get('clinica')
@@ -630,7 +634,7 @@ esf     = territorio.get('esf')
 # ──────────────────────────────────────────────────────────────
 # ABA 1 — PANORAMA
 # ──────────────────────────────────────────────────────────────
-with tab1:
+if aba_sel == 0:
     st.markdown("### 👥 Panorama da Carga Medicamentosa")
 
     with st.spinner("Carregando dados..."):
@@ -815,7 +819,7 @@ with tab1:
 # ──────────────────────────────────────────────────────────────
 # ABA 2 — POLIFARMÁCIA × MORBIDADE
 # ──────────────────────────────────────────────────────────────
-with tab2:
+if aba_sel == 1:
     st.markdown("""
     ### 📊 Polifarmácia por Categoria de Carga de Morbidade
 
@@ -923,7 +927,7 @@ with tab2:
 # ──────────────────────────────────────────────────────────────
 # ABA 3 — CARGA ANTICOLINÉRGICA (ACB)
 # ──────────────────────────────────────────────────────────────
-with tab3:
+if aba_sel == 2:
     st.markdown("""
     ### 🔴 Carga Anticolinérgica (ACB — *Anticholinergic Cognitive Burden*)
 
@@ -1073,7 +1077,7 @@ with tab3:
 # ──────────────────────────────────────────────────────────────
 # ABA 4 — STOPP / START / BEERS
 # ──────────────────────────────────────────────────────────────
-with tab4:
+if aba_sel == 3:
     st.markdown("### ⚠️ Prescrição Potencialmente Inapropriada — STOPP / START / Beers 2023")
     st.caption(
         "Critérios aplicados apenas a pacientes **≥ 65 anos**. "
@@ -1230,7 +1234,7 @@ with tab4:
 # ──────────────────────────────────────────────────────────────
 # ABA 5 — LISTA DE PACIENTES
 # ──────────────────────────────────────────────────────────────
-with tab5:
+if aba_sel == 4:
     st.markdown("### 📋 Lista Nominal — Ordenada por Carga Anticolinérgica")
 
     # ── Cards de resumo (respondem aos filtros de território) ──
@@ -1601,7 +1605,7 @@ with tab5:
 # ──────────────────────────────────────────────────────────────
 # ABA 6 — REFERÊNCIA CLÍNICA
 # ──────────────────────────────────────────────────────────────
-with tab6:
+if aba_sel == 5:
     st.markdown("""
     ### 📖 Referência dos Critérios de Prescrição em Idosos
 
