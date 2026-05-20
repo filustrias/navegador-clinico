@@ -2178,16 +2178,23 @@ with tab_resumo:
                 str(p.get('cpf', '')) for _, p in df_top10.iterrows()
                 if p.get('cpf') and int(p.get('idade', 0) or 0) >= 60
             )
+            print(f"[top10] batch ACB/STOPP iniciado "
+                  f"({len(_cpfs_t10)} cpfs)", flush=True)
             _mapa_acb   = buscar_acb_lote(_cpfs_t10)
             _mapa_stopp = buscar_stopp_lote(_cpfs_t10_idosos)
-            for _, paciente in df_top10.iterrows():
+            print(f"[top10] batch ok: {len(_mapa_acb)} acb, "
+                  f"{len(_mapa_stopp)} stopp", flush=True)
+            _n_t10 = len(df_top10)
+            for _i, (_, paciente) in enumerate(df_top10.iterrows()):
                 _p = paciente.to_dict()
                 _cpf = str(_p.get('cpf', ''))
+                print(f"[top10] card {_i+1}/{_n_t10} cpf={_cpf}", flush=True)
                 create_patient_card(
                     _p, key_prefix='resumo_',
                     dados_acb=_mapa_acb.get(_cpf, {}),
                     dados_stopp=_mapa_stopp.get(_cpf, {}),
                 )
+            print(f"[top10] FIM — {_n_t10} cards renderizados", flush=True)
 
     st.markdown("---")
 

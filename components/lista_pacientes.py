@@ -114,11 +114,31 @@ def _fqn(name: str) -> str:
 
 @st.cache_data(show_spinner=False, ttl=900)
 def bq_query(sql: str) -> pd.DataFrame:
+    """Executa query no BigQuery com timeout.
+
+    Sem timeout, `.result()` bloqueia indefinidamente se o BQ ou a
+    rede travarem — e o script Streamlit fica pendurado (o
+    'triatleta correndo sem fim'). Com timeout, vira exceção
+    capturada → st.error → a página continua renderizando.
+
+    Loga INICIO/FIM/ERRO com duração no stdout (visível no Railway
+    logs) — instrumentação para localizar hangs intermitentes.
+    """
+    import time
+    _ini = time.time()
+    _resumo = " ".join(sql.split())[:90]
+    print(f"[bq_query] INICIO | {_resumo}", flush=True)
     try:
         client = get_bigquery_client()
-        df = client.query(sql).result().to_dataframe(create_bqstorage_client=False)
+        df = (client.query(sql)
+                    .result(timeout=90)   # cliente desiste após 90s
+                    .to_dataframe(create_bqstorage_client=False))
+        print(f"[bq_query] FIM {time.time()-_ini:.1f}s {len(df)}l | {_resumo}",
+              flush=True)
         return df
     except Exception as e:
+        print(f"[bq_query] ERRO {time.time()-_ini:.1f}s | {_resumo} | {e}",
+              flush=True)
         st.error(f"❌ Erro ao executar query: {str(e)}")
         return pd.DataFrame()
 
