@@ -456,12 +456,14 @@ st.markdown("---")
 # ═══════════════════════════════════════════════════════════════
 # ABAS
 # ═══════════════════════════════════════════════════════════════
-tab1, tab2, tab3 = st.tabs(NOMES_ABAS)
+# Render preguiçoso: navegação pelo radio da sidebar (aba_sel,
+# 0-2). st.tabs renderizava as 3 abas em todo rerun — removido;
+# cada `with tabX:` virou `if aba_sel == N:`.
 
 # ──────────────────────────────────────────────────────────────
 # ABA 1 — VIOLINO
 # ──────────────────────────────────────────────────────────────
-with tab1:
+if aba_sel == 0:
     st.markdown("### 🎻 Distribuição por Território")
     st.caption(
         "Cada ponto = uma clínica da família. "
@@ -706,7 +708,7 @@ Violinos mais "curtos" e achatados na base do gráfico indicam maior equidade de
 # ──────────────────────────────────────────────────────────────
 # ABA 2 — TABELA INTERATIVA
 # ──────────────────────────────────────────────────────────────
-with tab2:
+if aba_sel == 1:
     st.markdown("### 📋 Tabela de Lacunas por Território")
     st.caption(
         "Clique no cabeçalho de qualquer coluna para ordenar. "
@@ -781,7 +783,7 @@ with tab2:
 # ──────────────────────────────────────────────────────────────
 # ABA 3 — LISTA NOMINAL
 # ──────────────────────────────────────────────────────────────
-with tab3:
+if aba_sel == 2:
     st.markdown("### 👤 Pacientes com Lacunas de Cuidado")
     st.caption(
         "Lista nominal de pacientes com pelo menos uma lacuna identificada, "

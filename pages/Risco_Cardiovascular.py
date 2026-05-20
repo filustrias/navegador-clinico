@@ -267,9 +267,18 @@ st.title("❤️ Risco Cardiovascular")
 st.markdown("Panorama do risco cardiovascular na população e calculadora WHO HEARTS.")
 st.markdown("---")
 
-tab_panorama, tab_calculadora = st.tabs(["📊 Panorama Populacional", "🧮 Calculadora HEARTS"])
+# Render preguiçoso: st.tabs renderizava as 2 abas em todo rerun
+# (a do Panorama dispara queries pesadas). Trocado por
+# segmented_control — só a aba selecionada executa.
+_ABAS_RCV = ["📊 Panorama Populacional", "🧮 Calculadora HEARTS"]
+_aba_rcv = st.segmented_control(
+    "Seção", _ABAS_RCV, default=_ABAS_RCV[0],
+    key="rcv_aba_ativa", label_visibility="collapsed",
+)
+if not _aba_rcv:
+    _aba_rcv = _ABAS_RCV[0]
 
-with tab_panorama:
+if _aba_rcv == "📊 Panorama Populacional":
   with st.spinner("Carregando dados de risco cardiovascular..."):
       sumario = carregar_sumario_rcv(ap_sel, cli_sel, esf_sel)
       df_terr = carregar_territorio_rcv(ap_sel, cli_sel, esf_sel)
@@ -592,7 +601,7 @@ with tab_panorama:
 # ABA 2 — CALCULADORA HEARTS
 # ═══════════════════════════════════════════════════════════════
 
-with tab_calculadora:
+if _aba_rcv == "🧮 Calculadora HEARTS":
     st.markdown("### 🧮 Calculadora de Risco Cardiovascular — WHO HEARTS 2019")
     st.caption(
         "Modelo calibrado para a América Latina tropical (Kaptoge et al., Lancet Global Health 2019). "
