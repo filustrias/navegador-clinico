@@ -560,13 +560,16 @@ def _stacked_bar(df, cols_pop, labels, cores, titulo):
 # ═══════════════════════════════════════════════════════════════
 # ABAS
 # ═══════════════════════════════════════════════════════════════
-tab1, tab2, tab_meds, tab3, tab4, tab5 = st.tabs(NOMES_ABAS)
+# Render preguiçoso: a navegação já é feita pelo radio da sidebar
+# (aba_sel, 0-5). st.tabs renderizava as 6 abas em todo rerun —
+# removido. Cada `with tabX:` virou `if aba_sel == N:`, então só a
+# aba selecionada executa (queries/gráficos inclusos).
 
 
 # ──────────────────────────────────────────────────────────────
 # ABA 1 — DIAGNÓSTICO E PREVALÊNCIA
 # ──────────────────────────────────────────────────────────────
-with tab1:
+if aba_sel == 0:
     st.markdown("### 1️⃣ Prevalência e como foram identificados")
 
     n_sem_cid = int(sumario.get('n_HAS_sem_cid', 0) or 0)
@@ -628,7 +631,7 @@ with tab1:
 # ──────────────────────────────────────────────────────────────
 # ABA 2 — CONTROLE PRESSÓRICO
 # ──────────────────────────────────────────────────────────────
-with tab2:
+if aba_sel == 1:
     st.markdown("### 2️⃣ Controle pressórico — situação atual")
     st.caption("Última aferição registrada por paciente hipertenso.")
 
@@ -765,7 +768,7 @@ with tab2:
 # ──────────────────────────────────────────────────────────────
 # ABA 3 — MEDICAMENTOS PRESCRITOS
 # ──────────────────────────────────────────────────────────────
-with tab_meds:
+if aba_sel == 2:
     st.markdown("### 3️⃣ Medicamentos prescritos")
     st.caption("Prevalência de cada classe de anti-hipertensivo entre os pacientes hipertensos. Um paciente pode receber mais de uma classe.")
 
@@ -833,7 +836,7 @@ with tab_meds:
 # ──────────────────────────────────────────────────────────────
 # ABA 4 — COMORBIDADES
 # ──────────────────────────────────────────────────────────────
-with tab3:
+if aba_sel == 3:
     st.markdown("### 3️⃣ Comorbidades associadas à HAS")
     st.caption("Sobreposição entre hipertensão e comorbidades cardiovasculares e metabólicas.")
 
@@ -962,7 +965,7 @@ with tab3:
 # ──────────────────────────────────────────────────────────────
 # ABA 4 — LACUNAS DE CUIDADO
 # ──────────────────────────────────────────────────────────────
-with tab4:
+if aba_sel == 4:
     st.markdown("### 4️⃣ Lacunas de cuidado na HAS")
 
     def _card(col, emoji, titulo, val, denom, denom_label, caption_txt):
@@ -1023,7 +1026,7 @@ with tab4:
 # ──────────────────────────────────────────────────────────────
 # ABA 5 — LISTA NOMINAL
 # ──────────────────────────────────────────────────────────────
-with tab5:
+if aba_sel == 5:
     st.markdown("### 👤 Lista Nominal de Pacientes com HAS")
     st.caption(
         "Filtros de carga e PA são enviados ao banco — o limite respeita o universo filtrado. "
