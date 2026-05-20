@@ -2758,6 +2758,15 @@ def renderizar_lista_pacientes(
     aba em Visao_ESF), os parâmetros area/clinica/esf são usados
     diretamente.
     """
+    # ── Instrumentação (diagnóstico de hang/loop) ──────────────
+    # Contador de execuções: se a lista entrar em loop infinito de
+    # rerun, os '[lista] INICIO #N' aparecem em enxurrada no log.
+    import time as _time
+    _run_n = st.session_state.get('_lista_run_count', 0) + 1
+    st.session_state['_lista_run_count'] = _run_n
+    print(f"[lista] >>> INICIO #{_run_n} scope={scope} "
+          f"t={_time.strftime('%H:%M:%S')}", flush=True)
+
     # Chave de paginação por escopo (cada caller tem sua própria página atual)
     pag_key = f"{scope}_pagina_atual"
     if pag_key not in st.session_state:
@@ -3318,17 +3327,24 @@ def renderizar_lista_pacientes(
         str(p.get('cpf', '')) for _, p in df_pacientes.iterrows()
         if p.get('cpf') and int(p.get('idade', 0) or 0) >= 60
     )
+    print(f"[lista] #{_run_n} batch ACB/STOPP iniciado "
+          f"({len(_cpfs_pagina)} cpfs)", flush=True)
     _mapa_acb   = buscar_acb_lote(_cpfs_pagina)
     _mapa_stopp = buscar_stopp_lote(_cpfs_idosos)
+    print(f"[lista] #{_run_n} batch ok — renderizando "
+          f"{len(df_pacientes)} cards", flush=True)
 
     for idx, (_, paciente) in enumerate(df_pacientes.iterrows()):
         paciente_dict = paciente.to_dict()
         _cpf = str(paciente_dict.get('cpf', ''))
+        print(f"[lista] #{_run_n} card {idx+1}/{len(df_pacientes)} "
+              f"cpf={_cpf}", flush=True)
         create_patient_card(
             paciente_dict, key_prefix=f"{scope}_",
             dados_acb=_mapa_acb.get(_cpf, {}),
             dados_stopp=_mapa_stopp.get(_cpf, {}),
         )
+    print(f"[lista] #{_run_n} loop de cards CONCLUIDO", flush=True)
 
     # Botões de navegação (rodapé)
     st.markdown("---")
@@ -3352,3 +3368,4 @@ def renderizar_lista_pacientes(
     # Rodapé
     st.markdown("---")
     st.caption("SMS-RJ | Navegador Clínico")
+    print(f"[lista] <<< FIM #{_run_n} renderizar_lista_pacientes", flush=True)
