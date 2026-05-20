@@ -1858,15 +1858,21 @@ def create_patient_card(patient_data, key_prefix: str = '',
             "📜 Histórico farmacológico",
             "📝 Relatar Problemas",
         ]
-        _tabs = st.tabs(_tab_labels)
-        if _mostrar_inercia:
-            tab1, tab2, tab3, tab4, tab_inercia, tab5, tab_hist, tab7 = _tabs
-        else:
-            tab1, tab2, tab3, tab4, tab5, tab_hist, tab7 = _tabs
-            tab_inercia = None
+        # Render preguiçoso das sub-abas. st.tabs renderizava as 8
+        # abas de TODO card sempre (numa lista de 20 cards = 160
+        # renders de aba por página). Trocado por segmented_control:
+        # só o bloco da aba selecionada executa (`if _aba_card ==`).
+        _cpk_card = str(patient_data.get('cpf', ''))
+        _aba_card = st.segmented_control(
+            "Seção", _tab_labels, default=_tab_labels[0],
+            key=f"{key_prefix}aba_card_{_cpk_card}",
+            label_visibility="collapsed",
+        )
+        if not _aba_card:
+            _aba_card = _tab_labels[0]
 
         # ========== TAB 1: CARGA DE MORBIDADE ==========
-        with tab1:
+        if _aba_card == "📊 Carga de Morbidade":
             st.markdown("#### 📊 Carga de Morbidade")
             charlson_score_val = patient_data.get('charlson_score')
             charlson_mediana_val = patient_data.get('charlson_mediana')
@@ -1911,7 +1917,7 @@ def create_patient_card(patient_data, key_prefix: str = '',
                 st.info("Carga de morbidade não calculada.")
 
         # ========== TAB 2: RISCO CARDIOVASCULAR ==========
-        with tab2:
+        if _aba_card == "❤️ Risco Cardiovascular":
             from utils.risco_cv import (calcular_who_lab, calcular_who_nonlab,
                                         calcular_risco_completo, cor_categoria_who,
                                         cor_categoria_completa, classificar_risco_direto,
@@ -2142,7 +2148,7 @@ def create_patient_card(patient_data, key_prefix: str = '',
 
         
         # ========== TAB 3: CONTINUIDADE DO CUIDADO ==========
-        with tab3:
+        if _aba_card == "🔄 Continuidade do Cuidado":
 
             # ── BLOCO 1: Frequência de Consultas ─────────────────
             st.markdown("#### 🗓️ Frequência de Consultas")
@@ -2328,7 +2334,7 @@ def create_patient_card(patient_data, key_prefix: str = '',
                 st.caption(f"Tempo em acompanhamento na unidade: **{format_tempo_acompanhamento(tempo_acomp)}**")
         
         # ========== TAB 4: LACUNAS DE CUIDADO ==========
-        with tab4:
+        if _aba_card == "⚠️ Lacunas de Cuidado":
             if n_lacunas == 0:
                 st.success("✅ **Nenhuma lacuna de cuidado identificada**")
             else:
@@ -2401,25 +2407,27 @@ def create_patient_card(patient_data, key_prefix: str = '',
                             )
 
         # ========== TAB INÉRCIA (condicional, V3) ==========
-        if tab_inercia is not None:
-            with tab_inercia:
-                st.markdown("#### ⏱️ Inércia terapêutica")
-                st.caption(
-                    "Em qual(is) tipo(s) de inércia este paciente está, "
-                    "e qual a frente de cuidado responsável por agir. "
-                    "A taxonomia separa **inércia clínica** (decisão "
-                    "médica diante do descontrole) de **inércia "
-                    "estrutural** (problemas anteriores: paciente "
-                    "sem prescrição, sem aferição, ou perdido da "
-                    "rede — antes do médico poder agir)."
-                )
-                _tem_has = _render_inercia_condicao(patient_data, 'HAS')
-                _tem_dm  = _render_inercia_condicao(patient_data, 'DM')
-                if not (_tem_has or _tem_dm):
-                    st.info("Paciente sem HAS nem DM avaliáveis pelo pipeline.")
+        # O rótulo "⏱️ Inércia" só entra em _tab_labels quando
+        # _mostrar_inercia é True — então a condição abaixo só pode
+        # ser verdadeira para pacientes com HAS/DM avaliáveis.
+        if _aba_card == "⏱️ Inércia":
+            st.markdown("#### ⏱️ Inércia terapêutica")
+            st.caption(
+                "Em qual(is) tipo(s) de inércia este paciente está, "
+                "e qual a frente de cuidado responsável por agir. "
+                "A taxonomia separa **inércia clínica** (decisão "
+                "médica diante do descontrole) de **inércia "
+                "estrutural** (problemas anteriores: paciente "
+                "sem prescrição, sem aferição, ou perdido da "
+                "rede — antes do médico poder agir)."
+            )
+            _tem_has = _render_inercia_condicao(patient_data, 'HAS')
+            _tem_dm  = _render_inercia_condicao(patient_data, 'DM')
+            if not (_tem_has or _tem_dm):
+                st.info("Paciente sem HAS nem DM avaliáveis pelo pipeline.")
 
         # ========== TAB 5: POLIFARMÁCIA E STOPP-START ==========
-        with tab5:
+        if _aba_card == "💊 Polifarmácia e STOPP-START":
             cpf_pac  = str(patient_data.get("cpf", ""))
             idade_pac = int(patient_data.get("idade", 0) or 0)
 
@@ -2655,7 +2663,7 @@ def create_patient_card(patient_data, key_prefix: str = '',
                     st.info("Sem dados ACB.")
 
         # ========== TAB HISTÓRICO FARMACOLÓGICO (730d) ==========
-        with tab_hist:
+        if _aba_card == "📜 Histórico farmacológico":
             st.markdown("#### 📜 Histórico farmacológico — últimos 730 dias")
 
             n_dist_730 = patient_data.get('n_meds_distintos_730d')
@@ -2733,7 +2741,7 @@ def create_patient_card(patient_data, key_prefix: str = '',
                         st.text(historico_730)
 
         # ========== TAB 7: RELATAR PROBLEMA ==========
-        with tab7:
+        if _aba_card == "📝 Relatar Problemas":
             usuario_logado = st.session_state.get('usuario_global', {})
             formulario_relato(patient_data_original, usuario_logado, key_prefix=key_prefix)
                 
