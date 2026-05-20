@@ -2102,22 +2102,32 @@ else:
     df['nome_exib'] = df['nome']
 
 # ═══════════════════════════════════════════════════════════════
-# ABAS
+# ABAS — render preguiçoso (lazy)
 # ═══════════════════════════════════════════════════════════════
-(tab_resumo, tab_cont, tab_polif,
- tab_has, tab_dm, tab_lacunas) = st.tabs([
+# st.tabs renderiza o conteúdo das 6 abas SEMPRE (mesmo as ocultas),
+# disparando todas as queries/gráficos a cada rerun → página pesada
+# que não "assenta". Trocado por st.segmented_control: só o bloco
+# da aba selecionada executa (`if _aba_esf == ...`). ~6x menos
+# trabalho por render.
+_ABAS_ESF = [
     "📊 Resumo da população",
     "🔄 Continuidade",
     "💊 Carga farmacológica",
     "🩺 Hipertensão",
     "🩸 Diabetes",
     "⚠️ Lacunas",
-])
+]
+_aba_esf = st.segmented_control(
+    "Seção", _ABAS_ESF, default=_ABAS_ESF[0],
+    key="visao_esf_aba_ativa", label_visibility="collapsed",
+)
+if not _aba_esf:            # segmented_control pode retornar None
+    _aba_esf = _ABAS_ESF[0]
 
 # ─────────────────────────────────────────────────────────────
 # ABA 1 — RESUMO DA EQUIPE
 # ─────────────────────────────────────────────────────────────
-with tab_resumo:
+if _aba_esf == "📊 Resumo da população":
     n_total = len(df)
 
     # ─────────────────────────────────────────────────────────
@@ -2317,7 +2327,7 @@ cortado em 1,0.
 # ─────────────────────────────────────────────────────────────
 # ABA 2 — CONTINUIDADE DO CUIDADO
 # ─────────────────────────────────────────────────────────────
-with tab_cont:
+if _aba_esf == "🔄 Continuidade":
     st.markdown(
         "#### Continuidade do cuidado — narrativa por carga de morbidade"
     )
@@ -2624,7 +2634,7 @@ with tab_cont:
 # ─────────────────────────────────────────────────────────────
 # ABA 3 — CARGA FARMACOLÓGICA (Polifarmácia, STOPP, START, Beers, ACB)
 # ─────────────────────────────────────────────────────────────
-with tab_polif:
+if _aba_esf == "💊 Carga farmacológica":
     st.markdown("#### Carga farmacológica")
 
     # Texto explicativo de abertura — três dimensões + ACB
@@ -3034,7 +3044,7 @@ ACB calculado individualmente para cada paciente.
 # page Hipertensão. Layout em 2 colunas: à esquerda o texto
 # narrativo, à direita os cards. Mantém a tabela nominal embaixo.
 # ─────────────────────────────────────────────────────────────
-with tab_has:
+if _aba_esf == "🩺 Hipertensão":
     st.markdown("#### Hipertensão arterial — narrativa da equipe")
     st.caption(
         "Mesma base da aba 🩺 Hipertensão, ampliada com medicamentos, "
@@ -3617,7 +3627,7 @@ with tab_has:
 # em 5 atos. Layout em 2 colunas: à esquerda o texto narrativo, à
 # direita os cards (versão antiga). Mantém a tabela nominal embaixo.
 # ─────────────────────────────────────────────────────────────
-with tab_dm:
+if _aba_esf == "🩸 Diabetes":
     st.markdown("#### Diabetes mellitus — narrativa da equipe")
     st.caption(
         "Mesma base da aba 🩸 Diabetes, contada como história em "
@@ -3953,7 +3963,7 @@ with tab_dm:
 # ─────────────────────────────────────────────────────────────
 # ABA 6 — LACUNAS DA EQUIPE × MUNICÍPIO
 # ─────────────────────────────────────────────────────────────
-with tab_lacunas:
+if _aba_esf == "⚠️ Lacunas":
     st.markdown(
         "#### Lacunas de cuidado — Equipe versus município"
     )
