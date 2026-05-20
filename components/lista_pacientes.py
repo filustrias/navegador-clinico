@@ -1793,31 +1793,67 @@ def create_patient_card(patient_data, key_prefix: str = '',
         
 
 
-        # Últimas Medidas (linha completa abaixo)
+        # Últimas Medidas — 4 colunas: antropometria, PA, glicemias, HbA1c
         ultimas_pa = patient_data.get('ultimas_tres_PA')
         ultimas_glicemias = patient_data.get('ultimas_tres_glicemias')
         ultimas_a1c = patient_data.get('ultimas_tres_A1C')
-            
-        if pd.notna(ultimas_pa) or pd.notna(ultimas_glicemias) or pd.notna(ultimas_a1c):
+        med_peso   = patient_data.get('peso')
+        med_altura = patient_data.get('altura')
+        med_imc    = patient_data.get('IMC')
+
+        def _fmt_medida(v, unidade, casas=1):
+            """Formata um valor antropométrico; trata None/NaN/0 como ausente."""
+            if pd.notna(v):
+                try:
+                    fv = float(v)
+                    if fv > 0:
+                        return f"{fv:.{casas}f} {unidade}"
+                except (ValueError, TypeError):
+                    pass
+            return "—"
+
+        def _render_col_medida(titulo, valor_str):
+            """Coluna 'Últimas 3 X' — um valor por linha (separados por ';'),
+            o primeiro marcado como o mais recente."""
+            st.write(f"**{titulo}**")
+            partes = [p.strip() for p in str(valor_str).split(';') if p.strip()]
+            for i, p in enumerate(partes):
+                if i == 0:
+                    st.markdown(
+                        f"{p} <span style='color:#888; font-size:0.85em;'>"
+                        f"(mais recente)</span>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.write(p)
+
+        _tem_antropo = any(
+            pd.notna(v) for v in (med_peso, med_altura, med_imc)
+        )
+        if (_tem_antropo or pd.notna(ultimas_pa)
+                or pd.notna(ultimas_glicemias) or pd.notna(ultimas_a1c)):
             st.markdown("---")
             st.markdown("#### 📈 Últimas Medidas Registradas")
-                
-            col_pa, col_glic, col_a1c = st.columns(3)
-                
+
+            col_antropo, col_pa, col_glic, col_a1c = st.columns(4)
+
+            with col_antropo:
+                st.write("**Antropometria:**")
+                st.write(f"Último peso: {_fmt_medida(med_peso, 'kg', 1)}")
+                st.write(f"Altura: {_fmt_medida(med_altura, 'm', 2)}")
+                st.write(f"Último IMC: {_fmt_medida(med_imc, 'kg/m²', 1)}")
+
             with col_pa:
                 if pd.notna(ultimas_pa):
-                    st.write(f"**Últimas 3 PA:**")
-                    st.write(ultimas_pa)
-                
+                    _render_col_medida("Últimas 3 PA:", ultimas_pa)
+
             with col_glic:
                 if pd.notna(ultimas_glicemias):
-                    st.write(f"**Últimas 3 glicemias:**")
-                    st.write(ultimas_glicemias)
-                
+                    _render_col_medida("Últimas 3 glicemias:", ultimas_glicemias)
+
             with col_a1c:
                 if pd.notna(ultimas_a1c):
-                    st.write(f"**Últimas 3 HbA1c:**")
-                    st.write(ultimas_a1c)
+                    _render_col_medida("Últimas 3 HbA1c:", ultimas_a1c)
 
 
         st.markdown("---")
