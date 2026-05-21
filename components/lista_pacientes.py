@@ -2979,226 +2979,181 @@ def renderizar_lista_pacientes(
             st.session_state.operador_morbidades = "OU (pelo menos uma)"
 
     # ═══════════════════════════════════════════════════════════════
-    # FILTROS — agrupados num expander fechado por padrão. A lista de
-    # pacientes aparece logo abaixo; a linha-resumo de filtros ativos
-    # (filtros_texto) fica sempre visível. O conteúdo do expander é
-    # leve (só widgets, sem query), então renderizar sempre é barato.
+    # FILTROS — 5 grupos lado a lado (colunas) + 'Ordenar por' embaixo.
+    # Sem expander: filtros sempre visíveis e compactos. Cada grupo é
+    # uma coluna; os widgets empilham na vertical dentro dela.
     # ═══════════════════════════════════════════════════════════════
-    with st.expander("🔍 Filtros e ordenação", expanded=False):
+    g_ident, g_clin, g_farm, g_lac, g_prior = st.columns(5)
 
-        # ── 👤 Identificação ───────────────────────────────────────
+    with g_ident:
         st.markdown("**👤 Identificação**")
-        fi1, fi2, fi3 = st.columns([2, 1, 1])
-        with fi1:
-            busca_nome_input = st.text_input(
-                "Buscar paciente por nome",
-                value=st.session_state.get('busca_nome_input', ''),
-                placeholder="Digite o nome do paciente...",
-                key="busca_nome_input",
-            )
-        with fi2:
-            faixa_idade = st.slider(
-                "Faixa etária",
-                min_value=0, max_value=120,
-                value=st.session_state.faixa_idade,
-                step=1, key="idade_slider"
-            )
-            st.session_state.faixa_idade = faixa_idade
-        with fi3:
-            _sexo_opcoes = {"Todos": None, "Feminino": "F", "Masculino": "M"}
-            _sexo_sel = st.selectbox(
-                "Sexo", options=list(_sexo_opcoes.keys()), key="sexo_filtro")
-            genero_filtro = _sexo_opcoes[_sexo_sel]
+        busca_nome_input = st.text_input(
+            "Buscar por nome",
+            value=st.session_state.get('busca_nome_input', ''),
+            placeholder="Nome do paciente...",
+            key="busca_nome_input",
+        )
+        faixa_idade = st.slider(
+            "Faixa etária",
+            min_value=0, max_value=120,
+            value=st.session_state.faixa_idade,
+            step=1, key="idade_slider",
+        )
+        st.session_state.faixa_idade = faixa_idade
+        _sexo_opcoes = {"Todos": None, "Feminino": "F", "Masculino": "M"}
+        _sexo_sel = st.selectbox(
+            "Sexo", options=list(_sexo_opcoes.keys()), key="sexo_filtro")
+        genero_filtro = _sexo_opcoes[_sexo_sel]
 
-        st.markdown("---")
-
-        # ── 🏥 Condição clínica ────────────────────────────────────
+    with g_clin:
         st.markdown("**🏥 Condição clínica**")
-        fc1, fc2, fc3 = st.columns([2, 1, 1])
-        with fc1:
-            morbidades_selecionadas = st.multiselect(
-                "🦠 Morbidades",
-                options=LISTA_MORBIDADES,
-                default=st.session_state.morbidades_selecionadas,
-                placeholder="Todas",
-                key="morb_select"
-            )
-            st.session_state.morbidades_selecionadas = morbidades_selecionadas
-            operador_index = 0 if "OU" in st.session_state.operador_morbidades else 1
-            operador_morbidades = st.radio(
-                "Operador",
-                options=["OU (pelo menos uma)", "E (todas)"],
-                index=operador_index,
-                disabled=len(morbidades_selecionadas) == 0,
-                key="operador_radio", horizontal=True
-            )
-            st.session_state.operador_morbidades = operador_morbidades
-            operador_morb = "AND" if "E" in operador_morbidades else "OR"
-        with fc2:
-            carga_morb_filtro = st.multiselect(
-                "📊 Carga de morbidade",
-                options=["Muito Alto", "Alto", "Moderado", "Baixo"],
-                default=[],
-                placeholder="Todas",
-                key="carga_morb_filtro"
-            )
-        with fc3:
-            rcv_filtro = st.multiselect(
-                "❤️ Risco Cardiovascular",
-                options=["Baixo", "Moderado", "Alto", "Muito alto", "Crítico", "Não calculado"],
-                default=[],
-                placeholder="Todos",
-                help="'Não calculado' = pacientes elegíveis (40-80 anos) sem DM/IRC/DCV estabelecida e sem colesterol nem IMC para o cálculo.",
-                key="rcv_filtro"
-            )
+        morbidades_selecionadas = st.multiselect(
+            "🦠 Morbidades",
+            options=LISTA_MORBIDADES,
+            default=st.session_state.morbidades_selecionadas,
+            placeholder="Todas",
+            key="morb_select",
+        )
+        st.session_state.morbidades_selecionadas = morbidades_selecionadas
+        operador_index = 0 if "OU" in st.session_state.operador_morbidades else 1
+        operador_morbidades = st.radio(
+            "Operador",
+            options=["OU (pelo menos uma)", "E (todas)"],
+            index=operador_index,
+            disabled=len(morbidades_selecionadas) == 0,
+            key="operador_radio", horizontal=True,
+        )
+        st.session_state.operador_morbidades = operador_morbidades
+        operador_morb = "AND" if "E" in operador_morbidades else "OR"
+        carga_morb_filtro = st.multiselect(
+            "📊 Carga de morbidade",
+            options=["Muito Alto", "Alto", "Moderado", "Baixo"],
+            default=[], placeholder="Todas", key="carga_morb_filtro",
+        )
+        rcv_filtro = st.multiselect(
+            "❤️ Risco Cardiovascular",
+            options=["Baixo", "Moderado", "Alto", "Muito alto", "Crítico", "Não calculado"],
+            default=[], placeholder="Todos",
+            help="'Não calculado' = pacientes elegíveis (40-80 anos) sem DM/IRC/DCV estabelecida e sem colesterol nem IMC para o cálculo.",
+            key="rcv_filtro",
+        )
 
-        st.markdown("---")
-
-        # ── 💊 Farmacológico ───────────────────────────────────────
+    with g_farm:
         st.markdown("**💊 Farmacológico**")
-        ff1, ff2, ff3 = st.columns([1.3, 1, 1])
-        with ff1:
-            apenas_insulina = st.checkbox(
-                "💉 Em uso de insulina",
-                value=False,
-                key="apenas_insulina_filter",
-                help="Qualquer tipo: NPH, regular, análogos basal/prandial e misturas."
-            )
-            apenas_polifarmacia = st.checkbox(
-                "💊 Em polifarmácia (≥5 medicamentos)",
-                value=False,
-                key="apenas_polifarmacia_filter",
-                help="Mesma definição do indicador populacional: 5 ou mais medicamentos crônicos em uso."
-            )
-        with ff2:
-            acb_filtro = st.multiselect(
-                "🔴 Carga anticolinérgica (ACB)",
-                options=["MUITO_ALTO", "ALTO", "MODERADO", "BAIXO"],
-                default=[],
-                placeholder="Todas",
-                key="acb_filtro",
-                help="Categoria de carga anticolinérgica acumulada das prescrições do paciente."
-            )
-        with ff3:
-            apenas_stopp = st.checkbox(
-                "⚠️ Com critério STOPP ou START",
-                value=False,
-                key="apenas_stopp_filter",
-                help="Pacientes com ao menos um critério STOPP (prescrição potencialmente inapropriada) ou START (omissão de tratamento indicado) ativo."
-            )
+        apenas_insulina = st.checkbox(
+            "💉 Em uso de insulina",
+            value=False, key="apenas_insulina_filter",
+            help="Qualquer tipo: NPH, regular, análogos basal/prandial e misturas.",
+        )
+        apenas_polifarmacia = st.checkbox(
+            "💊 Em polifarmácia (≥5)",
+            value=False, key="apenas_polifarmacia_filter",
+            help="Mesma definição do indicador populacional: 5 ou mais medicamentos crônicos em uso.",
+        )
+        apenas_stopp = st.checkbox(
+            "⚠️ Com critério STOPP/START",
+            value=False, key="apenas_stopp_filter",
+            help="Pacientes com ao menos um critério STOPP (prescrição potencialmente inapropriada) ou START (omissão de tratamento indicado) ativo.",
+        )
+        acb_filtro = st.multiselect(
+            "🔴 Carga anticolinérgica (ACB)",
+            options=["MUITO_ALTO", "ALTO", "MODERADO", "BAIXO"],
+            default=[], placeholder="Todas", key="acb_filtro",
+            help="Categoria de carga anticolinérgica acumulada das prescrições do paciente.",
+        )
 
-        st.markdown("---")
+    with g_lac:
+        st.markdown("**⚠️ Lacunas e inércia**")
+        grupo_lacuna_sel = st.selectbox(
+            "Grupo de lacunas",
+            options=["Todos"] + GRUPOS_LACUNAS_ORDENADOS,
+            key="grupo_lacuna_filtro",
+        )
+        if grupo_lacuna_sel == "Todos":
+            lacunas_disp = [(k, desc) for k, (grupos, desc, _) in LACUNAS_COMPLETO.items()]
+        else:
+            lacunas_disp = [(k, desc) for k, (grupos, desc, _) in LACUNAS_COMPLETO.items()
+                            if grupo_lacuna_sel in grupos]
+        lacunas_selecionadas = st.multiselect(
+            "Filtrar por lacunas",
+            options=[k for k, _ in lacunas_disp],
+            format_func=lambda k: dict(lacunas_disp).get(k, k),
+            default=[], placeholder="Todas", key="lacunas_filtro",
+        )
+        apenas_inercia_clinica = st.checkbox(
+            "🩺 Inércia clínica (HAS/DM)",
+            value=False, key="apenas_inercia_clinica_filter",
+            help="Pacientes com descontrole confirmado e esquema mantido "
+                 "(INERCIA_PERSISTENTE) ou que descontrolaram agora sem "
+                 "ação registrada (DESCONTROLE_RECENTE_SEM_ACAO). Frente "
+                 "de decisão médica — avaliar adesão e intensificar.",
+        )
+        apenas_inercia_estrutural = st.checkbox(
+            "🏠 Inércia estrutural (HAS/DM)",
+            value=False, key="apenas_inercia_estrutural_filter",
+            help="Pacientes sem prescrição em 365 dias (busca ativa pelo "
+                 "ACS), em tratamento mas sem aferição/exame recente "
+                 "(equipe afere) ou nunca aferidos em 730 dias (voando "
+                 "cego). Frente de organização do cuidado pela equipe.",
+        )
 
-        # ── ⚠️ Lacunas e inércia terapêutica ───────────────────────
-        st.markdown("**⚠️ Lacunas e inércia terapêutica**")
-        fla, flb = st.columns([1, 2])
-        with fla:
-            grupo_lacuna_sel = st.selectbox(
-                "Grupo de lacunas",
-                options=["Todos"] + GRUPOS_LACUNAS_ORDENADOS,
-                key="grupo_lacuna_filtro"
-            )
-        with flb:
-            if grupo_lacuna_sel == "Todos":
-                lacunas_disp = [(k, desc) for k, (grupos, desc, _) in LACUNAS_COMPLETO.items()]
-            else:
-                lacunas_disp = [(k, desc) for k, (grupos, desc, _) in LACUNAS_COMPLETO.items()
-                                if grupo_lacuna_sel in grupos]
-            lacunas_selecionadas = st.multiselect(
-                "Filtrar por lacunas",
-                options=[k for k, _ in lacunas_disp],
-                format_func=lambda k: dict(lacunas_disp).get(k, k),
-                default=[],
-                placeholder="Todas",
-                key="lacunas_filtro"
-            )
-        # Toggles de inércia separados — endereçam atores diferentes:
-        # • Clínica → médico precisa decidir (intensificar/trocar).
-        # • Estrutural → equipe / ACS precisa agir (aferir, busca ativa).
-        fin1, fin2 = st.columns(2)
-        with fin1:
-            apenas_inercia_clinica = st.checkbox(
-                "🩺 Apenas com inércia clínica (HAS ou DM)",
-                value=False,
-                key="apenas_inercia_clinica_filter",
-                help="Pacientes com descontrole confirmado e esquema mantido "
-                     "(INERCIA_PERSISTENTE) ou que descontrolaram agora sem "
-                     "ação registrada (DESCONTROLE_RECENTE_SEM_ACAO). Frente "
-                     "de decisão médica — avaliar adesão e intensificar."
-            )
-        with fin2:
-            apenas_inercia_estrutural = st.checkbox(
-                "🏠 Apenas com inércia estrutural (HAS ou DM)",
-                value=False,
-                key="apenas_inercia_estrutural_filter",
-                help="Pacientes sem prescrição em 365 dias (busca ativa pelo "
-                     "ACS), em tratamento mas sem aferição/exame recente "
-                     "(equipe afere) ou nunca aferidos em 730 dias (voando "
-                     "cego). Frente de organização do cuidado pela equipe."
-            )
-
-        st.markdown("---")
-
-        # ── 🎯 Priorização ─────────────────────────────────────────
+    with g_prior:
         st.markdown("**🎯 Priorização**")
         ipc_filtro = st.multiselect(
-            "IPC — Índice de Priorização do Cuidado",
+            "IPC — priorização do cuidado",
             options=["Crítico", "Alto", "Moderado", "Baixo"],
-            default=[],
-            placeholder="Todos",
+            default=[], placeholder="Todos",
             help="Categoria do Índice de Priorização do Cuidado "
                  "(IPC): combina Carga de Morbidade, lacunas, dias "
                  "sem médico, ACB e STOPP. Crítico ≥0,75; Alto "
                  "0,50–0,74; Moderado 0,25–0,49; Baixo <0,25.",
-            key="ipc_filtro"
+            key="ipc_filtro",
         )
 
-        st.markdown("---")
-
-        # ── ↕️ Ordenação ───────────────────────────────────────────
-        st.markdown("**↕️ Ordenar por**")
-        fo1, fo2, fo3, fo4, fo5, fo6 = st.columns(6)
-        with fo1:
-            ordem_opcoes = {
-                "↓ Mais morbidades primeiro": ("morbidades", "desc"),
-                "↑ Menos morbidades primeiro": ("morbidades", "asc"),
-            }
-            ord1 = st.selectbox("🦠 Morbidades", options=list(ordem_opcoes.keys()), key="ord_morb")
-        with fo2:
-            ord_medico_opcoes = {
-                "— Não ordenar": None,
-                "↓ Mais dias sem médico": ("dias_medico", "desc"),
-                "↑ Menos dias sem médico": ("dias_medico", "asc"),
-            }
-            ord2 = st.selectbox("⏳ Dias sem médico", options=list(ord_medico_opcoes.keys()), key="ord_med")
-        with fo3:
-            ord_presc_opcoes = {
-                "— Não ordenar": None,
-                "↓ Mais dias sem prescrição": ("dias_prescricao", "desc"),
-                "↑ Menos dias sem prescrição": ("dias_prescricao", "asc"),
-            }
-            ord3 = st.selectbox("💊 Dias sem prescrição", options=list(ord_presc_opcoes.keys()), key="ord_presc")
-        with fo4:
-            ord_acb_opcoes = {
-                "— Não ordenar": None,
-                "↓ Maior ACB primeiro": ("acb", "desc"),
-                "↑ Menor ACB primeiro": ("acb", "asc"),
-            }
-            ord4 = st.selectbox("🔴 Score ACB", options=list(ord_acb_opcoes.keys()), key="ord_acb")
-        with fo5:
-            ord_rcv_opcoes = {
-                "— Não ordenar": None,
-                "↓ Maior risco primeiro": ("rcv", "desc"),
-                "↑ Menor risco primeiro": ("rcv", "asc"),
-            }
-            ord5 = st.selectbox("❤️ Risco CV", options=list(ord_rcv_opcoes.keys()), key="ord_rcv")
-        with fo6:
-            ord_nph_opcoes = {
-                "— Não ordenar": None,
-                "↓ Maior dose NPH/kg primeiro": ("dose_nph", "desc"),
-                "↑ Menor dose NPH/kg primeiro": ("dose_nph", "asc"),
-            }
-            ord6 = st.selectbox("💉 Dose NPH (UI/kg)", options=list(ord_nph_opcoes.keys()), key="ord_nph")
+    # ── ↕️ Ordenar por — linha de baixo ────────────────────────────
+    st.markdown("**↕️ Ordenar por**")
+    fo1, fo2, fo3, fo4, fo5, fo6 = st.columns(6)
+    with fo1:
+        ordem_opcoes = {
+            "↓ Mais morbidades primeiro": ("morbidades", "desc"),
+            "↑ Menos morbidades primeiro": ("morbidades", "asc"),
+        }
+        ord1 = st.selectbox("🦠 Morbidades", options=list(ordem_opcoes.keys()), key="ord_morb")
+    with fo2:
+        ord_medico_opcoes = {
+            "— Não ordenar": None,
+            "↓ Mais dias sem médico": ("dias_medico", "desc"),
+            "↑ Menos dias sem médico": ("dias_medico", "asc"),
+        }
+        ord2 = st.selectbox("⏳ Dias sem médico", options=list(ord_medico_opcoes.keys()), key="ord_med")
+    with fo3:
+        ord_presc_opcoes = {
+            "— Não ordenar": None,
+            "↓ Mais dias sem prescrição": ("dias_prescricao", "desc"),
+            "↑ Menos dias sem prescrição": ("dias_prescricao", "asc"),
+        }
+        ord3 = st.selectbox("💊 Dias sem prescrição", options=list(ord_presc_opcoes.keys()), key="ord_presc")
+    with fo4:
+        ord_acb_opcoes = {
+            "— Não ordenar": None,
+            "↓ Maior ACB primeiro": ("acb", "desc"),
+            "↑ Menor ACB primeiro": ("acb", "asc"),
+        }
+        ord4 = st.selectbox("🔴 Score ACB", options=list(ord_acb_opcoes.keys()), key="ord_acb")
+    with fo5:
+        ord_rcv_opcoes = {
+            "— Não ordenar": None,
+            "↓ Maior risco primeiro": ("rcv", "desc"),
+            "↑ Menor risco primeiro": ("rcv", "asc"),
+        }
+        ord5 = st.selectbox("❤️ Risco CV", options=list(ord_rcv_opcoes.keys()), key="ord_rcv")
+    with fo6:
+        ord_nph_opcoes = {
+            "— Não ordenar": None,
+            "↓ Maior dose NPH/kg primeiro": ("dose_nph", "desc"),
+            "↑ Menor dose NPH/kg primeiro": ("dose_nph", "asc"),
+        }
+        ord6 = st.selectbox("💉 Dose NPH (UI/kg)", options=list(ord_nph_opcoes.keys()), key="ord_nph")
 
     # Determinar ordenação (prioridade: dose NPH > rcv > médico > prescrição > ACB > morbidades)
     if ord_nph_opcoes[ord6]:
