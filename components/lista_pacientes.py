@@ -2882,8 +2882,6 @@ def renderizar_lista_pacientes(
             st.session_state.faixa_idade = (0, 120)
         if 'morbidades_selecionadas' not in st.session_state:
             st.session_state.morbidades_selecionadas = []
-        if 'operador_morbidades' not in st.session_state:
-            st.session_state.operador_morbidades = "OU (pelo menos uma)"
 
         # Filtro Área
         areas_disponiveis = sorted(df_options['area_programatica_cadastro'].dropna().unique().tolist())
@@ -2983,8 +2981,6 @@ def renderizar_lista_pacientes(
             st.session_state.faixa_idade = (0, 120)
         if 'morbidades_selecionadas' not in st.session_state:
             st.session_state.morbidades_selecionadas = []
-        if 'operador_morbidades' not in st.session_state:
-            st.session_state.operador_morbidades = "OU (pelo menos uma)"
 
     # ═══════════════════════════════════════════════════════════════
     # FILTROS — linha única de 5 colunas. Cada coluna empilha seus
@@ -3035,16 +3031,9 @@ def renderizar_lista_pacientes(
             key="morb_select",
         )
         st.session_state.morbidades_selecionadas = morbidades_selecionadas
-        operador_index = 0 if "OU" in st.session_state.operador_morbidades else 1
-        operador_morbidades = st.radio(
-            "Operador",
-            options=["OU (pelo menos uma)", "E (todas)"],
-            index=operador_index,
-            disabled=len(morbidades_selecionadas) == 0,
-            key="operador_radio", horizontal=True,
-        )
-        st.session_state.operador_morbidades = operador_morbidades
-        operador_morb = "AND" if "E" in operador_morbidades else "OR"
+        # Morbidades sempre combinadas com E (todas) — operador fixo,
+        # sem widget de escolha (decisão de UX: OU não é necessário).
+        operador_morb = "AND"
         ordem_opcoes = {
             "↓ Mais morbidades primeiro": ("morbidades", "desc"),
             "↑ Menos morbidades primeiro": ("morbidades", "asc"),
@@ -3386,14 +3375,13 @@ def renderizar_lista_pacientes(
         f"**📊 {total_pacientes:,} pacientes encontrados** | {filtros_texto}"
     )
     if morbidades_selecionadas:
+        # Morbidades sempre combinadas com E (operador fixo).
         if len(morbidades_selecionadas) == 1:
             morb_texto = morbidades_selecionadas[0]
         elif len(morbidades_selecionadas) == 2:
-            operador_texto = " e " if "E" in operador_morbidades else " ou "
-            morb_texto = f"{morbidades_selecionadas[0]}{operador_texto}{morbidades_selecionadas[1]}"
+            morb_texto = f"{morbidades_selecionadas[0]} e {morbidades_selecionadas[1]}"
         else:
-            operador_texto = " e " if "E" in operador_morbidades else " ou "
-            morb_texto = ", ".join(morbidades_selecionadas[:-1]) + f"{operador_texto}{morbidades_selecionadas[-1]}"
+            morb_texto = ", ".join(morbidades_selecionadas[:-1]) + f" e {morbidades_selecionadas[-1]}"
         caption_placeholder.caption(
             f"Mostrando {total_pacientes} pacientes com {morb_texto} | "
             f"Página {pagina_atual + 1} de {total_paginas}"
