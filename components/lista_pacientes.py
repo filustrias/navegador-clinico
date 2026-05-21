@@ -2987,9 +2987,10 @@ def renderizar_lista_pacientes(
             st.session_state.operador_morbidades = "OU (pelo menos uma)"
 
     # ═══════════════════════════════════════════════════════════════
-    # FILTROS — uma única linha de 5 colunas. Cada coluna empilha os
-    # widgets na vertical. A 5ª coluna é o 'Ordenar por'. Compacto,
-    # tudo visível, sem expander.
+    # FILTROS — linha única de 5 colunas. Cada coluna empilha seus
+    # widgets na vertical. Os controles de 'ordenar por' ficam
+    # distribuídos junto dos filtros relacionados (3 deles); os
+    # outros 3 ficam na 5ª coluna.
     # ═══════════════════════════════════════════════════════════════
     g1, g2, g3, g4, g5 = st.columns(5)
 
@@ -3012,6 +3013,17 @@ def renderizar_lista_pacientes(
         _sexo_sel = st.selectbox(
             "Sexo", options=list(_sexo_opcoes.keys()), key="sexo_filtro")
         genero_filtro = _sexo_opcoes[_sexo_sel]
+        st.markdown("**🎯 Priorização**")
+        ipc_filtro = st.multiselect(
+            "IPC — priorização do cuidado",
+            options=["Crítico", "Alto", "Moderado", "Baixo"],
+            default=[], placeholder="Todos",
+            help="Categoria do Índice de Priorização do Cuidado "
+                 "(IPC): combina Carga de Morbidade, lacunas, dias "
+                 "sem médico, ACB e STOPP. Crítico ≥0,75; Alto "
+                 "0,50–0,74; Moderado 0,25–0,49; Baixo <0,25.",
+            key="ipc_filtro",
+        )
 
     with g2:
         st.markdown("**🏥 Condições clínicas**")
@@ -3033,6 +3045,13 @@ def renderizar_lista_pacientes(
         )
         st.session_state.operador_morbidades = operador_morbidades
         operador_morb = "AND" if "E" in operador_morbidades else "OR"
+        ordem_opcoes = {
+            "↓ Mais morbidades primeiro": ("morbidades", "desc"),
+            "↑ Menos morbidades primeiro": ("morbidades", "asc"),
+        }
+        ord1 = st.selectbox(
+            "↕️ Ordenar por morbidades",
+            options=list(ordem_opcoes.keys()), key="ord_morb")
         carga_morb_filtro = st.multiselect(
             "📊 Carga de morbidade",
             options=["Muito Alto", "Alto", "Moderado", "Baixo"],
@@ -3074,17 +3093,14 @@ def renderizar_lista_pacientes(
             default=[], placeholder="Todas", key="acb_filtro",
             help="Categoria de carga anticolinérgica acumulada das prescrições do paciente.",
         )
-        st.markdown("**🎯 Priorização**")
-        ipc_filtro = st.multiselect(
-            "IPC — priorização do cuidado",
-            options=["Crítico", "Alto", "Moderado", "Baixo"],
-            default=[], placeholder="Todos",
-            help="Categoria do Índice de Priorização do Cuidado "
-                 "(IPC): combina Carga de Morbidade, lacunas, dias "
-                 "sem médico, ACB e STOPP. Crítico ≥0,75; Alto "
-                 "0,50–0,74; Moderado 0,25–0,49; Baixo <0,25.",
-            key="ipc_filtro",
-        )
+        ord_presc_opcoes = {
+            "— Não ordenar": None,
+            "↓ Mais dias sem prescrição": ("dias_prescricao", "desc"),
+            "↑ Menos dias sem prescrição": ("dias_prescricao", "asc"),
+        }
+        ord3 = st.selectbox(
+            "↕️ Ordenar por dias sem prescrição",
+            options=list(ord_presc_opcoes.keys()), key="ord_presc")
 
     with g4:
         st.markdown("**⚠️ Lacunas e inércia**")
@@ -3120,26 +3136,17 @@ def renderizar_lista_pacientes(
                  "(equipe afere) ou nunca aferidos em 730 dias (voando "
                  "cego). Frente de organização do cuidado pela equipe.",
         )
-
-    with g5:
-        st.markdown("**↕️ Ordenar por**")
-        ordem_opcoes = {
-            "↓ Mais morbidades primeiro": ("morbidades", "desc"),
-            "↑ Menos morbidades primeiro": ("morbidades", "asc"),
-        }
-        ord1 = st.selectbox("🦠 Morbidades", options=list(ordem_opcoes.keys()), key="ord_morb")
         ord_medico_opcoes = {
             "— Não ordenar": None,
             "↓ Mais dias sem médico": ("dias_medico", "desc"),
             "↑ Menos dias sem médico": ("dias_medico", "asc"),
         }
-        ord2 = st.selectbox("⏳ Dias sem médico", options=list(ord_medico_opcoes.keys()), key="ord_med")
-        ord_presc_opcoes = {
-            "— Não ordenar": None,
-            "↓ Mais dias sem prescrição": ("dias_prescricao", "desc"),
-            "↑ Menos dias sem prescrição": ("dias_prescricao", "asc"),
-        }
-        ord3 = st.selectbox("💊 Dias sem prescrição", options=list(ord_presc_opcoes.keys()), key="ord_presc")
+        ord2 = st.selectbox(
+            "↕️ Ordenar por dias sem médico",
+            options=list(ord_medico_opcoes.keys()), key="ord_med")
+
+    with g5:
+        st.markdown("**↕️ Ordenar por**")
         ord_acb_opcoes = {
             "— Não ordenar": None,
             "↓ Maior ACB primeiro": ("acb", "desc"),
