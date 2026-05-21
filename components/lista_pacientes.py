@@ -378,6 +378,7 @@ def load_patient_data_paginated(
     apenas_polifarmacia=False,
     acb_filtro=None,
     apenas_stopp=False,
+    apenas_hiperpolifarmacia=False,
     cpfs=None,
 ):
     """Carrega pacientes com paginação e filtros.
@@ -497,6 +498,7 @@ def load_patient_data_paginated(
     where_clauses += _where_filtros_extras(
         genero_filtro=genero_filtro, apenas_polifarmacia=apenas_polifarmacia,
         acb_filtro=acb_filtro, apenas_stopp=apenas_stopp,
+        apenas_hiperpolifarmacia=apenas_hiperpolifarmacia,
     )
 
     where_sql = " AND ".join(where_clauses)
@@ -918,11 +920,13 @@ def buscar_stopp_lote(cpfs: tuple) -> dict:
             for _, row in df.iterrows()}
 
 def _where_filtros_extras(genero_filtro=None, apenas_polifarmacia=False,
-                          acb_filtro=None, apenas_stopp=False):
-    """Cláusulas WHERE dos 4 filtros adicionais (sexo, polifarmácia,
-    carga ACB, STOPP/START). Compartilhado por count_total_patients e
-    load_patient_data_paginated — ambos filtram a mesma tabela fato.
-    Retorna lista de strings prontas para ``where_clauses.append``."""
+                          acb_filtro=None, apenas_stopp=False,
+                          apenas_hiperpolifarmacia=False):
+    """Cláusulas WHERE dos filtros adicionais (sexo, polifarmácia,
+    hiperpolifarmácia, carga ACB, STOPP/START). Compartilhado por
+    count_total_patients e load_patient_data_paginated — ambos
+    filtram a mesma tabela fato. Retorna lista de strings prontas
+    para ``where_clauses.append``."""
     clausulas = []
     if genero_filtro == 'F':
         clausulas.append("LOWER(genero) IN ('f', 'feminino')")
@@ -931,6 +935,9 @@ def _where_filtros_extras(genero_filtro=None, apenas_polifarmacia=False,
     if apenas_polifarmacia:
         # Mesma definição do KPI populacional (≥5 medicamentos crônicos).
         clausulas.append("polifarmacia = TRUE")
+    if apenas_hiperpolifarmacia:
+        # Hiperpolifarmácia — ≥10 medicamentos crônicos (KPI populacional).
+        clausulas.append("hiperpolifarmacia = TRUE")
     if acb_filtro and len(acb_filtro) > 0:
         cats = ", ".join(f"'{c}'" for c in acb_filtro)
         clausulas.append(f"categoria_acb IN ({cats})")
@@ -950,7 +957,8 @@ def _where_filtros_extras(genero_filtro=None, apenas_polifarmacia=False,
 
 @st.cache_data(show_spinner=False, ttl=900)
 def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idade_max=None, morbidades=None, operador_morb="OR", busca_nome=None, carga_morb=None, lacunas_filtro=None, rcv_filtro=None, apenas_insulina=False, apenas_inercia_clinica=False, apenas_inercia_estrutural=False,
-                         genero_filtro=None, apenas_polifarmacia=False, acb_filtro=None, apenas_stopp=False):
+                         genero_filtro=None, apenas_polifarmacia=False, acb_filtro=None, apenas_stopp=False,
+                         apenas_hiperpolifarmacia=False):
     """Conta total de pacientes para paginação"""
 
     where_clauses = ["area_programatica_cadastro IS NOT NULL"]
@@ -1064,6 +1072,7 @@ def count_total_patients(area=None, clinica=None, esf=None, idade_min=None, idad
     where_clauses += _where_filtros_extras(
         genero_filtro=genero_filtro, apenas_polifarmacia=apenas_polifarmacia,
         acb_filtro=acb_filtro, apenas_stopp=apenas_stopp,
+        apenas_hiperpolifarmacia=apenas_hiperpolifarmacia,
     )
 
     where_sql = " AND ".join(where_clauses)
@@ -2846,9 +2855,8 @@ def renderizar_lista_pacientes(
     # INTERFACE PRINCIPAL
     # ============================================
 
-    st.title("👥 Meus Pacientes")
-
-    st.markdown("### 📖 Lista Nominal de Pacientes")
+    # Título em linha única (economia de altura).
+    st.markdown("## 👥 Meus Pacientes — 📖 Lista Nominal de Pacientes")
     st.markdown("---")
 
     if incluir_sidebar:
@@ -2979,13 +2987,13 @@ def renderizar_lista_pacientes(
             st.session_state.operador_morbidades = "OU (pelo menos uma)"
 
     # ═══════════════════════════════════════════════════════════════
-    # FILTROS — 5 grupos lado a lado (colunas) + 'Ordenar por' embaixo.
-    # Sem expander: filtros sempre visíveis e compactos. Cada grupo é
-    # uma coluna; os widgets empilham na vertical dentro dela.
+    # FILTROS — uma única linha de 5 colunas. Cada coluna empilha os
+    # widgets na vertical. A 5ª coluna é o 'Ordenar por'. Compacto,
+    # tudo visível, sem expander.
     # ═══════════════════════════════════════════════════════════════
-    g_ident, g_clin, g_farm, g_lac, g_prior = st.columns(5)
+    g1, g2, g3, g4, g5 = st.columns(5)
 
-    with g_ident:
+    with g1:
         st.markdown("**👤 Identificação**")
         busca_nome_input = st.text_input(
             "Buscar por nome",
@@ -3005,8 +3013,8 @@ def renderizar_lista_pacientes(
             "Sexo", options=list(_sexo_opcoes.keys()), key="sexo_filtro")
         genero_filtro = _sexo_opcoes[_sexo_sel]
 
-    with g_clin:
-        st.markdown("**🏥 Condição clínica**")
+    with g2:
+        st.markdown("**🏥 Condições clínicas**")
         morbidades_selecionadas = st.multiselect(
             "🦠 Morbidades",
             options=LISTA_MORBIDADES,
@@ -3038,7 +3046,7 @@ def renderizar_lista_pacientes(
             key="rcv_filtro",
         )
 
-    with g_farm:
+    with g3:
         st.markdown("**💊 Farmacológico**")
         apenas_insulina = st.checkbox(
             "💉 Em uso de insulina",
@@ -3048,7 +3056,12 @@ def renderizar_lista_pacientes(
         apenas_polifarmacia = st.checkbox(
             "💊 Em polifarmácia (≥5)",
             value=False, key="apenas_polifarmacia_filter",
-            help="Mesma definição do indicador populacional: 5 ou mais medicamentos crônicos em uso.",
+            help="5 ou mais medicamentos crônicos em uso (definição do indicador populacional).",
+        )
+        apenas_hiperpolifarmacia = st.checkbox(
+            "💊 Em hiperpolifarmácia (≥10)",
+            value=False, key="apenas_hiperpolifarmacia_filter",
+            help="10 ou mais medicamentos crônicos em uso (definição do indicador populacional).",
         )
         apenas_stopp = st.checkbox(
             "⚠️ Com critério STOPP/START",
@@ -3061,8 +3074,19 @@ def renderizar_lista_pacientes(
             default=[], placeholder="Todas", key="acb_filtro",
             help="Categoria de carga anticolinérgica acumulada das prescrições do paciente.",
         )
+        st.markdown("**🎯 Priorização**")
+        ipc_filtro = st.multiselect(
+            "IPC — priorização do cuidado",
+            options=["Crítico", "Alto", "Moderado", "Baixo"],
+            default=[], placeholder="Todos",
+            help="Categoria do Índice de Priorização do Cuidado "
+                 "(IPC): combina Carga de Morbidade, lacunas, dias "
+                 "sem médico, ACB e STOPP. Crítico ≥0,75; Alto "
+                 "0,50–0,74; Moderado 0,25–0,49; Baixo <0,25.",
+            key="ipc_filtro",
+        )
 
-    with g_lac:
+    with g4:
         st.markdown("**⚠️ Lacunas e inércia**")
         grupo_lacuna_sel = st.selectbox(
             "Grupo de lacunas",
@@ -3097,57 +3121,37 @@ def renderizar_lista_pacientes(
                  "cego). Frente de organização do cuidado pela equipe.",
         )
 
-    with g_prior:
-        st.markdown("**🎯 Priorização**")
-        ipc_filtro = st.multiselect(
-            "IPC — priorização do cuidado",
-            options=["Crítico", "Alto", "Moderado", "Baixo"],
-            default=[], placeholder="Todos",
-            help="Categoria do Índice de Priorização do Cuidado "
-                 "(IPC): combina Carga de Morbidade, lacunas, dias "
-                 "sem médico, ACB e STOPP. Crítico ≥0,75; Alto "
-                 "0,50–0,74; Moderado 0,25–0,49; Baixo <0,25.",
-            key="ipc_filtro",
-        )
-
-    # ── ↕️ Ordenar por — linha de baixo ────────────────────────────
-    st.markdown("**↕️ Ordenar por**")
-    fo1, fo2, fo3, fo4, fo5, fo6 = st.columns(6)
-    with fo1:
+    with g5:
+        st.markdown("**↕️ Ordenar por**")
         ordem_opcoes = {
             "↓ Mais morbidades primeiro": ("morbidades", "desc"),
             "↑ Menos morbidades primeiro": ("morbidades", "asc"),
         }
         ord1 = st.selectbox("🦠 Morbidades", options=list(ordem_opcoes.keys()), key="ord_morb")
-    with fo2:
         ord_medico_opcoes = {
             "— Não ordenar": None,
             "↓ Mais dias sem médico": ("dias_medico", "desc"),
             "↑ Menos dias sem médico": ("dias_medico", "asc"),
         }
         ord2 = st.selectbox("⏳ Dias sem médico", options=list(ord_medico_opcoes.keys()), key="ord_med")
-    with fo3:
         ord_presc_opcoes = {
             "— Não ordenar": None,
             "↓ Mais dias sem prescrição": ("dias_prescricao", "desc"),
             "↑ Menos dias sem prescrição": ("dias_prescricao", "asc"),
         }
         ord3 = st.selectbox("💊 Dias sem prescrição", options=list(ord_presc_opcoes.keys()), key="ord_presc")
-    with fo4:
         ord_acb_opcoes = {
             "— Não ordenar": None,
             "↓ Maior ACB primeiro": ("acb", "desc"),
             "↑ Menor ACB primeiro": ("acb", "asc"),
         }
         ord4 = st.selectbox("🔴 Score ACB", options=list(ord_acb_opcoes.keys()), key="ord_acb")
-    with fo5:
         ord_rcv_opcoes = {
             "— Não ordenar": None,
             "↓ Maior risco primeiro": ("rcv", "desc"),
             "↑ Menor risco primeiro": ("rcv", "asc"),
         }
         ord5 = st.selectbox("❤️ Risco CV", options=list(ord_rcv_opcoes.keys()), key="ord_rcv")
-    with fo6:
         ord_nph_opcoes = {
             "— Não ordenar": None,
             "↓ Maior dose NPH/kg primeiro": ("dose_nph", "desc"),
@@ -3214,6 +3218,7 @@ def renderizar_lista_pacientes(
         apenas_inercia_estrutural=apenas_inercia_estrutural,
         genero_filtro=genero_filtro,
         apenas_polifarmacia=apenas_polifarmacia,
+        apenas_hiperpolifarmacia=apenas_hiperpolifarmacia,
         acb_filtro=tuple(acb_filtro) if acb_filtro else None,
         apenas_stopp=apenas_stopp,
     )
@@ -3251,6 +3256,8 @@ def renderizar_lista_pacientes(
         filtros_texto += f" | Sexo: {'Feminino' if genero_filtro == 'F' else 'Masculino'}"
     if apenas_polifarmacia:
         filtros_texto += " | 💊 Polifarmácia"
+    if apenas_hiperpolifarmacia:
+        filtros_texto += " | 💊 Hiperpolifarmácia"
     if acb_filtro:
         filtros_texto += f" | ACB: {', '.join(acb_filtro)}"
     if apenas_stopp:
@@ -3300,6 +3307,7 @@ def renderizar_lista_pacientes(
                 apenas_inercia_estrutural=apenas_inercia_estrutural,
                 genero_filtro=genero_filtro,
                 apenas_polifarmacia=apenas_polifarmacia,
+                apenas_hiperpolifarmacia=apenas_hiperpolifarmacia,
                 acb_filtro=tuple(acb_filtro) if acb_filtro else None,
                 apenas_stopp=apenas_stopp,
             )
@@ -3349,6 +3357,7 @@ def renderizar_lista_pacientes(
                 apenas_inercia_estrutural=apenas_inercia_estrutural,
                 genero_filtro=genero_filtro,
                 apenas_polifarmacia=apenas_polifarmacia,
+                apenas_hiperpolifarmacia=apenas_hiperpolifarmacia,
                 acb_filtro=tuple(acb_filtro) if acb_filtro else None,
                 apenas_stopp=apenas_stopp,
             )
