@@ -2002,10 +2002,6 @@ if _perfil == 'equipe':
         f"**ESF:** {anonimizar_esf(esf_sel)}"
     )
     st.sidebar.markdown("---")
-    if st.sidebar.button("🧑‍⚕️ Abrir Lista Nominal",
-                          use_container_width=True,
-                          type="primary", key="ve_abrir_lista"):
-        st.switch_page("pages/Meus_Pacientes.py")
     if st.sidebar.button("🔄 Trocar equipe", use_container_width=True,
                           key="ve_trocar"):
         st.session_state['contexto_territorial'] = None
@@ -2111,16 +2107,23 @@ else:
 # trabalho por render.
 _ABAS_ESF = [
     "📊 Resumo da população",
-    "🔄 Continuidade",
+    "🔄 Continuidade do cuidado",
     "💊 Carga farmacológica",
     "🩺 Hipertensão",
     "🩸 Diabetes",
-    "⚠️ Lacunas",
+    "⚠️ Lacunas de cuidado",
 ]
-_aba_esf = st.segmented_control(
-    "Seção", _ABAS_ESF, default=_ABAS_ESF[0],
-    key="visao_esf_aba_ativa", label_visibility="collapsed",
-)
+_col_abas, _col_lista = st.columns([4, 1], vertical_alignment="center")
+with _col_abas:
+    _aba_esf = st.segmented_control(
+        "Seção", _ABAS_ESF, default=_ABAS_ESF[0],
+        key="visao_esf_aba_ativa", label_visibility="collapsed",
+    )
+with _col_lista:
+    if st.button("🧑‍⚕️ Abrir Lista Nominal",
+                 use_container_width=True, type="primary",
+                 key="ve_abrir_lista"):
+        st.switch_page("pages/Meus_Pacientes.py")
 if not _aba_esf:            # segmented_control pode retornar None
     _aba_esf = _ABAS_ESF[0]
 
@@ -2320,7 +2323,7 @@ cortado em 1,0.
 # ─────────────────────────────────────────────────────────────
 # ABA 2 — CONTINUIDADE DO CUIDADO
 # ─────────────────────────────────────────────────────────────
-if _aba_esf == "🔄 Continuidade":
+if _aba_esf == "🔄 Continuidade do cuidado":
     st.markdown(
         "#### Continuidade do cuidado — narrativa por carga de morbidade"
     )
@@ -2482,7 +2485,7 @@ if _aba_esf == "🔄 Continuidade":
             for i, (carga_lbl, em, suf_carga) in enumerate([
                 ("Baixa",      "🟢", "baixo"),
                 ("Moderada",   "🟡", "mod"),
-                ("Alta",       "🟠", "alto"),
+                ("Alta",       "🟠", "alto"), 
                 ("Muito Alta", "🔴", "ma"),
             ]):
                 _card_carga_strat(
@@ -3956,7 +3959,7 @@ if _aba_esf == "🩸 Diabetes":
 # ─────────────────────────────────────────────────────────────
 # ABA 6 — LACUNAS DA EQUIPE × MUNICÍPIO
 # ─────────────────────────────────────────────────────────────
-if _aba_esf == "⚠️ Lacunas":
+if _aba_esf == "⚠️ Lacunas de cuidado":
     st.markdown(
         "#### Lacunas de cuidado — Equipe versus município"
     )
