@@ -2113,7 +2113,7 @@ _ABAS_ESF = [
     "🩸 Diabetes",
     "⚠️ Lacunas de cuidado",
 ]
-_col_abas, _col_lista = st.columns([4, 1], vertical_alignment="center")
+_col_abas, _col_lista = st.columns([6, 1], vertical_alignment="center")
 with _col_abas:
     _aba_esf = st.segmented_control(
         "Seção", _ABAS_ESF, default=_ABAS_ESF[0],
