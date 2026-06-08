@@ -87,7 +87,11 @@ def carregar_pacientes_ipc(ap: str, clinica: str, esf: str) -> pd.DataFrame:
     sql_morb_lista  = gerar_sql_morbidades_lista("morbidades_lista")
     sql = f"""
     WITH stopp AS (
-        SELECT cpf, COALESCE(total_criterios_stopp, 0) AS total_criterios_stopp
+        SELECT
+            cpf,
+            COALESCE(total_criterios_stopp, 0) AS total_criterios_stopp,
+            COALESCE(total_criterios_start, 0) AS total_criterios_start,
+            COALESCE(total_criterios_beers, 0) AS total_criterios_beers
         FROM `rj-sms-sandbox.sub_pav_us.MM_stopp_start`
     )
     SELECT
@@ -99,6 +103,7 @@ def carregar_pacientes_ipc(ap: str, clinica: str, esf: str) -> pd.DataFrame:
         f.charlson_categoria,
         f.acb_score_total,
         f.categoria_acb,
+        f.who_categoria_risco_simplificada,
         f.dias_desde_ultima_medica,
         f.consultas_medicas_365d,
         f.total_morbidades,
@@ -115,8 +120,10 @@ def carregar_pacientes_ipc(ap: str, clinica: str, esf: str) -> pd.DataFrame:
         {sql_total_lac},
         -- Lista textual de morbidades ativas
         {sql_morb_lista},
-        -- Total de critérios STOPP (JOIN com MM_stopp_start)
-        COALESCE(s.total_criterios_stopp, 0) AS total_criterios_stopp
+        -- Total de critérios STOPP/START/BEERS (JOIN com MM_stopp_start)
+        COALESCE(s.total_criterios_stopp, 0) AS total_criterios_stopp,
+        COALESCE(s.total_criterios_start, 0) AS total_criterios_start,
+        COALESCE(s.total_criterios_beers, 0) AS total_criterios_beers
     FROM `{_fqn(config.TABELA_FATO)}` AS f
     LEFT JOIN stopp s ON f.cpf = s.cpf
     WHERE f.area_programatica_cadastro = '{ap}'
@@ -2115,7 +2122,9 @@ if _sb_metricas_equipe is not None:
                       if 'ipc_categoria' in df.columns else 0)
 
     def _pct_eq(n):
-        return f"{n / _n_total_eq * 100:.0f}%" if _n_total_eq else "—"
+        if not _n_total_eq:
+            return "—"
+        return f"{n / _n_total_eq * 100:.1f}".replace('.', ',') + "%"
 
     with _sb_metricas_equipe:
         st.markdown(
@@ -2255,12 +2264,16 @@ if _aba_esf == "📊 Resumo da população":
     # Sobre o IPC — sem sanfona, sem "Diferença para o ICA"
     # ─────────────────────────────────────────────────────────
     st.markdown("### ℹ️ Sobre o IPC — Índice de Priorização de Cuidado")
-    st.markdown(f"""
+    st.markdown("""
 **O IPC é um índice composto que ordena pacientes por necessidade de
 atenção da equipe.** Combina cinco dimensões clínicas em uma única
 escala de 0 a 1, com bandas absolutas (independentes da amostra),
 permitindo comparar pacientes entre ESFs, clínicas e APs.
+""")
 
+    _c_dim, _c_cat = st.columns(2)
+    with _c_dim:
+        st.markdown(f"""
 #### Dimensões e pesos
 
 | Dimensão | Peso | Bandas |
@@ -2275,8 +2288,10 @@ permitindo comparar pacientes entre ESFs, clínicas e APs.
 (CI, AVC ou doença arterial periférica) **e** mantém lacunas de prevenção
 secundária pendentes (sem AAS ou sem estatina). O resultado final é
 cortado em 1,0.
-
-#### Como interpretar
+""")
+    with _c_cat:
+        st.markdown("""
+#### Categorias de priorização
 
 | Faixa de IPC | Categoria |
 |---|---|
@@ -2289,24 +2304,49 @@ cortado em 1,0.
     st.markdown("---")
 
     # ─────────────────────────────────────────────────────────
-    # 1️⃣ Indicadores da equipe (KPIs)
+    # 2️⃣ Sobre a equipe (KPIs) — valor absoluto com % entre
+    # parênteses (1 casa decimal). 7 caixas em duas linhas (4 + 3).
     # ─────────────────────────────────────────────────────────
-    st.markdown("#### 2️⃣ Indicadores da equipe")
-    k1, k2, k3, k4 = st.columns(4)
+    st.markdown("#### 2️⃣ Sobre a equipe")
+
+    def _col_pos(c):
+        return ((df[c].fillna(0) > 0) if c in df.columns
+                else pd.Series(False, index=df.index))
+
     n_multi = int((df['total_morbidades'] >= 2).sum()) if 'total_morbidades' in df.columns else 0
     n_poli  = int(df['polifarmacia'].fillna(False).astype(bool).sum()) if 'polifarmacia' in df.columns else 0
     n_dcv   = int(((df['CI'].notna()) | (df['stroke'].notna())
                    | (df['vascular_periferica'].notna())).sum())
-    _kpi(k1, "👥 Pacientes da equipe", f"{n_total:,}")
-    _kpi(k2, "🦠 Multimórbidos (≥2)", f"{n_multi:,}",
-         f"{n_multi/n_total*100:.0f}%" if n_total else None)
-    _kpi(k3, "💊 Em polifarmácia", f"{n_poli:,}",
-         f"{n_poli/n_total*100:.0f}%" if n_total else None)
-    _kpi(k4, "❤️ DCV estabelecida", f"{n_dcv:,}",
-         f"{n_dcv/n_total*100:.0f}%" if n_total else None)
+    n_inap  = int((_col_pos('total_criterios_stopp')
+                   | _col_pos('total_criterios_start')
+                   | _col_pos('total_criterios_beers')).sum())
+    n_acb3  = int((df['acb_score_total'].fillna(0) > 3).sum()) if 'acb_score_total' in df.columns else 0
+    n_cv    = (int(df['who_categoria_risco_simplificada']
+                   .isin(['Alto', 'Muito alto', 'Crítico']).sum())
+               if 'who_categoria_risco_simplificada' in df.columns else 0)
+
+    def _abs_pct(n):
+        if not n_total:
+            return f"{n:,}"
+        pct = f"{n / n_total * 100:.1f}".replace('.', ',')
+        return (f"{n:,} <span style='font-size:0.55em; font-weight:500; "
+                f"color:{T.TEXT_SECONDARY};'>({pct}%)</span>")
+
+    r1 = st.columns(4)
+    r2 = st.columns(4)
+    _kpi(r1[0], "👥 Pacientes da equipe", f"{n_total:,}")
+    _kpi(r1[1], "🦠 Multimórbidos (≥2)", _abs_pct(n_multi))
+    _kpi(r1[2], "💊 Em polifarmácia", _abs_pct(n_poli))
+    _kpi(r1[3], "❤️ DCV estabelecida", _abs_pct(n_dcv))
+    _kpi(r2[0], "🚫 Com STOPP, START ou Beers", _abs_pct(n_inap))
+    _kpi(r2[1], "🧪 ACB acima de 3", _abs_pct(n_acb3))
+    _kpi(r2[2], "🫀 Risco CV alto ou maior", _abs_pct(n_cv))
+
+    # Intervalo entre "Sobre a equipe" e "Distribuição do IPC"
+    st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
 
     # ─────────────────────────────────────────────────────────
-    # 2️⃣ Distribuição do IPC — caixas alinhadas com o histograma
+    # 3️⃣ Distribuição do IPC — caixas alinhadas com o histograma
     # (Baixo → Crítico, ordem visual da esquerda para a direita)
     # ─────────────────────────────────────────────────────────
     st.markdown("#### 3️⃣ Distribuição do IPC (Índice de Priorização de Cuidado)")
