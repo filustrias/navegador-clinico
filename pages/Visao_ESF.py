@@ -772,7 +772,7 @@ def carregar_diabetes_agregado(ap: str, clinica: str, esf: str) -> dict:
             principio_INSULINA_PRANDIAL_ANALOGICA IS NOT NULL OR
             principio_INSULINA_MISTA          IS NOT NULL
         ))                                                               AS n_em_insulina,
-        COUNTIF(DM IS NOT NULL AND dose_NPH_ui_kg > 0.85)                AS n_nph_alta,
+        COUNTIF(DM IS NOT NULL AND dose_NPH_ui_kg >= 0.75)               AS n_nph_alta,
         COUNTIF(DM IS NOT NULL AND alerta_dose_maxima_biguanida    = TRUE)
                                                                           AS n_metf_total_alta,
         COUNTIF(DM IS NOT NULL AND alerta_dose_maxima_biguanida_xr = TRUE)
@@ -2328,6 +2328,8 @@ cortado em 1,0.
     n_cv    = (int(df['who_categoria_risco_simplificada']
                    .isin(['Alto', 'Muito alto', 'Crítico']).sum())
                if 'who_categoria_risco_simplificada' in df.columns else 0)
+    n_nph75 = (int((df['dose_NPH_ui_kg'].fillna(0) >= 0.75).sum())
+               if 'dose_NPH_ui_kg' in df.columns else 0)
 
     def _abs_pct(n):
         if not n_total:
@@ -2345,6 +2347,7 @@ cortado em 1,0.
     _kpi(r2[0], "🚫 Com STOPP, START ou Beers (precisam de revisão das prescrições)", _abs_pct(n_inap))
     _kpi(r2[1], "🧪 ACB ≥ 3 (prescrições com alta carga anticolinérgica)", _abs_pct(n_acb3))
     _kpi(r2[2], "🫀 Risco CV alto, muito alto ou crítico", _abs_pct(n_cv))
+    _kpi(r2[3], "💉 NPH ≥ 0,75 UI/kg (dose alta de insulina)", _abs_pct(n_nph75))
 
     # Intervalo entre "Sobre a equipe" e "Distribuição do IPC"
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
@@ -3904,7 +3907,7 @@ if _aba_esf == "🩸 Diabetes":
             f"{_b(n_dm_total)} diabéticos estão em <b>uso de algum "
             f"tipo de insulina</b>.<br><br>"
             f"Alertas farmacológicos a revisar:<br>"
-            f"• {_borange(n_nph_alta)} com <b>NPH > 0,85 UI/kg</b> "
+            f"• {_borange(n_nph_alta)} com <b>NPH ≥ 0,75 UI/kg</b> "
             f"(dose alta — sugere resistência ou erro de digitação);<br>"
             f"• {_borange(n_metf_alta)} com <b>Metformina total > "
             f"2.550 mg/dia</b>;<br>"
@@ -3921,7 +3924,7 @@ if _aba_esf == "🩸 Diabetes":
         c1, c2 = st.columns(2)
         _kpi(c1, "💉 Em uso de insulina (qualquer tipo)",
              f"{n_insulina:,}", _pct_dn(n_insulina))
-        _kpi(c2, "🚨 NPH > 0,85 UI/kg",
+        _kpi(c2, "🚨 NPH ≥ 0,75 UI/kg",
              f"{n_nph_alta:,}", _pct_dn(n_nph_alta))
         c3, c4 = st.columns(2)
         _kpi(c3, "🚨 Metformina (regular+XR) > 2.550 mg/dia",
@@ -4041,7 +4044,7 @@ if _aba_esf == "🩸 Diabetes":
         "aba **Meus Pacientes**. Lá é possível filtrar a lista "
         "nominal por **DM**, por **Carga de Morbidade** e por "
         "**lacunas específicas** (descontrolados, sem HbA1c "
-        "recente, sem exame do pé, ACB ≥ 3, NPH > 0,85 UI/kg, "
+        "recente, sem exame do pé, ACB ≥ 3, NPH ≥ 0,75 UI/kg, "
         "sulfonilureia em monoterapia etc.) e abrir o card "
         "completo de cada paciente."
     )
