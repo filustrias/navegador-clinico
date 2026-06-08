@@ -1080,6 +1080,16 @@ if aba_sel == 3:
         "Flags _365d indicam prescrição ativa nos últimos 12 meses. "
         "Ref: STOPP/START v.2 (O\'Mahony 2015) · AGS Beers Criteria 2023."
     )
+    st.info(
+        "ℹ️ **Como interpretar estes critérios.** Os critérios "
+        "STOPP/START/Beers referem-se a uma **janela de 365 dias**. "
+        "Isso foi feito porque conseguimos saber quando um medicamento "
+        "**entrou** na vida do paciente, mas não quando ele **saiu**. "
+        "Por isso, é provável que vários critérios positivos já não "
+        "existam mais — a medicação pode ter sido retirada. Use estas "
+        "informações como um **guia para orientar a revisão das "
+        "prescrições**, e não como um diagnóstico definitivo."
+    )
 
     with st.spinner("Carregando dados STOPP/START..."):
         dados_ss = carregar_stopp_resumo(ap, clinica, esf)

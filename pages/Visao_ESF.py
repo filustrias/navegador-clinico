@@ -3078,6 +3078,17 @@ ACB calculado individualmente para cada paciente.
     # ─── Tabela detalhada de cada critério ───
     df_tot = agg.get('totais_por_criterio', pd.DataFrame())
     if not df_tot.empty:
+        st.info(
+            "ℹ️ **Como interpretar estes critérios.** Os critérios "
+            "STOPP/START/Beers referem-se a uma **janela de 365 dias**. "
+            "Isso foi feito porque conseguimos saber quando um "
+            "medicamento **entrou** na vida do paciente, mas não quando "
+            "ele **saiu**. Por isso, é provável que vários critérios "
+            "positivos já não existam mais — a medicação pode ter sido "
+            "retirada. Use estas informações como um **guia para "
+            "orientar a revisão das prescrições**, e não como um "
+            "diagnóstico definitivo."
+        )
         st.markdown("##### Detalhe por critério")
 
         tipo_sel = st.radio(
