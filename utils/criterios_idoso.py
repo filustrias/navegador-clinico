@@ -153,10 +153,12 @@ CRITERIOS_STOPP = [
      "Efeitos sedativos e anticolinérgicos. Risco de queda.",
      "Alta"),
     # ACB
-    ("stopp_acb_001", "Anticolinérgico", "≥2 medicamentos com ACB > 0",
-     "ACB total ≥ 4",
-     "Carga anticolinérgica cumulativa — dois ou mais meds somam risco de confusão, delirium, quedas e comprometimento cognitivo.",
-     "Alta"),
+    # Nota: o critério agregado de carga (stopp_acb_001 — "ACB total ≥ 4")
+    # foi removido da exibição. Era um escore agregado (não um medicamento
+    # específico), duplicava o painel ACB dedicado e podia contradizê-lo
+    # (flag de 365d vs. score atual). A coluna stopp_acb_001_365d ainda
+    # existe na MM_stopp_start e segue somada em total_criterios_stopp
+    # (sum upstream) — isso é tratado fora desta lista.
     ("stopp_acb_002", "Anticolinérgico", "Difenidramina, Prometazina, Hidroxizina",
      "Idoso ≥65 anos",
      "Anti-histamínicos 1ª geração com alta atividade anticolinérgica central.",

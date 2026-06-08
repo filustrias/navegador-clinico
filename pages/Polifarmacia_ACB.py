@@ -317,7 +317,6 @@ def carregar_lista_pacientes(ap=None, clinica=None, esf=None,
         ss.stopp_mus_004_365d AS fl_aine_anticoag,
         ss.stopp_mus_005_365d AS fl_cortic_ar,
         ss.stopp_mus_006_365d AS fl_relaxante,
-        ss.stopp_acb_001_365d AS fl_acb4,
         ss.stopp_acb_002_365d AS fl_anti_hist,
         ss.stopp_acb_003_365d AS fl_anticolinerg_bexiga,
         ss.stopp_ren_001_365d AS fl_gabapentin_egfr,
@@ -375,7 +374,6 @@ def carregar_stopp_resumo(ap=None, clinica=None, esf=None) -> dict:
         -- STOPP individuais (365d = prescricao ativa)
         COUNTIF(ss.stopp_snc_001_365d = TRUE)  AS stopp_benzo,
         COUNTIF(ss.stopp_end_001_365d = TRUE)  AS stopp_sulfonilureia,
-        COUNTIF(ss.stopp_acb_001_365d = TRUE)  AS stopp_acb4,
         COUNTIF(ss.stopp_snc_003_365d = TRUE)  AS stopp_tca,
         COUNTIF(ss.stopp_snc_006_365d = TRUE)  AS stopp_antipsic,
         COUNTIF(ss.stopp_snc_007_365d = TRUE)  AS stopp_antipsic_park,
@@ -1125,7 +1123,6 @@ if aba_sel == 3:
             stopp_dados = [
                 ("Benzodiazepínico",           dados_ss.get("stopp_benzo", 0)),
                 ("Sulfonilureia longa ação",    dados_ss.get("stopp_sulfonilureia", 0)),
-                ("ACB ≥ 4",                    dados_ss.get("stopp_acb4", 0)),
                 ("Antidepressivo tricíclico",   dados_ss.get("stopp_tca", 0)),
                 ("Antipsicótico típico",        dados_ss.get("stopp_antipsic", 0)),
                 ("Antipsicót. + Parkinson/dem.",dados_ss.get("stopp_antipsic_park", 0)),
@@ -1381,7 +1378,6 @@ if aba_sel == 4:
                 'fl_aine_anticoag':     'AINE + anticoagulante',
                 'fl_cortic_ar':         'Corticoide + AR',
                 'fl_relaxante':         'Relaxante muscular',
-                'fl_acb4':              'Carga anticolinérg. elevada (ACB>=4)',
                 'fl_anti_hist':         'Anti-histam. 1ª geração',
                 'fl_anticolinerg_bexiga':'Anticolinérg. bexiga',
                 'fl_gabapentin_egfr':   'Gabapentin. eGFR<60',
@@ -1697,9 +1693,8 @@ if aba_sel == 5:
              "Artrite reumatoide (M05/M06)", "DMARDs são preferíveis. Corticoide crônico causa osteoporose, infecção e DM.", "Alta"),
             ("stopp_mus_006", "Musculoesquelético", "Ciclobenzaprina, Carisoprodol, Baclofeno",
              "Idoso ≥65 anos", "Efeitos sedativos e anticolinérgicos. Risco de queda.", "Alta"),
-            # ACB
-            ("stopp_acb_001", "Anticolinérgico", "≥2 medicamentos com ACB > 0",
-             "ACB total ≥ 4", "Carga anticolinérgica cumulativa — dois ou mais meds com efeito anticolinérgico somam risco de confusão, delirium, quedas e comprometimento cognitivo.", "Alta"),
+            # ACB (critério agregado stopp_acb_001 "ACB total ≥ 4" removido —
+            # duplicava o painel ACB e podia contradizê-lo)
             ("stopp_acb_002", "Anticolinérgico", "Difenidramina, Prometazina, Hidroxizina",
              "Idoso ≥65 anos", "Anti-histamínicos 1ª geração com alta atividade anticolinérgica central.", "Alta"),
             ("stopp_acb_003", "Anticolinérgico", "Oxibutinina, Tolterodina, Solifenacina",

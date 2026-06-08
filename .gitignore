@@ -12,6 +12,8 @@ __pycache__/
 
 # Credenciais - NUNCA SUBIR!
 *.json
+gcp_creds.txt
+gcp_creds*.txt
 credentials/
 secrets/
 .streamlit/secrets.toml
