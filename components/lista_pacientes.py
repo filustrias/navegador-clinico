@@ -2344,48 +2344,70 @@ def create_patient_card(patient_data, key_prefix: str = '',
             with cv1:
                 with st.container(border=True):
                     st.caption("🔄 Perfil de cuidado (últimos 365 dias)")
-                    pc = str(perfil_cuidado) if perfil_cuidado else 'indefinido'
-                    em, lb, desc = PERFIL_LABEL.get(pc, ('❓', pc, '—'))
-                    st.markdown(f"**{em} {lb}**")
-                    st.caption(desc)
 
-                    # Percentuais reais — distribuição sobre o TOTAL de
-                    # consultas (inclui o técnico de enfermagem).
-                    linhas = []
-                    if pd.notna(pct_medico) and pct_medico > 0:
-                        linhas.append(f"🩺 Médico: **{pct_medico:.0f}%** do total")
-                    if pd.notna(pct_enfermeiro) and pct_enfermeiro > 0:
-                        linhas.append(f"💉 Enfermeiro: **{pct_enfermeiro:.0f}%** do total")
-                    # técnico de enfermagem (residual)
-                    pct_tec_calc = None
-                    if pd.notna(pct_medico) and pd.notna(pct_enfermeiro):
-                        pct_tec_calc = 100 - (pct_medico or 0) - (pct_enfermeiro or 0)
-                        if pct_tec_calc > 1:
-                            linhas.append(f"🩹 Técnico: **{pct_tec_calc:.0f}%** do total")
-                    if linhas:
-                        st.markdown("  \n".join(linhas))
+                    # Contagens absolutas (lidas no BLOCO 1 desta aba).
+                    _n_med = int(cons_med) if pd.notna(cons_med) else 0
+                    _n_enf = int(cons_enf) if pd.notna(cons_enf) else 0
+                    _n_tec = int(cons_tec) if pd.notna(cons_tec) else 0
+                    _n_clin = _n_med + _n_enf
+                    _n_tot = (int(cons_365) if pd.notna(cons_365)
+                              else _n_clin + _n_tec)
 
-                    # Esclarecimento: o perfil acima ignora o técnico de
-                    # enfermagem — classifica só pelas consultas clínicas
-                    # (médico + enfermeiro). Mostra a fatia clínica para o
-                    # rótulo não parecer contraditório quando o técnico
-                    # domina o total (ex.: médico 13% do total, mas 81%
-                    # das consultas clínicas → médico-centrado).
-                    _clin = (pct_medico or 0) + (pct_enfermeiro or 0)
-                    if (pct_tec_calc is not None and pct_tec_calc > 1
-                            and _clin > 0):
-                        _med_clin = (pct_medico or 0) / _clin * 100
-                        _enf_clin = (pct_enfermeiro or 0) / _clin * 100
-                        st.caption(
-                            "ℹ️ O perfil considera **apenas as consultas "
-                            "clínicas** (médico + enfermeiro); o técnico de "
-                            "enfermagem **não entra**. Entre as clínicas: "
-                            f"🩺 médico **{_med_clin:.0f}%** · 💉 enfermeiro "
-                            f"**{_enf_clin:.0f}%**."
+                    if _n_tot <= 0:
+                        st.markdown(
+                            "**⚪ Sem consultas registradas** nos últimos "
+                            "365 dias."
                         )
+                    else:
+                        # ── Divisão 1: distribuição do TOTAL de consultas ──
+                        _pct_clin = _n_clin / _n_tot * 100
+                        _pct_tec  = _n_tec / _n_tot * 100
+                        st.markdown(
+                            f"<div style='font-size:0.9em; line-height:1.7;'>"
+                            f"<b>{_pct_clin:.0f}%</b> com médico "
+                            f"(<b>{_n_med}</b>) ou enfermeiro (<b>{_n_enf}</b>)"
+                            f"<br>"
+                            f"<b>{_pct_tec:.0f}%</b> com técnico de enfermagem "
+                            f"(<b>{_n_tec}</b>)</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.caption(f"Total: {_n_tot} consultas em 365 dias.")
+
+                        st.divider()
+
+                        # ── Divisão 2: consultas CLÍNICAS → classificação ──
+                        # Conclusão derivada das próprias consultas clínicas
+                        # exibidas (médico vs. enfermeiro), para o rótulo
+                        # seguir os números do card. Técnico não entra.
+                        if _n_clin > 0:
+                            _m_clin = _n_med / _n_clin * 100
+                            _e_clin = _n_enf / _n_clin * 100
+                            st.markdown(
+                                f"<div style='font-size:0.9em; line-height:1.7;'>"
+                                f"Das consultas <b>clínicas</b> "
+                                f"(médico + enfermeiro):<br>"
+                                f"🩺 médico <b>{_m_clin:.0f}%</b> · "
+                                f"💉 enfermeiro <b>{_e_clin:.0f}%</b></div>",
+                                unsafe_allow_html=True,
+                            )
+                            if _m_clin >= 75:
+                                _pem, _plb = '🩺', 'Médico-centrado'
+                            elif _e_clin >= 75:
+                                _pem, _plb = '💉', 'Enfermagem-centrado'
+                            else:
+                                _pem, _plb = '🤝', 'Cuidado compartilhado'
+                            st.markdown(f"➡️ **{_pem} {_plb}**")
+                        else:
+                            st.markdown(
+                                "➡️ **⚪ Sem consultas clínicas** "
+                                "(médico ou enfermeiro) no período."
+                            )
 
                     if pd.notna(intervalo):
-                        st.caption(f"Intervalo mediano entre consultas: **{int(intervalo)} dias**")
+                        st.caption(
+                            f"Intervalo mediano entre consultas: "
+                            f"**{int(intervalo)} dias**"
+                        )
 
             with cv2:
                 with st.container(border=True):
