@@ -2524,6 +2524,19 @@ def create_patient_card(patient_data, key_prefix: str = '',
                     dados_stopp = {}
             dados_ss = dados_stopp
 
+            # ── Nota sobre a janela temporal dos critérios ─────────
+            st.info(
+                "ℹ️ **Como interpretar estes critérios.** Os critérios "
+                "STOPP/START/Beers referem-se a uma **janela de 365 "
+                "dias**. Isso foi feito porque conseguimos saber quando "
+                "um medicamento **entrou** na vida do paciente, mas não "
+                "quando ele **saiu**. Por isso, é provável que vários "
+                "critérios positivos já não existam mais — a medicação "
+                "pode ter sido retirada. Use esta tela como um **guia "
+                "para orientar a revisão das prescrições**, e não como "
+                "um diagnóstico definitivo."
+            )
+
             # ── 5 colunas ──────────────────────────────────────────
             c_rx, c_stopp, c_start, c_beers, c_acb = st.columns([2, 2, 2, 2, 1.5])
 
