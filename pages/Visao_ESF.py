@@ -1976,6 +1976,11 @@ NARRATIVA_GRUPO_LACUNAS = {
 # ═══════════════════════════════════════════════════════════════
 mostrar_badge_anonimo()
 
+# Placeholder do resumo numérico da equipe na sidebar (👥 total,
+# multimorbidade, polifarmácia, alta carga de morbidade, IPC crítico).
+# Criado aqui, preenchido após o carregamento de `df` (calcular_ipc).
+_sb_metricas_equipe = None
+
 if _perfil == 'equipe':
     _ctx = get_contexto_territorial()
     ap_sel  = _ctx.get('ap')
@@ -2001,6 +2006,7 @@ if _perfil == 'equipe':
         f"**Clínica:** {anonimizar_clinica(cli_sel)}  \n"
         f"**ESF:** {anonimizar_esf(esf_sel)}"
     )
+    _sb_metricas_equipe = st.sidebar.container()
     st.sidebar.markdown("---")
     if st.sidebar.button("🔄 Trocar equipe", use_container_width=True,
                           key="ve_trocar"):
@@ -2066,6 +2072,8 @@ else:
         st.warning("⚠️ Selecione uma ESF na barra lateral.")
         st.stop()
 
+    _sb_metricas_equipe = st.sidebar.container()
+
 # ═══════════════════════════════════════════════════════════════
 # TÍTULO + EXPLICAÇÃO DO IPC
 # ═══════════════════════════════════════════════════════════════
@@ -2086,6 +2094,45 @@ if df_raw.empty:
     st.stop()
 
 df = calcular_ipc(df_raw)
+
+# ─────────────────────────────────────────────────────────────
+# Resumo numérico da equipe na sidebar (preenche o placeholder
+# criado em "Sua equipe"). Mesmas definições usadas nos KPIs da
+# aba "Resumo da população": multimorbidade = ≥2 morbidades;
+# polifarmácia = flag; alta carga de morbidade = categoria
+# Alto/Muito Alto; IPC crítico = faixa Crítico (ipc ≥ 0,75).
+# ─────────────────────────────────────────────────────────────
+if _sb_metricas_equipe is not None:
+    _n_total_eq = len(df)
+    _n_multi_eq = (int((df['total_morbidades'] >= 2).sum())
+                   if 'total_morbidades' in df.columns else 0)
+    _n_poli_eq  = (int(df['polifarmacia'].fillna(False).astype(bool).sum())
+                   if 'polifarmacia' in df.columns else 0)
+    _n_carga_eq = (int(df['charlson_categoria']
+                       .isin(['Alto', 'Muito Alto']).sum())
+                   if 'charlson_categoria' in df.columns else 0)
+    _n_ipc_crit_eq = (int((df['ipc_categoria'] == 'Crítico').sum())
+                      if 'ipc_categoria' in df.columns else 0)
+
+    def _pct_eq(n):
+        return f"{n / _n_total_eq * 100:.0f}%" if _n_total_eq else "—"
+
+    with _sb_metricas_equipe:
+        st.markdown(
+            "<div style='font-size:0.92em; line-height:1.85; "
+            "margin-top:8px;'>"
+            f"👥 <b>{_n_total_eq:,}</b> pacientes<br>"
+            f"🦠 <b>{_n_multi_eq:,}</b> multimorbidade "
+            f"<span style='color:#6B7280;'>({_pct_eq(_n_multi_eq)})</span><br>"
+            f"💊 <b>{_n_poli_eq:,}</b> polifarmácia "
+            f"<span style='color:#6B7280;'>({_pct_eq(_n_poli_eq)})</span><br>"
+            f"📊 <b>{_n_carga_eq:,}</b> alta carga de morbidade "
+            f"<span style='color:#6B7280;'>({_pct_eq(_n_carga_eq)})</span><br>"
+            f"🚨 <b>{_n_ipc_crit_eq:,}</b> IPC crítico "
+            f"<span style='color:#6B7280;'>({_pct_eq(_n_ipc_crit_eq)})</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
 # Anonimização para exibição
 if MODO_ANONIMO:
