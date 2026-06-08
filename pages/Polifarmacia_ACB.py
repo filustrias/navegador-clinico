@@ -333,7 +333,6 @@ def carregar_lista_pacientes(ap=None, clinica=None, esf=None,
         ss.start_cv_005_365d   AS fl_fa_sem_anticoag,
         ss.start_cv_006_365d   AS fl_dm_irc_sem_ieca,
         ss.start_snc_001_365d  AS fl_parkinson_sem_levo,
-        ss.start_snc_002_365d  AS fl_depressao_sem_ad,
         ss.start_snc_003_365d  AS fl_demencia_sem_icolin,
         ss.start_resp_001_365d AS fl_dpoc_sem_bronco,
         -- Todos os medicamentos da última prescrição
@@ -394,7 +393,6 @@ def carregar_stopp_resumo(ap=None, clinica=None, esf=None) -> dict:
         COUNTIF(ss.start_cv_002_365d  = TRUE)  AS start_ci_sem_estatina,
         COUNTIF(ss.start_cv_003_365d  = TRUE)  AS start_dcv_sem_antiplatelet,
         COUNTIF(ss.start_snc_001_365d = TRUE)  AS start_parkinson,
-        COUNTIF(ss.start_snc_002_365d = TRUE)  AS start_depressao,
         COUNTIF(ss.start_resp_001_365d = TRUE) AS start_dpoc_sem_bronco,
         -- Beers exclusivos
         COUNTIF(ss.beers_004_365d = TRUE)      AS beers_aas_primaria,
@@ -1175,7 +1173,6 @@ if aba_sel == 3:
                 ("ICC sem IECA/BRA",             dados_ss.get("start_icc_sem_ieca", 0)),
                 ("CI sem estatina",              dados_ss.get("start_ci_sem_estatina", 0)),
                 ("DCV sem antiplaquetário",      dados_ss.get("start_dcv_sem_antiplatelet", 0)),
-                ("Depressão sem antidepress.",   dados_ss.get("start_depressao", 0)),
                 ("Parkinson sem levodopa",       dados_ss.get("start_parkinson", 0)),
                 ("DPOC/Asma sem broncodilatador",dados_ss.get("start_dpoc_sem_bronco", 0)),
             ]
@@ -1395,7 +1392,6 @@ if aba_sel == 4:
                 'fl_fa_sem_anticoag':     'FA sem anticoagulação',
                 'fl_dm_irc_sem_ieca':     'DM+IRC sem IECA/BRA',
                 'fl_parkinson_sem_levo':  'Parkinson sem levodopa',
-                'fl_depressao_sem_ad':    'Depressão sem antidepress.',
                 'fl_demencia_sem_icolin': 'Demência sem icolinesterase',
                 'fl_dpoc_sem_bronco':     'DPOC sem broncodilatador',
             }
@@ -1746,8 +1742,8 @@ if aba_sel == 5:
              "DM + IRC (nefroproteção)",             "Retarda progressão da doença renal diabética. Indicado independente da PA."),
             ("start_snc_001", "SNC", "Levodopa ou agonista dopaminérgico",
              "Parkinson com incapacidade funcional", "Tratamento de primeira linha — melhora qualidade de vida e função motora."),
-            ("start_snc_002", "SNC", "ISRS ou IRSN (não TCA)",
-             "Depressão/ansiedade moderada-grave",   "Antidepressivos não-tricíclicos são mais seguros em idosos. TCA deve ser evitado."),
+            # start_snc_002 "Depressão sem antidepressivo" removido — regra
+            # upstream não conta paroxetina como antidepressivo válido (contradição).
             ("start_snc_003", "SNC", "Donepezila, Rivastigmina, Galantamina",
              "Demência leve-moderada",               "Inibidores da colinesterase — modesta melhora cognitiva e funcional. Padrão de cuidado."),
             ("start_resp_001", "Respiratório", "Broncodilatador inalatório",

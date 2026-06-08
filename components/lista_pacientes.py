@@ -803,7 +803,7 @@ def buscar_stopp_paciente(cpf: str) -> dict:
         -- START individuais (365d)
         start_cv_001_365d, start_cv_002_365d, start_cv_003_365d,
         start_cv_004_365d, start_cv_005_365d, start_cv_006_365d,
-        start_snc_001_365d, start_snc_002_365d, start_snc_003_365d,
+        start_snc_001_365d, start_snc_003_365d,
         start_resp_001_365d,
         -- Beers (365d)
         beers_001_365d, beers_002_365d, beers_003_365d,
@@ -906,7 +906,7 @@ def buscar_stopp_lote(cpfs: tuple) -> dict:
         stopp_ren_001_365d, stopp_ren_002_365d, stopp_ren_003_365d,
         start_cv_001_365d, start_cv_002_365d, start_cv_003_365d,
         start_cv_004_365d, start_cv_005_365d, start_cv_006_365d,
-        start_snc_001_365d, start_snc_002_365d, start_snc_003_365d,
+        start_snc_001_365d, start_snc_003_365d,
         start_resp_001_365d,
         beers_001_365d, beers_002_365d, beers_003_365d,
         beers_004_365d, beers_005_365d, beers_006_365d, beers_007_365d
@@ -2605,7 +2605,6 @@ def create_patient_card(patient_data, key_prefix: str = '',
                 "start_cv_005_365d":  ("FA sem anticoag.",      "Warfarina/DOAC",          "FA",             "Prevenção de AVC cardioembólico."),
                 "start_cv_006_365d":  ("DM+IRC sem IECA/BRA",  "IECA ou BRA",             "DM + IRC",       "Retarda progressão da nefropatia."),
                 "start_snc_001_365d": ("Parkinson s/ levo.",    "Levodopa/agonista",       "Parkinson",      "1ª linha — melhora função motora."),
-                "start_snc_002_365d": ("Depressão s/ AD",       "ISRS ou IRSN",            "Depressão mod.", "AD não-TCA são mais seguros em idosos."),
                 "start_snc_003_365d": ("Demência s/ iColin.",   "Donepezila/Rivastigmina", "Demência l-m",   "Melhora cognitiva modesta. Padrão de cuidado."),
                 "start_resp_001_365d":("DPOC s/ broncodil.",    "Broncodilatador inalat.", "DPOC/Asma",      "Alívio sintomático e prevenção exacerbações."),
             }

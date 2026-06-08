@@ -208,9 +208,11 @@ CRITERIOS_START = [
     ("start_snc_001", "SNC", "Levodopa ou agonista dopaminérgico",
      "Parkinson com incapacidade funcional",
      "Tratamento de primeira linha — melhora qualidade de vida e função motora."),
-    ("start_snc_002", "SNC", "ISRS ou IRSN (não TCA)",
-     "Depressão/ansiedade moderada-grave",
-     "Antidepressivos não-tricíclicos são mais seguros em idosos. TCA deve ser evitado."),
+    # Critério "Depressão sem antidepressivo" (start_snc_002) removido:
+    # a regra upstream não conta a paroxetina como antidepressivo válido,
+    # gerando contradição (paciente em paroxetina marcado como "sem
+    # antidepressivo"). A coluna start_snc_002_365d segue na MM_stopp_start
+    # e somada em total_criterios_start (upstream) — fora do alcance do app.
     ("start_snc_003", "SNC", "Donepezila, Rivastigmina, Galantamina",
      "Demência leve-moderada",
      "Inibidores da colinesterase — modesta melhora cognitiva e funcional."),
