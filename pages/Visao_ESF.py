@@ -1318,7 +1318,14 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
     n_p_est   = _v(f'n_padrao_estagnado_{abrev}')
     n_p_ctrl  = _v(f'n_padrao_controlado_{abrev}')
     n_p_mix   = _v(f'n_padrao_misto_{abrev}')
-    n_p_lt2   = _v(f'n_padrao_menos_2_consultas_{abrev}')
+    # '<2 consultas' derivado como resíduo. Os 5 padrões ativos exigem
+    # ≥2 consultas e particionam a população da condição, então quem
+    # sobra teve <2 consultas. Evita a inflação do contador upstream
+    # n_padrao_menos_2_consultas_* (calculado num universo mais amplo
+    # que só os pacientes da condição) — antes a soma das 6 categorias
+    # podia exceder n_pacientes_*.
+    n_p_lt2   = max(0, n_pac - n_p_pro - n_p_in - n_p_est
+                    - n_p_ctrl - n_p_mix)
 
     # ── Agrupamento por FRENTE de cuidado ────────────────────────
     n_frente_med = n_pers + n_drec
@@ -1773,18 +1780,15 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
     )
 
     # ───────── 5. Padrão de manejo 365d + legenda ────────────────
-    # Nota sobre denominador: a soma dos 6 contadores n_padrao_*_*
-    # vinda do agregado pode ser maior que n_pacientes_* (o pipeline
-    # parece contar 'menos de 2 consultas' num universo mais amplo
-    # que só os pacientes com a condição). Para a barra fechar em
-    # 100% e a leitura ser internamente consistente, o denominador
-    # aqui é a SOMA das 6 categorias — não n_pacientes_*.
+    # Denominador = n_pacientes_{abrev}. Como '<2 consultas' é o
+    # resíduo dos 5 padrões ativos, as 6 categorias somam exatamente
+    # n_pac e a barra fecha em 100% sobre o total real da condição.
     st.markdown(
-        "<div style='margin:22px 0 6px 0; font-size:1.0em; color:#444;'>"
-        "<b>Padrão de manejo na trajetória de 365 dias</b> "
-        "<span style='color:#777; font-size:0.85em;'>"
-        "(comportamento ao longo do ano, não snapshot; denominador = "
-        "total de pacientes com padrão atribuído)</span></div>",
+        f"<div style='margin:22px 0 6px 0; font-size:1.0em; color:#444;'>"
+        f"<b>Padrão de manejo na trajetória de 365 dias</b> "
+        f"<span style='color:#777; font-size:0.85em;'>"
+        f"(comportamento ao longo do ano, não snapshot; denominador = "
+        f"total de {nome_pop})</span></div>",
         unsafe_allow_html=True,
     )
 
@@ -1845,9 +1849,9 @@ def _render_ato_inercia(condicao: str, ag_in: dict, bm: dict):
         ('Padrão misto',             n_p_mix,  '#f1c40f'),
         ('<2 consultas em 365d',     n_p_lt2,  '#bdc3c7'),
     ]
-    # Denominador = soma das 6 categorias (não n_pac), para a barra
-    # fechar em 100% mesmo quando o agregado conta categorias num
-    # universo mais amplo que só a condição.
+    # Denominador = soma das 6 categorias, que agora é igual a n_pac
+    # (porque '<2 consultas' é o resíduo dos 5 padrões ativos). A barra
+    # fecha em 100% sobre o total real da condição.
     n_pad_total = sum(n for _lab, n, _c in pad_rows)
     df_pad = pd.DataFrame(
         [{'Padrão': lab, 'n': n, 'cor': c,
