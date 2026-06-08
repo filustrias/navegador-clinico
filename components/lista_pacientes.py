@@ -2717,64 +2717,80 @@ def create_patient_card(patient_data, key_prefix: str = '',
             # ════════════════════════════════════════════
             with c_acb:
                 st.markdown("##### 🔴 ACB")
-                acb_total    = dados_acb.get("score_acb_total")
-                acb_cronicos = None  # coluna removida da tabela
-                n_acb_pos    = int(dados_acb.get("n_meds_acb_positivo") or 0)
-                n_acb_alto   = int(dados_acb.get("n_meds_acb_alto") or 0)
-                cat_acb      = dados_acb.get("categoria_acb", "—")
 
-                if acb_total is not None:
-                    acb_f    = float(acb_total)
-                    acb_cr_f = float(acb_cronicos) if acb_cronicos else None
-                    cor      = "🔴" if acb_f >= 3 else "🟠" if acb_f >= 1 else "🟢"
-
-                    st.metric("Score total", f"{cor} {acb_f:.0f}")
-
-                    # Score de crônicos em destaque — mais relevante clinicamente
-                    if acb_cr_f is not None:
-                        cor_cr = "🔴" if acb_cr_f >= 3 else "🟠" if acb_cr_f >= 1 else "🟢"
-                        st.metric(
-                            "Score crônicos",
-                            f"{cor_cr} {acb_cr_f:.0f}",
-                            help="Score ACB calculado apenas sobre medicamentos de uso contínuo. "
-                                 "Mais relevante clinicamente que o score total."
-                        )
-
-                    st.metric("Meds ACB>0",  n_acb_pos)
-                    st.metric("Meds ACB≥3",  n_acb_alto)
-                    st.caption(f"Categoria: `{cat_acb}`")
-
-                    if acb_f >= 3:
-                        st.error(
-                            "⚠️ **Carga anticolinérgica clinicamente significativa** "
-                            "(ACB ≥ 3). Risco aumentado de confusão mental, "
-                            "delirium e quedas — especialmente em idosos."
-                        )
-                    elif acb_f >= 1:
-                        st.warning("Carga presente — monitorar sintomas cognitivos.")
-                    else:
-                        st.success("Sem carga anticolinérgica significativa.")
-                else:
-                    st.info("Sem dados ACB.")
-
-                # ── Evolução temporal do ACB (colunas da FATO) ──────
-                # Ponto-no-tempo: escore da prescrição-âncora mais
-                # próxima de cada janela. NULL = sem prescrição na banda
-                # (≠ 0) — nunca tratar como zero, sempre "sem registro".
                 def _acb_ponto(v):
                     return None if (v is None or pd.isna(v)) else int(v)
 
+                def _parse_meds_acb(s):
+                    """'Hioscina N(3); Dexclorfeniramina(3)' →
+                    [('Hioscina N', 3), ('Dexclorfeniramina', 3)]."""
+                    out = []
+                    if not s or str(s).strip().lower() == 'nan':
+                        return out
+                    for item in str(s).split(';'):
+                        item = item.strip()
+                        if item.endswith(')') and '(' in item:
+                            nome = item[:item.rfind('(')].strip()
+                            try:
+                                sc = int(item[item.rfind('(') + 1:-1].strip())
+                            except ValueError:
+                                continue
+                            if nome:
+                                out.append((nome, sc))
+                    return out
+
+                acb_total = dados_acb.get("score_acb_total")
+                cat_acb   = dados_acb.get("categoria_acb", "—")
+
+                # 1) Escore atual (90 dias) = acb_90d (ponto-no-tempo recente).
+                # NULL = sem prescrição na janela (≠ 0) → "sem registro".
+                _acb90 = _acb_ponto(patient_data.get("acb_90d"))
+                if _acb90 is None:
+                    st.metric("Escore atual (90 dias)", "—")
+                    st.caption("Sem registro de prescrição na janela de 90 dias.")
+                else:
+                    _c90 = "🔴" if _acb90 >= 3 else "🟠" if _acb90 >= 1 else "🟢"
+                    st.metric("Escore atual (90 dias)", f"{_c90} {_acb90}")
+
+                # 2) Medicamentos que somam o escore (prescrição atual).
+                # A quebra por medicamento só existe para a prescrição atual
+                # (medicamentos_acb), não por janela temporal.
+                _meds_acb = _parse_meds_acb(dados_acb.get("medicamentos_acb"))
+                if _meds_acb:
+                    st.markdown("**Anticolinérgicos na prescrição atual**")
+                    _lin = []
+                    for _nome, _sc in sorted(_meds_acb, key=lambda x: -x[1]):
+                        _corm = ("#C62828" if _sc >= 3 else
+                                 "#E69138" if _sc >= 1 else "#2E7D32")
+                        _lin.append(
+                            f"<div style='font-size:0.85em; margin:2px 0;'>"
+                            f"<b style='color:{_corm};'>{_sc}</b> · {_nome}</div>"
+                        )
+                    st.markdown("".join(_lin), unsafe_allow_html=True)
+                    if acb_total is not None:
+                        st.caption(f"Soma (prescrição atual): ACB {int(float(acb_total))}")
+
+                    # 3) Quais medicamentos com ACB ≥ 3
+                    _altos = [n for n, s in _meds_acb if s >= 3]
+                    if _altos:
+                        st.markdown(f"**Com ACB ≥ 3:** {', '.join(_altos)}")
+                elif acb_total is None and _acb90 is None:
+                    st.info("Sem dados ACB.")
+
+                if cat_acb and cat_acb != "—":
+                    st.caption(f"Categoria: `{cat_acb}`")
+
+                # 4) Evolução do ACB (janelas 365/180/90 — o "atual" já
+                # está no topo). Ponto-no-tempo da prescrição-âncora;
+                # NULL = sem prescrição na banda (≠ 0), sempre "sem registro".
                 _serie_acb = [
                     ("≈365d", patient_data.get("acb_365d"), patient_data.get("n_meds_365d")),
                     ("≈180d", patient_data.get("acb_180d"), patient_data.get("n_meds_180d")),
                     ("≈90d",  patient_data.get("acb_90d"),  patient_data.get("n_meds_90d")),
-                    ("Atual", patient_data.get("acb_score_total"), None),
                 ]
                 st.markdown("**📈 Evolução do ACB**")
                 if all(_acb_ponto(v) is None for _r, v, _n in _serie_acb):
-                    st.caption(
-                        "Sem registro de ACB nas janelas de 90/180/365 dias."
-                    )
+                    st.caption("Sem registro de ACB nas janelas de 90/180/365 dias.")
                 else:
                     st.caption(
                         "Escore da prescrição mais próxima de cada janela "
@@ -2804,6 +2820,21 @@ def create_patient_card(patient_data, key_prefix: str = '',
                                 f"{_nmtxt}</div>"
                             )
                     st.markdown("".join(_linhas_acb), unsafe_allow_html=True)
+
+                # 5) Caixa de alerta — baseada no escore da prescrição atual
+                # (acb_score_total), que é o que tem carga de medicamento.
+                if acb_total is not None:
+                    _acbf = float(acb_total)
+                    if _acbf >= 3:
+                        st.error(
+                            "⚠️ **Carga anticolinérgica clinicamente significativa** "
+                            "(ACB ≥ 3). Risco aumentado de confusão mental, "
+                            "delirium e quedas — especialmente em idosos."
+                        )
+                    elif _acbf >= 1:
+                        st.warning("Carga presente — monitorar sintomas cognitivos.")
+                    else:
+                        st.success("Sem carga anticolinérgica significativa.")
 
         # ========== TAB HISTÓRICO FARMACOLÓGICO (730d) ==========
         if _aba_card == "📜 Histórico farmacológico":
