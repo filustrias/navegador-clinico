@@ -2601,7 +2601,7 @@ def create_patient_card(patient_data, key_prefix: str = '',
             START_INFO = {
                 "start_cv_001_365d":  ("HAS s/ tratamento",    "Anti-hipertensivo",       "PAS ≥ 160",      "Principal causa evitável de AVC e IAM."),
                 "start_cv_002_365d":  ("CI sem estatina",       "Estatina",                "Card. isquêmica","Reduz mortalidade CV comprovadamente."),
-                "start_cv_003_365d":  ("DCV sem antiplatelet",  "AAS ou Clopidogrel",      "CI/AVC/DAP",     "Reduz eventos isquêmicos recorrentes."),
+                "start_cv_003_365d":  ("DCV sem antiagregante plaquetário",  "AAS ou Clopidogrel",      "CI/AVC/DAP",     "Reduz eventos isquêmicos recorrentes."),
                 "start_cv_004_365d":  ("ICC sem IECA/BRA",      "IECA ou BRA",             "ICC sistólica",  "Pilar do tratamento — reduz mortalidade."),
                 "start_cv_005_365d":  ("FA sem anticoag.",      "Warfarina/DOAC",          "FA",             "Prevenção de AVC cardioembólico."),
                 "start_cv_006_365d":  ("DM+IRC sem IECA/BRA",  "IECA ou BRA",             "DM + IRC",       "Retarda progressão da nefropatia."),
