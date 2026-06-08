@@ -619,6 +619,11 @@ def load_patient_data_paginated(
       dose_NPH_ui_kg,
       acb_score_total,
       categoria_acb,
+      -- Série temporal do ACB (prescrição-âncora ~90/180/365d atrás).
+      -- Ponto no tempo, NÃO soma acumulada. NULL = sem prescrição na
+      -- banda (≠ 0) — propositalmente SEM COALESCE para preservar o NULL.
+      acb_90d, acb_180d, acb_365d,
+      n_meds_90d, n_meds_180d, n_meds_365d,
       COALESCE(alerta_acb_idoso, FALSE) AS alerta_acb_idoso,
       ultimas_tres_PA,
       ultimas_tres_glicemias,
@@ -2751,6 +2756,54 @@ def create_patient_card(patient_data, key_prefix: str = '',
                         st.success("Sem carga anticolinérgica significativa.")
                 else:
                     st.info("Sem dados ACB.")
+
+                # ── Evolução temporal do ACB (colunas da FATO) ──────
+                # Ponto-no-tempo: escore da prescrição-âncora mais
+                # próxima de cada janela. NULL = sem prescrição na banda
+                # (≠ 0) — nunca tratar como zero, sempre "sem registro".
+                def _acb_ponto(v):
+                    return None if (v is None or pd.isna(v)) else int(v)
+
+                _serie_acb = [
+                    ("≈365d", patient_data.get("acb_365d"), patient_data.get("n_meds_365d")),
+                    ("≈180d", patient_data.get("acb_180d"), patient_data.get("n_meds_180d")),
+                    ("≈90d",  patient_data.get("acb_90d"),  patient_data.get("n_meds_90d")),
+                    ("Atual", patient_data.get("acb_score_total"), None),
+                ]
+                st.markdown("**📈 Evolução do ACB**")
+                if all(_acb_ponto(v) is None for _r, v, _n in _serie_acb):
+                    st.caption(
+                        "Sem registro de ACB nas janelas de 90/180/365 dias."
+                    )
+                else:
+                    st.caption(
+                        "Escore da prescrição mais próxima de cada janela "
+                        "(ponto no tempo, não soma acumulada)."
+                    )
+                    _linhas_acb = []
+                    for _rot, _val, _nm in _serie_acb:
+                        _v = _acb_ponto(_val)
+                        if _v is None:
+                            _linhas_acb.append(
+                                f"<div style='font-size:0.85em; margin:2px 0;'>"
+                                f"<b>{_rot}:</b> <span style='color:#9CA3AF;'>"
+                                f"sem registro na janela</span></div>"
+                            )
+                        else:
+                            _cor = ("#C62828" if _v >= 3 else
+                                    "#E69138" if _v >= 1 else "#2E7D32")
+                            _nmv = _acb_ponto(_nm)
+                            _nmtxt = (
+                                f" <span style='color:#9CA3AF;'>· {_nmv} "
+                                f"med(s)</span>" if _nmv is not None else ""
+                            )
+                            _linhas_acb.append(
+                                f"<div style='font-size:0.85em; margin:2px 0;'>"
+                                f"<b>{_rot}:</b> "
+                                f"<b style='color:{_cor};'>ACB {_v}</b>"
+                                f"{_nmtxt}</div>"
+                            )
+                    st.markdown("".join(_linhas_acb), unsafe_allow_html=True)
 
         # ========== TAB HISTÓRICO FARMACOLÓGICO (730d) ==========
         if _aba_card == "📜 Histórico farmacológico":
