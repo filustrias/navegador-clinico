@@ -2320,7 +2320,7 @@ cortado em 1,0.
     n_inap  = int((_col_pos('total_criterios_stopp')
                    | _col_pos('total_criterios_start')
                    | _col_pos('total_criterios_beers')).sum())
-    n_acb3  = int((df['acb_score_total'].fillna(0) > 3).sum()) if 'acb_score_total' in df.columns else 0
+    n_acb3  = int((df['acb_score_total'].fillna(0) >= 3).sum()) if 'acb_score_total' in df.columns else 0
     n_cv    = (int(df['who_categoria_risco_simplificada']
                    .isin(['Alto', 'Muito alto', 'Crítico']).sum())
                if 'who_categoria_risco_simplificada' in df.columns else 0)
@@ -2339,7 +2339,7 @@ cortado em 1,0.
     _kpi(r1[2], "💊 Em polifarmácia", _abs_pct(n_poli))
     _kpi(r1[3], "❤️ DCV estabelecida", _abs_pct(n_dcv))
     _kpi(r2[0], "🚫 Com STOPP, START ou Beers", _abs_pct(n_inap))
-    _kpi(r2[1], "🧪 ACB acima de 3", _abs_pct(n_acb3))
+    _kpi(r2[1], "🧪 ACB ≥ 3", _abs_pct(n_acb3))
     _kpi(r2[2], "🫀 Risco CV alto ou maior", _abs_pct(n_cv))
 
     # Intervalo entre "Sobre a equipe" e "Distribuição do IPC"
