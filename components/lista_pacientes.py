@@ -2412,7 +2412,20 @@ def create_patient_card(patient_data, key_prefix: str = '',
             with cv2:
                 with st.container(border=True):
                     st.caption("🏠 Longitudinalidade do cuidado")
-                    if baixa_long in [True, 1, '1', 'True']:
+                    # Longitudinalidade mede ONDE ocorrem as consultas médicas
+                    # (na unidade vs. fora). Sem consulta médica no período não
+                    # há vínculo a avaliar — não confundir ausência de sinal
+                    # (baixa_longitudinalidade = False por falta de consultas)
+                    # com vínculo preservado.
+                    if _n_med <= 0:
+                        st.markdown("**⚠️ Sem vínculo no período**")
+                        st.caption(
+                            "Nenhuma consulta médica registrada nos últimos "
+                            "365 dias — não há longitudinalidade a avaliar. "
+                            "A continuidade do cuidado está comprometida pela "
+                            "ausência de contato com a equipe."
+                        )
+                    elif baixa_long in [True, 1, '1', 'True']:
                         st.markdown("**⚠️ Baixa longitudinalidade**")
                         st.caption(
                             "Mais de 50% das consultas médicas ocorreram **fora** da unidade "
