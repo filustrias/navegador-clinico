@@ -2313,13 +2313,17 @@ def create_patient_card(patient_data, key_prefix: str = '',
             PERFIL_LABEL = {
                 'medico_centrado': (
                     '🩺', 'Médico-centrado',
-                    '≥75% das consultas clínicas foram com o médico, '
-                    'ou o médico foi o único profissional a consultar no período.'
+                    '≥75% das consultas clínicas (médico + enfermeiro) foram '
+                    'com o médico, ou o médico foi o único profissional clínico '
+                    'no período. O técnico de enfermagem não entra nesta '
+                    'classificação.'
                 ),
                 'enfermagem_centrado': (
                     '💉', 'Enfermagem-centrado',
-                    '≥75% das consultas clínicas foram com o enfermeiro, '
-                    'ou o enfermeiro foi o único profissional a consultar no período.'
+                    '≥75% das consultas clínicas (médico + enfermeiro) foram '
+                    'com o enfermeiro, ou o enfermeiro foi o único profissional '
+                    'clínico no período. O técnico de enfermagem não entra nesta '
+                    'classificação.'
                 ),
                 'compartilhado': (
                     '🤝', 'Cuidado compartilhado',
@@ -2345,20 +2349,40 @@ def create_patient_card(patient_data, key_prefix: str = '',
                     st.markdown(f"**{em} {lb}**")
                     st.caption(desc)
 
-                    # Percentuais reais — mostrar o que compõe o perfil
+                    # Percentuais reais — distribuição sobre o TOTAL de
+                    # consultas (inclui o técnico de enfermagem).
                     linhas = []
                     if pd.notna(pct_medico) and pct_medico > 0:
-                        linhas.append(f"🩺 Médico: **{pct_medico:.0f}%** das consultas")
+                        linhas.append(f"🩺 Médico: **{pct_medico:.0f}%** do total")
                     if pd.notna(pct_enfermeiro) and pct_enfermeiro > 0:
-                        linhas.append(f"💉 Enfermeiro: **{pct_enfermeiro:.0f}%** das consultas")
+                        linhas.append(f"💉 Enfermeiro: **{pct_enfermeiro:.0f}%** do total")
                     # técnico de enfermagem (residual)
-                    pct_tec = None
+                    pct_tec_calc = None
                     if pd.notna(pct_medico) and pd.notna(pct_enfermeiro):
                         pct_tec_calc = 100 - (pct_medico or 0) - (pct_enfermeiro or 0)
                         if pct_tec_calc > 1:
-                            linhas.append(f"🩹 Técnico: **{pct_tec_calc:.0f}%** das consultas")
+                            linhas.append(f"🩹 Técnico: **{pct_tec_calc:.0f}%** do total")
                     if linhas:
                         st.markdown("  \n".join(linhas))
+
+                    # Esclarecimento: o perfil acima ignora o técnico de
+                    # enfermagem — classifica só pelas consultas clínicas
+                    # (médico + enfermeiro). Mostra a fatia clínica para o
+                    # rótulo não parecer contraditório quando o técnico
+                    # domina o total (ex.: médico 13% do total, mas 81%
+                    # das consultas clínicas → médico-centrado).
+                    _clin = (pct_medico or 0) + (pct_enfermeiro or 0)
+                    if (pct_tec_calc is not None and pct_tec_calc > 1
+                            and _clin > 0):
+                        _med_clin = (pct_medico or 0) / _clin * 100
+                        _enf_clin = (pct_enfermeiro or 0) / _clin * 100
+                        st.caption(
+                            "ℹ️ O perfil considera **apenas as consultas "
+                            "clínicas** (médico + enfermeiro); o técnico de "
+                            "enfermagem **não entra**. Entre as clínicas: "
+                            f"🩺 médico **{_med_clin:.0f}%** · 💉 enfermeiro "
+                            f"**{_enf_clin:.0f}%**."
+                        )
 
                     if pd.notna(intervalo):
                         st.caption(f"Intervalo mediano entre consultas: **{int(intervalo)} dias**")
