@@ -2742,15 +2742,15 @@ def create_patient_card(patient_data, key_prefix: str = '',
                 acb_total = dados_acb.get("score_acb_total")
                 cat_acb   = dados_acb.get("categoria_acb", "—")
 
-                # 1) Escore atual (90 dias) = acb_90d (ponto-no-tempo recente).
+                # 1) Escore nos últimos 180 dias = acb_180d (ponto-no-tempo).
                 # NULL = sem prescrição na janela (≠ 0) → "sem registro".
-                _acb90 = _acb_ponto(patient_data.get("acb_90d"))
-                if _acb90 is None:
-                    st.metric("Escore atual (90 dias)", "—")
-                    st.caption("Sem registro de prescrição na janela de 90 dias.")
+                _acb180 = _acb_ponto(patient_data.get("acb_180d"))
+                if _acb180 is None:
+                    st.metric("Escore nos últimos 180 dias", "—")
+                    st.caption("Sem registro de prescrição na janela de 180 dias.")
                 else:
-                    _c90 = "🔴" if _acb90 >= 3 else "🟠" if _acb90 >= 1 else "🟢"
-                    st.metric("Escore atual (90 dias)", f"{_c90} {_acb90}")
+                    _c180 = "🔴" if _acb180 >= 3 else "🟠" if _acb180 >= 1 else "🟢"
+                    st.metric("Escore nos últimos 180 dias", f"{_c180} {_acb180}")
 
                 # 2) Medicamentos que somam o escore (prescrição atual).
                 # A quebra por medicamento só existe para a prescrição atual
@@ -2774,7 +2774,7 @@ def create_patient_card(patient_data, key_prefix: str = '',
                     _altos = [n for n, s in _meds_acb if s >= 3]
                     if _altos:
                         st.markdown(f"**Com ACB ≥ 3:** {', '.join(_altos)}")
-                elif acb_total is None and _acb90 is None:
+                elif acb_total is None and _acb180 is None:
                     st.info("Sem dados ACB.")
 
                 if cat_acb and cat_acb != "—":
