@@ -2335,12 +2335,12 @@ cortado em 1,0.
     r1 = st.columns(4)
     r2 = st.columns(4)
     _kpi(r1[0], "👥 Pacientes da equipe", f"{n_total:,}")
-    _kpi(r1[1], "🦠 Multimórbidos (≥2)", _abs_pct(n_multi))
-    _kpi(r1[2], "💊 Em polifarmácia", _abs_pct(n_poli))
+    _kpi(r1[1], "🦠 Multimórbidos (2 ou mais condições crônicas)", _abs_pct(n_multi))
+    _kpi(r1[2], "💊 Em polifarmácia (5 ou mais medicamentos crônicos)", _abs_pct(n_poli))
     _kpi(r1[3], "❤️ DCV estabelecida", _abs_pct(n_dcv))
-    _kpi(r2[0], "🚫 Com STOPP, START ou Beers", _abs_pct(n_inap))
-    _kpi(r2[1], "🧪 ACB ≥ 3", _abs_pct(n_acb3))
-    _kpi(r2[2], "🫀 Risco CV alto ou maior", _abs_pct(n_cv))
+    _kpi(r2[0], "🚫 Com STOPP, START ou Beers (precisam de revisão das prescrições)", _abs_pct(n_inap))
+    _kpi(r2[1], "🧪 ACB ≥ 3 (prescrições com alta carga anticolinérgica)", _abs_pct(n_acb3))
+    _kpi(r2[2], "🫀 Risco CV alto, muito alto ou crítico", _abs_pct(n_cv))
 
     # Intervalo entre "Sobre a equipe" e "Distribuição do IPC"
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
