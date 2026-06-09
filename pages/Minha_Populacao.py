@@ -535,9 +535,17 @@ _ESTRATOS_MORB = [
     ('n_morb_8mais', '8+ morbidades'),
 ]
 
-# Rampa sequencial azul claro → marinho (9 níveis).
-_CORES_MORB_SEQ = ['#DCE9F5', '#B9D2EA', '#8FB4DA', '#6695C8', '#477BB3',
-                   '#345F94', '#244875', '#173356', '#0C1F38']
+# Paletas sequenciais multi-hue (CARTOColors) — "um pouco mais coloridas"
+# que a monocromática, mas ainda coesas/quentes. Claro = 0 morb, escuro = 8+.
+# Trocar _PALETA_MORB para 'RedOr' ou 'OrYel' se quiser outra.
+_PALETAS_CARTO = {
+    'BurgYl': ['#fbe6c5', '#f5ba98', '#ee8a82', '#dc7176', '#c8586c', '#9c3f5d', '#70284a'],
+    'RedOr':  ['#f6d2a9', '#f5b78e', '#f19c7c', '#ea8171', '#dd686c', '#ca5268', '#b13f64'],
+    'OrYel':  ['#ecda9a', '#efc47e', '#f3ad6a', '#f7945d', '#f97b57', '#f66356', '#ee4d5a'],
+}
+_PALETA_MORB = 'BurgYl'
+_CORES_MORB_SEQ = px.colors.sample_colorscale(
+    _PALETAS_CARTO[_PALETA_MORB], [i / 8.0 for i in range(9)])
 
 _BORDA = dict(color='rgba(0,0,0,0.25)', width=0.3)
 
@@ -597,7 +605,7 @@ def criar_viz_A_paineis(df):
                 hovertemplate=f'<b>%{{y}}</b><br>Mulheres · {label}: %{{x:,}}<extra></extra>',
             ), row=1, col=2)
     fig.update_layout(
-        title='A — Painéis por sexo (sem espelhamento)',
+        title='Distribuição por Faixa Etária, Sexo e Número de Morbidades',
         barmode='stack', height=700, bargap=0.15,
         legend=dict(title=dict(text='<b>Nº de Morbidades</b>'),
                     orientation='v', yanchor='middle', y=0.5,
@@ -606,155 +614,6 @@ def criar_viz_A_paineis(df):
     )
     fig.update_xaxes(title_text='População', row=1, col=1)
     fig.update_xaxes(title_text='População', row=1, col=2)
-    fig.update_yaxes(title_text='Faixa Etária', row=1, col=1)
-    return fig
-
-
-def criar_viz_B_invertida(df):
-    """B — Pirâmide divergente, mas 0 morb. no centro e +morb. para fora.
-    Paleta MONOCROMÁTICA (rampa azul claro→marinho, ordinal): 0 → claro,
-    8+ → escuro."""
-    df_masc, df_fem = _piramide_split(df)
-    if df_masc is None:
-        return None
-    cores = _CORES_MORB_SEQ
-    fig = go.Figure()
-    for i, (campo, label) in enumerate(_ESTRATOS_MORB):
-        if campo in df_masc.columns:
-            fig.add_trace(go.Bar(
-                y=df_masc['faixa_etaria'], x=-df_masc[campo], name=label,
-                orientation='h', marker=dict(color=cores[i], line=_BORDA),
-                legendgroup=label, showlegend=True, customdata=df_masc[campo],
-                hovertemplate=f'<b>%{{y}}</b><br>Homens · {label}: %{{customdata:,}}<extra></extra>',
-            ))
-    for i, (campo, label) in enumerate(_ESTRATOS_MORB):
-        if campo in df_fem.columns:
-            fig.add_trace(go.Bar(
-                y=df_fem['faixa_etaria'], x=df_fem[campo], name=label,
-                orientation='h', marker=dict(color=cores[i], line=_BORDA),
-                legendgroup=label, showlegend=False,
-                hovertemplate=f'<b>%{{y}}</b><br>Mulheres · {label}: %{{x:,}}<extra></extra>',
-            ))
-    mr = _max_range_morb(df_masc, df_fem)
-    fig.update_layout(
-        title='B — Divergente invertida (0 morb. no centro)',
-        barmode='relative', bargap=0.15, height=700,
-        xaxis=dict(title='População', range=[-mr, mr], zeroline=True,
-                   zerolinewidth=3, zerolinecolor=T.TEXT,
-                   tickvals=[-mr, -mr // 2, 0, mr // 2, mr],
-                   ticktext=[f'{mr:,}', f'{mr // 2:,}', '0', f'{mr // 2:,}', f'{mr:,}']),
-        yaxis=dict(title='Faixa Etária'),
-        legend=dict(title=dict(text='<b>Nº de Morbidades</b>'), orientation='v',
-                    yanchor='middle', y=0.5, xanchor='left', x=1.02),
-        margin=dict(l=70, r=200, t=80, b=60),
-    )
-    fig.add_annotation(x=-mr * 0.5, y=1.03, xref='x', yref='paper',
-                       text='<b>Masculino</b>', showarrow=False,
-                       font=dict(size=14, color='#3498DB'))
-    fig.add_annotation(x=mr * 0.5, y=1.03, xref='x', yref='paper',
-                       text='<b>Feminino</b>', showarrow=False,
-                       font=dict(size=14, color='#E91E63'))
-    return fig
-
-
-def criar_viz_C_desacoplada(df):
-    """C — (1) pirâmide simples idade-sexo + (2) % com ≥1 morbidade por faixa."""
-    df_masc, df_fem = _piramide_split(df)
-    if df_masc is None:
-        return None, None
-    cols = [c for c, _ in _ESTRATOS_MORB if c in df_masc.columns]
-    tot_m = df_masc[cols].sum(axis=1)
-    tot_f = df_fem[cols].sum(axis=1)
-
-    # Paleta laranja (em vez de azul/rosa): âmbar p/ masculino, laranja
-    # escuro p/ feminino — mesma família, distinguíveis por luminosidade.
-    _COR_M, _COR_F = '#F39C12', '#D35400'
-
-    fig1 = go.Figure()
-    fig1.add_trace(go.Bar(y=df_masc['faixa_etaria'], x=-tot_m, name='Masculino',
-                          orientation='h', marker_color=_COR_M, customdata=tot_m,
-                          hovertemplate='<b>%{y}</b><br>Homens: %{customdata:,}<extra></extra>'))
-    fig1.add_trace(go.Bar(y=df_fem['faixa_etaria'], x=tot_f, name='Feminino',
-                          orientation='h', marker_color=_COR_F,
-                          hovertemplate='<b>%{y}</b><br>Mulheres: %{x:,}<extra></extra>'))
-    import math
-    mv = max(tot_m.max(), tot_f.max()) if len(tot_m) else 1000
-    mr = int(math.ceil(mv / 1000.0) * 1000) if (mv and mv == mv) else 1000
-    fig1.update_layout(title='C.1 — Pirâmide etária (estrutura idade-sexo)',
-                       barmode='relative', bargap=0.15, height=620, showlegend=False,
-                       xaxis=dict(title='População', range=[-mr, mr], zeroline=True,
-                                  zerolinewidth=3, zerolinecolor=T.TEXT,
-                                  tickvals=[-mr, -mr // 2, 0, mr // 2, mr],
-                                  ticktext=[f'{mr:,}', f'{mr // 2:,}', '0', f'{mr // 2:,}', f'{mr:,}']),
-                       yaxis=dict(title='Faixa Etária'),
-                       margin=dict(l=70, r=30, t=70, b=50))
-    fig1.add_annotation(x=-mr * 0.5, y=1.04, xref='x', yref='paper', text='<b>Masculino</b>',
-                        showarrow=False, font=dict(size=13, color=_COR_M))
-    fig1.add_annotation(x=mr * 0.5, y=1.04, xref='x', yref='paper', text='<b>Feminino</b>',
-                        showarrow=False, font=dict(size=13, color=_COR_F))
-
-    def _pct_ge1(dfx, totx):
-        n0 = dfx['n_morb_0'] if 'n_morb_0' in dfx.columns else 0
-        pct = (totx - n0) / totx * 100
-        return pct.replace([float('inf'), float('-inf')], 0).fillna(0)
-
-    fig2 = go.Figure()
-    fig2.add_trace(go.Bar(y=df_masc['faixa_etaria'], x=_pct_ge1(df_masc, tot_m),
-                          name='Masculino', orientation='h', marker_color=_COR_M,
-                          hovertemplate='<b>%{y}</b><br>Homens: %{x:.0f}% com ≥1 morbidade<extra></extra>'))
-    fig2.add_trace(go.Bar(y=df_fem['faixa_etaria'], x=_pct_ge1(df_fem, tot_f),
-                          name='Feminino', orientation='h', marker_color=_COR_F,
-                          hovertemplate='<b>%{y}</b><br>Mulheres: %{x:.0f}% com ≥1 morbidade<extra></extra>'))
-    fig2.update_layout(title='C.2 — % com ≥1 morbidade, por faixa e sexo',
-                       barmode='group', bargap=0.25, height=620,
-                       xaxis=dict(title='% com ≥1 morbidade', range=[0, 100]),
-                       yaxis=dict(title='Faixa Etária'),
-                       legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-                       margin=dict(l=70, r=30, t=70, b=50))
-    return fig1, fig2
-
-
-def criar_viz_D_heatmap(df):
-    """D — Heatmap faixa × nº de morbidades, painéis M/E. Cor = nº de
-    pessoas em ESCALA LOG (mais contraste entre células) e INVERTIDA
-    (reversescale): regiões de menor população ficam mais saturadas."""
-    from plotly.subplots import make_subplots
-    import numpy as np
-    import math
-    df_masc, df_fem = _piramide_split(df)
-    if df_masc is None:
-        return None
-    cols = [c for c, _ in _ESTRATOS_MORB if c in df_masc.columns]
-    xlab = [lb.replace(' morbidades', '').replace(' morbidade', '')
-            for c, lb in _ESTRATOS_MORB if c in df_masc.columns]
-    faixas = list(df_masc['faixa_etaria'].astype(str))
-    zm_raw = df_masc[cols].values.astype(float)
-    zf_raw = df_fem[cols].values.astype(float)
-    zm = np.log10(zm_raw + 1.0)
-    zf = np.log10(zf_raw + 1.0)
-    # Barra de cor rotulada em contagens reais (o eixo de cor é log).
-    _tv = [0, 100, 1000, 10000, 100000]
-    _tickpos = [math.log10(v + 1) for v in _tv]
-    _ticktext = ['0', '100', '1k', '10k', '100k']
-    fig = make_subplots(rows=1, cols=2, shared_yaxes=True, horizontal_spacing=0.06,
-                        subplot_titles=('<b>Masculino</b>', '<b>Feminino</b>'))
-    fig.add_trace(go.Heatmap(z=zm, x=xlab, y=faixas, customdata=zm_raw,
-                             coloraxis='coloraxis', xgap=1, ygap=1,
-                             hovertemplate='Faixa %{y}<br>%{x} morb.<br>%{customdata:,.0f} pessoas<extra></extra>'),
-                  row=1, col=1)
-    fig.add_trace(go.Heatmap(z=zf, x=xlab, y=faixas, customdata=zf_raw,
-                             coloraxis='coloraxis', xgap=1, ygap=1,
-                             hovertemplate='Faixa %{y}<br>%{x} morb.<br>%{customdata:,.0f} pessoas<extra></extra>'),
-                  row=1, col=2)
-    fig.update_layout(
-        title='D — Heatmap idade × nº de morbidades (escala log, cores invertidas)',
-        height=700,
-        coloraxis=dict(colorscale='YlOrRd', reversescale=True,
-                       colorbar=dict(title='Pessoas', tickvals=_tickpos, ticktext=_ticktext)),
-        margin=dict(l=70, r=90, t=80, b=60),
-    )
-    fig.update_xaxes(title_text='Nº de morbidades', row=1, col=1)
-    fig.update_xaxes(title_text='Nº de morbidades', row=1, col=2)
     fig.update_yaxes(title_text='Faixa Etária', row=1, col=1)
     return fig
 
@@ -2215,49 +2074,12 @@ def _grouped_bar_territorio(df, cols, labels, cores, titulo, eixo_y='% dos pacie
 
 # TAB 1 — Perfil da População (pirâmide + morbidades prevalentes)
 if aba_escolhida == 0:
-    # ── Pirâmide populacional ─────────────────────────────────────
-    fig_piramide = criar_piramide_populacional(df_dados)
-    if fig_piramide:
-        st.plotly_chart(fig_piramide, use_container_width=True, key='piramide_morb')
+    # ── População por faixa, sexo e nº de morbidades ──────────────
+    fig_pop = criar_viz_A_paineis(df_dados)
+    if fig_pop:
+        st.plotly_chart(fig_pop, use_container_width=True, key='piramide_pop')
     else:
-        st.error("Erro ao criar pirâmide")
-
-    st.markdown("---")
-
-    # ── Propostas de visualização (em avaliação) ──────────────────
-    st.markdown("### 🔬 Propostas de visualização (em avaliação)")
-    st.caption(
-        "Quatro alternativas à pirâmide empilhada acima, para escolhermos um "
-        "padrão (será aplicado também às demais pirâmides). O nº de morbidades "
-        "usa rampa **sequencial** (claro = 0, escuro = mais morbidade). "
-        "Correção: aqui o grupo **8+** soma 8, 9 e 10+ (a pirâmide antiga só "
-        "contava 10+)."
-    )
-
-    st.markdown("#### A — Painéis separados por sexo (sem espelhamento)")
-    _figA = criar_viz_A_paineis(df_dados)
-    if _figA:
-        st.plotly_chart(_figA, use_container_width=True, key='viz_A')
-
-    st.markdown("#### B — Pirâmide divergente invertida (0 morb. no centro)")
-    _figB = criar_viz_B_invertida(df_dados)
-    if _figB:
-        st.plotly_chart(_figB, use_container_width=True, key='viz_B')
-
-    st.markdown("#### C — Desacoplada: estrutura idade-sexo + carga de morbidade")
-    _figC1, _figC2 = criar_viz_C_desacoplada(df_dados)
-    _cC1, _cC2 = st.columns(2)
-    with _cC1:
-        if _figC1:
-            st.plotly_chart(_figC1, use_container_width=True, key='viz_C1')
-    with _cC2:
-        if _figC2:
-            st.plotly_chart(_figC2, use_container_width=True, key='viz_C2')
-
-    st.markdown("#### D — Heatmap idade × nº de morbidades (por sexo)")
-    _figD = criar_viz_D_heatmap(df_dados)
-    if _figD:
-        st.plotly_chart(_figD, use_container_width=True, key='viz_D')
+        st.error("Erro ao criar o gráfico de população")
 
     st.markdown("---")
 
