@@ -612,14 +612,12 @@ def criar_viz_A_paineis(df):
 
 def criar_viz_B_invertida(df):
     """B — Pirâmide divergente, mas 0 morb. no centro e +morb. para fora.
-    Mantém as CORES ORIGINAIS (paleta qualitativa Safe), uma por nº de
-    morbidades (0 → cores[0], …, 8+ → cores[8])."""
+    Paleta MONOCROMÁTICA (rampa azul claro→marinho, ordinal): 0 → claro,
+    8+ → escuro."""
     df_masc, df_fem = _piramide_split(df)
     if df_masc is None:
         return None
-    cores = list(px.colors.qualitative.Safe)
-    while len(cores) < 9:
-        cores = cores + cores
+    cores = _CORES_MORB_SEQ
     fig = go.Figure()
     for i, (campo, label) in enumerate(_ESTRATOS_MORB):
         if campo in df_masc.columns:
