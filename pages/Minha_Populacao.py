@@ -1193,6 +1193,25 @@ def criar_visualizacao_morbidades_prevalentes(df):
     
     return fig, df_prev
 
+
+def _prev_por_coluna(df):
+    """Devolve {Coluna: prevalência %} para um escopo (ex.: o município
+    inteiro, sem filtro). Mesma fórmula de
+    criar_visualizacao_morbidades_prevalentes — usada como benchmark."""
+    if df is None or df.empty:
+        return {}
+    tot = df['total_pacientes'].sum()
+    if tot <= 0:
+        return {}
+    out = {'multimorbidade': calcular_multimorbidade(df) / tot * 100}
+    for col, info in MORBIDADES_COMPLETO.items():
+        if col == 'multimorbidade':
+            continue
+        if col in df.columns:
+            out[col] = float(df[col].sum()) / tot * 100
+    return out
+
+
 # ============================================
 # INTERFACE PRINCIPAL
 # ============================================
@@ -2094,6 +2113,12 @@ if aba_escolhida == 0:
         st.markdown("---")
         st.markdown(f"### 📋 Detalhamento por Categoria")
 
+        # Benchmark do município (prevalência %) — só quando há filtro
+        # territorial ativo (AP / clínica / ESF). Sem filtro o escopo já é
+        # o município e o benchmark seria redundante.
+        _filtro_ativo = bool(ap_sel or cli_sel or esf_sel)
+        _bench_mun = _prev_por_coluna(carregar_dados_piramides()) if _filtro_ativo else {}
+
         for categoria in ORDEM_CATEGORIAS:
             df_cat = df_prevalencias[df_prevalencias['Categoria'] == categoria]
 
@@ -2124,12 +2149,22 @@ if aba_escolhida == 0:
 
                     with st.container(border=True):
                         st.markdown(f"**{cor} {row['Condição']}**")
-                        st.metric(
-                            label="Pacientes",
-                            value=f"{row['N']:,}",
-                            delta=f"{row['Prevalência (%)']}%",
-                            delta_color=delta_color
-                        )
+                        if _filtro_ativo:
+                            # absoluto (prevalência da área%) + benchmark município
+                            st.metric(
+                                label="Pacientes",
+                                value=f"{row['N']:,} ({row['Prevalência (%)']}%)",
+                            )
+                            _pm = _bench_mun.get(row['Coluna'])
+                            if _pm is not None:
+                                st.caption(f"📍 Município: **{_pm:.1f}%**")
+                        else:
+                            st.metric(
+                                label="Pacientes",
+                                value=f"{row['N']:,}",
+                                delta=f"{row['Prevalência (%)']}%",
+                                delta_color=delta_color
+                            )
                         st.caption(row['Descrição'])
 
             st.markdown("<br>", unsafe_allow_html=True)
