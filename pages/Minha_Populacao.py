@@ -611,16 +611,21 @@ def criar_viz_A_paineis(df):
 
 
 def criar_viz_B_invertida(df):
-    """B — Pirâmide divergente, mas 0 morb. no centro (claro) e +morb. fora."""
+    """B — Pirâmide divergente, mas 0 morb. no centro e +morb. para fora.
+    Mantém as CORES ORIGINAIS (paleta qualitativa Safe), uma por nº de
+    morbidades (0 → cores[0], …, 8+ → cores[8])."""
     df_masc, df_fem = _piramide_split(df)
     if df_masc is None:
         return None
+    cores = list(px.colors.qualitative.Safe)
+    while len(cores) < 9:
+        cores = cores + cores
     fig = go.Figure()
     for i, (campo, label) in enumerate(_ESTRATOS_MORB):
         if campo in df_masc.columns:
             fig.add_trace(go.Bar(
                 y=df_masc['faixa_etaria'], x=-df_masc[campo], name=label,
-                orientation='h', marker=dict(color=_CORES_MORB_SEQ[i], line=_BORDA),
+                orientation='h', marker=dict(color=cores[i], line=_BORDA),
                 legendgroup=label, showlegend=True, customdata=df_masc[campo],
                 hovertemplate=f'<b>%{{y}}</b><br>Homens · {label}: %{{customdata:,}}<extra></extra>',
             ))
@@ -628,7 +633,7 @@ def criar_viz_B_invertida(df):
         if campo in df_fem.columns:
             fig.add_trace(go.Bar(
                 y=df_fem['faixa_etaria'], x=df_fem[campo], name=label,
-                orientation='h', marker=dict(color=_CORES_MORB_SEQ[i], line=_BORDA),
+                orientation='h', marker=dict(color=cores[i], line=_BORDA),
                 legendgroup=label, showlegend=False,
                 hovertemplate=f'<b>%{{y}}</b><br>Mulheres · {label}: %{{x:,}}<extra></extra>',
             ))
@@ -663,12 +668,16 @@ def criar_viz_C_desacoplada(df):
     tot_m = df_masc[cols].sum(axis=1)
     tot_f = df_fem[cols].sum(axis=1)
 
+    # Paleta laranja (em vez de azul/rosa): âmbar p/ masculino, laranja
+    # escuro p/ feminino — mesma família, distinguíveis por luminosidade.
+    _COR_M, _COR_F = '#F39C12', '#D35400'
+
     fig1 = go.Figure()
     fig1.add_trace(go.Bar(y=df_masc['faixa_etaria'], x=-tot_m, name='Masculino',
-                          orientation='h', marker_color='#3498DB', customdata=tot_m,
+                          orientation='h', marker_color=_COR_M, customdata=tot_m,
                           hovertemplate='<b>%{y}</b><br>Homens: %{customdata:,}<extra></extra>'))
     fig1.add_trace(go.Bar(y=df_fem['faixa_etaria'], x=tot_f, name='Feminino',
-                          orientation='h', marker_color='#E91E63',
+                          orientation='h', marker_color=_COR_F,
                           hovertemplate='<b>%{y}</b><br>Mulheres: %{x:,}<extra></extra>'))
     import math
     mv = max(tot_m.max(), tot_f.max()) if len(tot_m) else 1000
@@ -682,9 +691,9 @@ def criar_viz_C_desacoplada(df):
                        yaxis=dict(title='Faixa Etária'),
                        margin=dict(l=70, r=30, t=70, b=50))
     fig1.add_annotation(x=-mr * 0.5, y=1.04, xref='x', yref='paper', text='<b>Masculino</b>',
-                        showarrow=False, font=dict(size=13, color='#3498DB'))
+                        showarrow=False, font=dict(size=13, color=_COR_M))
     fig1.add_annotation(x=mr * 0.5, y=1.04, xref='x', yref='paper', text='<b>Feminino</b>',
-                        showarrow=False, font=dict(size=13, color='#E91E63'))
+                        showarrow=False, font=dict(size=13, color=_COR_F))
 
     def _pct_ge1(dfx, totx):
         n0 = dfx['n_morb_0'] if 'n_morb_0' in dfx.columns else 0
@@ -693,10 +702,10 @@ def criar_viz_C_desacoplada(df):
 
     fig2 = go.Figure()
     fig2.add_trace(go.Bar(y=df_masc['faixa_etaria'], x=_pct_ge1(df_masc, tot_m),
-                          name='Masculino', orientation='h', marker_color='#3498DB',
+                          name='Masculino', orientation='h', marker_color=_COR_M,
                           hovertemplate='<b>%{y}</b><br>Homens: %{x:.0f}% com ≥1 morbidade<extra></extra>'))
     fig2.add_trace(go.Bar(y=df_fem['faixa_etaria'], x=_pct_ge1(df_fem, tot_f),
-                          name='Feminino', orientation='h', marker_color='#E91E63',
+                          name='Feminino', orientation='h', marker_color=_COR_F,
                           hovertemplate='<b>%{y}</b><br>Mulheres: %{x:.0f}% com ≥1 morbidade<extra></extra>'))
     fig2.update_layout(title='C.2 — % com ≥1 morbidade, por faixa e sexo',
                        barmode='group', bargap=0.25, height=620,
@@ -708,8 +717,12 @@ def criar_viz_C_desacoplada(df):
 
 
 def criar_viz_D_heatmap(df):
-    """D — Heatmap faixa × nº de morbidades, painéis M/E (cor = população)."""
+    """D — Heatmap faixa × nº de morbidades, painéis M/E. Cor = nº de
+    pessoas em ESCALA LOG (mais contraste entre células) e INVERTIDA
+    (reversescale): regiões de menor população ficam mais saturadas."""
     from plotly.subplots import make_subplots
+    import numpy as np
+    import math
     df_masc, df_fem = _piramide_split(df)
     if df_masc is None:
         return None
@@ -717,20 +730,30 @@ def criar_viz_D_heatmap(df):
     xlab = [lb.replace(' morbidades', '').replace(' morbidade', '')
             for c, lb in _ESTRATOS_MORB if c in df_masc.columns]
     faixas = list(df_masc['faixa_etaria'].astype(str))
+    zm_raw = df_masc[cols].values.astype(float)
+    zf_raw = df_fem[cols].values.astype(float)
+    zm = np.log10(zm_raw + 1.0)
+    zf = np.log10(zf_raw + 1.0)
+    # Barra de cor rotulada em contagens reais (o eixo de cor é log).
+    _tv = [0, 100, 1000, 10000, 100000]
+    _tickpos = [math.log10(v + 1) for v in _tv]
+    _ticktext = ['0', '100', '1k', '10k', '100k']
     fig = make_subplots(rows=1, cols=2, shared_yaxes=True, horizontal_spacing=0.06,
                         subplot_titles=('<b>Masculino</b>', '<b>Feminino</b>'))
-    fig.add_trace(go.Heatmap(z=df_masc[cols].values, x=xlab, y=faixas,
-                             coloraxis='coloraxis',
-                             hovertemplate='Faixa %{y}<br>%{x} morb.<br>%{z:,} pessoas<extra></extra>'),
+    fig.add_trace(go.Heatmap(z=zm, x=xlab, y=faixas, customdata=zm_raw,
+                             coloraxis='coloraxis', xgap=1, ygap=1,
+                             hovertemplate='Faixa %{y}<br>%{x} morb.<br>%{customdata:,.0f} pessoas<extra></extra>'),
                   row=1, col=1)
-    fig.add_trace(go.Heatmap(z=df_fem[cols].values, x=xlab, y=faixas,
-                             coloraxis='coloraxis',
-                             hovertemplate='Faixa %{y}<br>%{x} morb.<br>%{z:,} pessoas<extra></extra>'),
+    fig.add_trace(go.Heatmap(z=zf, x=xlab, y=faixas, customdata=zf_raw,
+                             coloraxis='coloraxis', xgap=1, ygap=1,
+                             hovertemplate='Faixa %{y}<br>%{x} morb.<br>%{customdata:,.0f} pessoas<extra></extra>'),
                   row=1, col=2)
     fig.update_layout(
-        title='D — Heatmap idade × nº de morbidades (cor = nº de pessoas)',
-        height=700, coloraxis=dict(colorscale='YlOrRd', colorbar=dict(title='Pessoas')),
-        margin=dict(l=70, r=80, t=80, b=60),
+        title='D — Heatmap idade × nº de morbidades (escala log, cores invertidas)',
+        height=700,
+        coloraxis=dict(colorscale='YlOrRd', reversescale=True,
+                       colorbar=dict(title='Pessoas', tickvals=_tickpos, ticktext=_ticktext)),
+        margin=dict(l=70, r=90, t=80, b=60),
     )
     fig.update_xaxes(title_text='Nº de morbidades', row=1, col=1)
     fig.update_xaxes(title_text='Nº de morbidades', row=1, col=2)
