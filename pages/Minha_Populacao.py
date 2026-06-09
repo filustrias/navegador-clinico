@@ -17,6 +17,9 @@ from utils.anonimizador import (
     anonimizar_ap, anonimizar_clinica, anonimizar_esf,
     anonimizar_nome, mostrar_badge_anonimo, MODO_ANONIMO
 )
+from components.funnel_plot import plot_funnel
+from components.strip_aps import plot_strip_aps
+from components.lista_condicoes import montar_tabela, render_lista
 
 
 st.set_page_config(
@@ -1212,6 +1215,60 @@ def _prev_por_coluna(df):
     return out
 
 
+@st.cache_data(show_spinner=False, ttl=900)
+def carregar_clinicas_wide() -> pd.DataFrame:
+    """1 linha por clínica (município inteiro): total_pacientes (denominador)
+    + n_multimorbidos + contagens de cada morbidade (numeradores). Base dos
+    componentes funnel/strip (variação entre clínicas por condição)."""
+    cols_morb = [c for c in MORBIDADES_COMPLETO if c != 'multimorbidade']
+    sums = ",\n        ".join(f"SUM({c}) AS {c}" for c in cols_morb)
+    sql = f"""
+    SELECT
+        area_programatica AS ap,
+        clinica_familia   AS clinica,
+        SUM(total_pacientes)  AS total_pacientes,
+        SUM(n_multimorbidos)  AS n_multimorbidos,
+        {sums}
+    FROM `rj-sms-sandbox.sub_pav_us.MM_piramides_populacionais`
+    WHERE area_programatica IS NOT NULL AND clinica_familia IS NOT NULL
+    GROUP BY area_programatica, clinica_familia
+    """
+    try:
+        client = get_bigquery_client()
+        df = client.query(sql).result().to_dataframe(create_bqstorage_client=False)
+        return df if not df.empty else pd.DataFrame()
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar dados por clínica: {e}")
+        return pd.DataFrame()
+
+
+def montar_df_clinicas_long(df_wide: pd.DataFrame, condicoes: list) -> pd.DataFrame:
+    """Converte o wide (1 linha/clínica) para o contrato longo
+    (1 linha/clínica×condição): ap, clinica, condicao (=coluna), nome,
+    grupo, n_numerador, n_denominador, prev_municipio. Aplica anonimização
+    de AP/clínica. ``condicoes`` = lista de (coluna, nome, grupo)."""
+    if df_wide is None or df_wide.empty:
+        return pd.DataFrame()
+    ap_anon = df_wide['ap'].astype(str).map(anonimizar_ap)
+    cli_anon = df_wide['clinica'].astype(str).map(anonimizar_clinica)
+    den = df_wide['total_pacientes'].astype(float)
+    den_total = den.sum()
+    blocos = []
+    for coluna, nome, grupo in condicoes:
+        fonte = 'n_multimorbidos' if coluna == 'multimorbidade' else coluna
+        if fonte not in df_wide.columns:
+            continue
+        num = df_wide[fonte].astype(float)
+        prev_mun = (num.sum() / den_total) if den_total > 0 else 0.0
+        blocos.append(pd.DataFrame({
+            'ap': ap_anon, 'clinica': cli_anon,
+            'condicao': coluna, 'nome': nome, 'grupo': grupo,
+            'n_numerador': num, 'n_denominador': den,
+            'prev_municipio': prev_mun,
+        }))
+    return pd.concat(blocos, ignore_index=True) if blocos else pd.DataFrame()
+
+
 # ============================================
 # INTERFACE PRINCIPAL
 # ============================================
@@ -2102,22 +2159,55 @@ if aba_escolhida == 0:
 
     st.markdown("---")
 
-    # ── Morbidades prevalentes ────────────────────────────────────
-    st.markdown("### 🏥 Condições de Saúde Mais Prevalentes")
+    # ── Condições: variação entre clínicas (lista → funnel + strip) ──
+    st.markdown("### 🏥 Condições de Saúde — variação entre clínicas")
 
-    fig_prev, df_prevalencias = criar_visualizacao_morbidades_prevalentes(df_dados)
+    _fig_prev_ignorada, df_prevalencias = criar_visualizacao_morbidades_prevalentes(df_dados)
 
-    if fig_prev is not None and df_prevalencias is not None:
-        st.plotly_chart(fig_prev, use_container_width=True, key='grafico_prevalencias')
+    if df_prevalencias is not None and not df_prevalencias.empty:
+        # Benchmark do município (prevalência %) — usado na lista e no
+        # detalhamento. carregar_dados_piramides() sem filtro = município.
+        _bench_mun = _prev_por_coluna(carregar_dados_piramides())
+
+        # Lista seletora (master): define a condição do funnel/strip.
+        _df_tab = montar_tabela(df_prevalencias, _bench_mun)
+        _cond_sel = render_lista(_df_tab, key='lista_cond')
+
+        # Dados por clínica (município) para os componentes detail.
+        _df_wide = carregar_clinicas_wide()
+        _condicoes = [(r['Coluna'], r['Condição'], r.get('Categoria', '—'))
+                      for _, r in df_prevalencias.iterrows()]
+        _df_long = montar_df_clinicas_long(_df_wide, _condicoes)
+
+        if _cond_sel and not _df_long.empty:
+            _m = df_prevalencias.loc[df_prevalencias['Coluna'] == _cond_sel, 'Condição']
+            _nome_sel = _m.iloc[0] if len(_m) else _cond_sel
+            st.markdown(f"#### {_nome_sel}")
+            if not _df_wide.empty:
+                _n_excl = int((_df_wide['total_pacientes'].astype(float) < 5).sum())
+                if _n_excl:
+                    st.caption(f"ℹ️ {_n_excl} clínica(s) com < 5 pacientes "
+                               "excluída(s) do funnel e do strip.")
+            _c1, _c2 = st.columns(2)
+            with _c1:
+                _ff = plot_funnel(_df_long, _cond_sel)
+                if _ff is not None:
+                    st.plotly_chart(_ff, use_container_width=True, key='funnel_cond')
+                else:
+                    st.info("Sem clínicas elegíveis para o funnel.")
+            with _c2:
+                _fs = plot_strip_aps(_df_long, _cond_sel)
+                if _fs is not None:
+                    st.plotly_chart(_fs, use_container_width=True, key='strip_cond')
+                else:
+                    st.info("Sem clínicas elegíveis para o strip.")
 
         st.markdown("---")
         st.markdown(f"### 📋 Detalhamento por Categoria")
 
-        # Benchmark do município (prevalência %) — só quando há filtro
-        # territorial ativo (AP / clínica / ESF). Sem filtro o escopo já é
-        # o município e o benchmark seria redundante.
+        # No detalhamento, o benchmark do município só é exibido quando há
+        # filtro territorial ativo (sem filtro o escopo já é o município).
         _filtro_ativo = bool(ap_sel or cli_sel or esf_sel)
-        _bench_mun = _prev_por_coluna(carregar_dados_piramides()) if _filtro_ativo else {}
 
         for categoria in ORDEM_CATEGORIAS:
             df_cat = df_prevalencias[df_prevalencias['Categoria'] == categoria]

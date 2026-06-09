@@ -35,8 +35,10 @@ secrets/
 .DS_Store
 Thumbs.db
 
-# Testes
+# Testes (scripts soltos na raiz) — mas versionar a suíte em tests/
 test_*.py
 ver_*.py
 setup_*.py
 renomear_*.py
+!tests/
+!tests/test_*.py
