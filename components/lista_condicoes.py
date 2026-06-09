@@ -68,53 +68,63 @@ def montar_tabela(
     return df
 
 
-def render_lista(df_tab: pd.DataFrame, key: str = "lista_cond") -> str | None:
+def render_lista(df_tab: pd.DataFrame, filtro_ativo: bool = False,
+                 key: str = "lista_cond") -> str | None:
     """Renderiza filtro de grupo + tabela seletável. Devolve a ``Coluna``
-    da condição selecionada (persistida em ``session_state``)."""
+    da condição selecionada (persistida em ``session_state``).
+
+    As colunas de benchmark (Município, Razão) só aparecem quando há filtro
+    territorial ativo (``filtro_ativo``) — sem filtro, o escopo já é o
+    município e a comparação seria redundante."""
     if df_tab.empty:
         st.info("Sem condições para listar.")
         return None
 
+    sel_key = f"{key}_sel"
+    if sel_key not in st.session_state or \
+            st.session_state[sel_key] not in set(df_tab["Coluna"]):
+        # Default: condição de maior prevalência (df_tab vem ordenado).
+        st.session_state[sel_key] = df_tab.iloc[0]["Coluna"]
+
     grupos = ["Todos"] + sorted(df_tab["Grupo"].dropna().unique().tolist())
     grupo_sel = st.pills("Grupo", grupos, selection_mode="single",
-                         default="Todos", key=f"{key}_grupo")
-    if not grupo_sel:
-        grupo_sel = "Todos"
+                         default="Todos", key=f"{key}_grupo") or "Todos"
 
     df_view = df_tab if grupo_sel == "Todos" else df_tab[df_tab["Grupo"] == grupo_sel]
     df_view = df_view.reset_index(drop=True)
     if df_view.empty:
         st.info("Nenhuma condição neste grupo.")
-        return st.session_state.get(f"{key}_sel")
+        return st.session_state[sel_key]
 
-    max_prev = float(max(df_view["Prev. unidade (%)"].max(), 1.0))
+    cols_show = ["Grupo", "Condição", "Pacientes", "Prev. unidade (%)"]
+    col_cfg = {
+        "Grupo": st.column_config.TextColumn("Grupo", width="small"),
+        "Condição": st.column_config.TextColumn("Condição", width="medium"),
+        "Pacientes": st.column_config.NumberColumn("Pacientes", format="%d"),
+        "Prev. unidade (%)": st.column_config.ProgressColumn(
+            "Prevalência", format="%.1f%%", min_value=0,
+            max_value=float(max(df_view["Prev. unidade (%)"].max(), 1.0))),
+    }
+    if filtro_ativo:
+        cols_show += ["Município (%)", "Razão"]
+        col_cfg["Município (%)"] = st.column_config.NumberColumn(
+            "Município", format="%.1f%%")
+        col_cfg["Razão"] = st.column_config.TextColumn("Razão vs município",
+                                                       width="small")
+
     evento = st.dataframe(
-        df_view.drop(columns=["Coluna"]),
+        df_view[cols_show],
         hide_index=True,
         use_container_width=True,
         height=min(430, 40 + 35 * len(df_view)),
         on_select="rerun",
         selection_mode="single-row",
         key=f"{key}_tbl_{grupo_sel}",
-        column_config={
-            "Grupo": st.column_config.TextColumn("Grupo", width="small"),
-            "Condição": st.column_config.TextColumn("Condição", width="medium"),
-            "Pacientes": st.column_config.NumberColumn("Pacientes", format="%d"),
-            "Prev. unidade (%)": st.column_config.ProgressColumn(
-                "Prev. unidade", format="%.1f%%", min_value=0, max_value=max_prev),
-            "Município (%)": st.column_config.NumberColumn("Município", format="%.1f%%"),
-            "Razão": st.column_config.TextColumn("Razão vs município", width="small"),
-        },
+        column_config=col_cfg,
     )
 
     sel_rows = evento.selection.rows if evento and evento.selection else []
     if sel_rows:
-        coluna = df_view.iloc[sel_rows[0]]["Coluna"]
-        st.session_state[f"{key}_sel"] = coluna
-        return coluna
+        st.session_state[sel_key] = df_view.iloc[sel_rows[0]]["Coluna"]
 
-    # Mantém seleção anterior; senão, primeira condição da lista.
-    anterior = st.session_state.get(f"{key}_sel")
-    if anterior in set(df_tab["Coluna"]):
-        return anterior
-    return df_view.iloc[0]["Coluna"]
+    return st.session_state[sel_key]

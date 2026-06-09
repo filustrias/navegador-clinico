@@ -17,7 +17,6 @@ from utils.anonimizador import (
     anonimizar_ap, anonimizar_clinica, anonimizar_esf,
     anonimizar_nome, mostrar_badge_anonimo, MODO_ANONIMO
 )
-from components.funnel_plot import plot_funnel
 from components.strip_aps import plot_strip_aps
 from components.lista_condicoes import montar_tabela, render_lista
 
@@ -2159,55 +2158,43 @@ if aba_escolhida == 0:
 
     st.markdown("---")
 
-    # ── Condições: variação entre clínicas (lista → funnel + strip) ──
+    # ── Condições: variação entre clínicas (lista → strip por AP) ──
     st.markdown("### 🏥 Condições de Saúde — variação entre clínicas")
 
+    _filtro_ativo = bool(ap_sel or cli_sel or esf_sel)
     _fig_prev_ignorada, df_prevalencias = criar_visualizacao_morbidades_prevalentes(df_dados)
 
     if df_prevalencias is not None and not df_prevalencias.empty:
-        # Benchmark do município (prevalência %) — usado na lista e no
+        # Benchmark do município — usado na lista (só quando há filtro) e no
         # detalhamento. carregar_dados_piramides() sem filtro = município.
         _bench_mun = _prev_por_coluna(carregar_dados_piramides())
 
-        # Lista seletora (master): define a condição do funnel/strip.
+        # Lista seletora (master): define a condição do strip.
         _df_tab = montar_tabela(df_prevalencias, _bench_mun)
-        _cond_sel = render_lista(_df_tab, key='lista_cond')
+        _cond_sel = render_lista(_df_tab, filtro_ativo=_filtro_ativo, key='lista_cond')
 
-        # Dados por clínica (município) para os componentes detail.
-        _df_wide = carregar_clinicas_wide()
-        _condicoes = [(r['Coluna'], r['Condição'], r.get('Categoria', '—'))
-                      for _, r in df_prevalencias.iterrows()]
-        _df_long = montar_df_clinicas_long(_df_wide, _condicoes)
-
-        if _cond_sel and not _df_long.empty:
-            _m = df_prevalencias.loc[df_prevalencias['Coluna'] == _cond_sel, 'Condição']
-            _nome_sel = _m.iloc[0] if len(_m) else _cond_sel
+        # Strip por AP (detail) — apenas da condição selecionada (município).
+        if _cond_sel:
+            _row = df_prevalencias[df_prevalencias['Coluna'] == _cond_sel]
+            _nome_sel = _row.iloc[0]['Condição'] if not _row.empty else _cond_sel
+            _grupo_sel = _row.iloc[0].get('Categoria', '—') if not _row.empty else '—'
+            _df_wide = carregar_clinicas_wide()
+            _df_long = montar_df_clinicas_long(
+                _df_wide, [(_cond_sel, _nome_sel, _grupo_sel)])
             st.markdown(f"#### {_nome_sel}")
             if not _df_wide.empty:
                 _n_excl = int((_df_wide['total_pacientes'].astype(float) < 5).sum())
                 if _n_excl:
                     st.caption(f"ℹ️ {_n_excl} clínica(s) com < 5 pacientes "
-                               "excluída(s) do funnel e do strip.")
-            _c1, _c2 = st.columns(2)
-            with _c1:
-                _ff = plot_funnel(_df_long, _cond_sel)
-                if _ff is not None:
-                    st.plotly_chart(_ff, use_container_width=True, key='funnel_cond')
-                else:
-                    st.info("Sem clínicas elegíveis para o funnel.")
-            with _c2:
-                _fs = plot_strip_aps(_df_long, _cond_sel)
-                if _fs is not None:
-                    st.plotly_chart(_fs, use_container_width=True, key='strip_cond')
-                else:
-                    st.info("Sem clínicas elegíveis para o strip.")
+                               "excluída(s) do gráfico.")
+            _fs = plot_strip_aps(_df_long, _cond_sel)
+            if _fs is not None:
+                st.plotly_chart(_fs, use_container_width=True, key='strip_cond')
+            else:
+                st.info("Sem clínicas elegíveis para o gráfico.")
 
         st.markdown("---")
         st.markdown(f"### 📋 Detalhamento por Categoria")
-
-        # No detalhamento, o benchmark do município só é exibido quando há
-        # filtro territorial ativo (sem filtro o escopo já é o município).
-        _filtro_ativo = bool(ap_sel or cli_sel or esf_sel)
 
         for categoria in ORDEM_CATEGORIAS:
             df_cat = df_prevalencias[df_prevalencias['Categoria'] == categoria]
