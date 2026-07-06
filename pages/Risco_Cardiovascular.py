@@ -496,7 +496,12 @@ if _aba_rcv == "📊 Panorama Populacional":
           )
           return
       pct = _p(n, total) if total else 0
-      det_html = f"<br><span style='font-size:0.85em; color:#666;'>{detalhe}</span>" if detalhe else ""
+      # Reserva sempre a altura da linha de detalhe para manter os pares
+      # (ex.: MUITO ALTO ↔ Muito alto) alinhados horizontalmente entre as colunas.
+      if detalhe:
+          det_html = f"<br><span style='font-size:0.85em; color:#666;'>{detalhe}</span>"
+      else:
+          det_html = "<br><span style='font-size:0.85em; visibility:hidden;'>—</span>"
       st.markdown(
           f"<div style='background:{cor}20; border-left:4px solid {cor}; "
           f"padding:8px 12px; margin:4px 0; border-radius:4px;'>"
