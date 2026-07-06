@@ -674,8 +674,9 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
         corpo = "\n".join(_node(n) for n in nodes)
         corpo += "\n" + "\n".join(_edge(*e) for e in edges)
         return ('digraph hearts {\n  rankdir=TB;\n  bgcolor="transparent";\n'
-                '  node [fontname="Helvetica" fontsize=11 margin="0.14,0.08"];\n'
-                '  edge [fontname="Helvetica"];\n' + corpo + '\n}')
+                '  ranksep=0.28;\n  nodesep=0.22;\n  size="5,5.6";\n  ratio="compress";\n'
+                '  node [fontname="Helvetica" fontsize=10 margin="0.16,0.05"];\n'
+                '  edge [fontname="Helvetica" fontsize=9];\n' + corpo + '\n}')
 
     def _legenda_categorias():
         faixas = [('Baixo', '<5%'), ('Moderado', '5–10%'), ('Alto', '10–20%'),
@@ -792,7 +793,7 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
         elif res.modelo == 'reclassificacao_direta':
             st.caption("Reclassificação direta → o escore WHO não é aplicado.")
 
-        st.graphviz_chart(_dot_hearts(res, dados), use_container_width=True)
+        st.graphviz_chart(_dot_hearts(res, dados), use_container_width=False)
         _legenda_categorias()
         _card_resultado(res)
 
