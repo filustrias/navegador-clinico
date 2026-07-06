@@ -6,6 +6,8 @@ Referência: Kaptoge et al., Lancet Global Health 2019
 Validação: pacote R WHORiskCalculator v1.0.0 (CRAN, 2026-04-07)
 """
 import math
+from dataclasses import dataclass, field
+from typing import Optional, List
 
 # ═══════════════════════════════════════════════════════════════
 # INCIDÊNCIAS BASELINE — tropical_latin_america (por 100.000/ano)
@@ -376,3 +378,146 @@ def cor_categoria_who(categoria):
         '20-30%': '#C0392B',
         '>=30%':  '#8E44AD',
     }.get(categoria, '#999999')
+
+
+# ═══════════════════════════════════════════════════════════════
+# API DE ALTO NÍVEL — CALCULADORA HEARTS (fluxograma reativo)
+# Orquestra as funções de escore acima SEM alterá-las.
+# ═══════════════════════════════════════════════════════════════
+
+# Paleta das categorias na calculadora (nós terminais do fluxograma + legenda).
+COR_CATEGORIA_HEARTS = {
+    'Baixo':          '#2E7D32',
+    'Moderado':       '#F9A825',
+    'Alto':           '#EF6C00',
+    'Muito alto':     '#C62828',
+    'Crítico':        '#4A148C',
+    'Não calculável': '#9E9E9E',
+}
+
+# Conduta orientadora por categoria — apoio à decisão compartilhada, não prescrição.
+CONDUTA_POR_CATEGORIA = {
+    'Baixo':          'Aconselhamento de estilo de vida e reavaliação periódica.',
+    'Moderado':       'Reforço de mudanças de estilo de vida; considerar farmacoterapia conforme avaliação.',
+    'Alto':           'Tratamento farmacológico geralmente indicado, em decisão compartilhada.',
+    'Muito alto':     'Tratamento intensivo dos fatores de risco, em decisão compartilhada.',
+    'Crítico':        'Prioridade máxima; investigar e otimizar o manejo da doença cardiovascular.',
+    'Não calculável': 'Dados insuficientes para o escore — complementar a avaliação.',
+}
+
+
+@dataclass
+class DadosPaciente:
+    """Entrada da calculadora HEARTS."""
+    sexo: str                              # "Masculino"/"Feminino" (ou m/f)
+    idade: int
+    pas: float                             # PA sistólica (mmHg)
+    tabaco: bool = False
+    dm: bool = False
+    drc: bool = False                      # doença renal crônica
+    ci: bool = False                       # cardiopatia isquêmica
+    avc: bool = False
+    dap: bool = False                      # doença arterial periférica
+    colesterol_total_mgdl: Optional[float] = None
+    imc: Optional[float] = None
+
+
+@dataclass
+class ResultadoHearts:
+    """Resultado consumível pela UI. `caminho` alimenta o destaque do fluxograma."""
+    risco_pct: Optional[float]             # None quando reclassificado sem escore
+    categoria: str                         # Baixo|Moderado|Alto|Muito alto|Crítico|Não calculável
+    conduta: str
+    modelo: str                            # laboratorial|nao_laboratorial|reclassificacao_direta
+    caminho: List[str]                     # ids dos nós percorridos no fluxograma
+    motivo_reclassificacao: Optional[str] = None
+
+
+def aplicar_reclassificacao_direta(dados: DadosPaciente):
+    """
+    Reclassificação direta SEM escore, na ordem de prioridade clínica.
+    Retorna (categoria, motivo) ou None se não se aplica.
+
+    - DCV estabelecida (CI / AVC / DAP) → 'Muito alto'
+    - DM ou DRC                          → 'Alto'
+
+    # TODO clínico: a regra "qualquer DM ou DRC → Alto" é uma simplificação.
+    # O PCDT HAS qualifica DRC por estágio (≥ 3) e DM por idade (≥ 40 anos)
+    # e/ou lesão de órgão-alvo. Manter esta regra funcionando, mas rever o
+    # critério com validação clínica antes de refinar (não alterar sem confirmar).
+    """
+    if dados.ci or dados.avc or dados.dap:
+        motivos = []
+        if dados.ci:  motivos.append("cardiopatia isquêmica")
+        if dados.avc: motivos.append("AVC prévio")
+        if dados.dap: motivos.append("doença arterial periférica")
+        return 'Muito alto', "DCV estabelecida: " + ", ".join(motivos)
+    if dados.dm or dados.drc:
+        motivos = []
+        if dados.dm:  motivos.append("diabetes mellitus")
+        if dados.drc: motivos.append("doença renal crônica")
+        return 'Alto', ", ".join(motivos).capitalize()
+    return None
+
+
+def avaliar_hearts(dados: DadosPaciente) -> ResultadoHearts:
+    """
+    Percorre a cascata HEARTS e devolve o ResultadoHearts, incluindo o `caminho`
+    de nós para o fluxograma. Não altera o modelo de escore (WHO 2019,
+    tropical_latin_america) — apenas orquestra calcular_who_lab/nonlab.
+    """
+    caminho = ['paciente', 'q_dcv']
+
+    reclass = aplicar_reclassificacao_direta(dados)
+    if reclass is not None:
+        categoria, motivo = reclass
+        if categoria == 'Muito alto':
+            caminho.append('r_muito_alto')
+        else:  # 'Alto' por DM/DRC
+            caminho += ['q_dmdrc', 'r_alto']
+        return ResultadoHearts(
+            risco_pct=None,
+            categoria=categoria,
+            conduta=CONDUTA_POR_CATEGORIA.get(categoria, ''),
+            modelo='reclassificacao_direta',
+            caminho=caminho,
+            motivo_reclassificacao=motivo,
+        )
+
+    # Sem reclassificação → escolher modelo e calcular o escore.
+    caminho += ['q_dmdrc', 'q_col']
+    tem_col = dados.colesterol_total_mgdl is not None and dados.colesterol_total_mgdl > 0
+
+    if tem_col:
+        caminho.append('m_lab')
+        who = calcular_who_lab(dados.sexo, dados.idade, dados.pas,
+                               dados.colesterol_total_mgdl, dados.dm, dados.tabaco)
+        modelo = 'laboratorial'
+    else:
+        caminho.append('m_nonlab')
+        who = calcular_who_nonlab(dados.sexo, dados.idade, dados.pas,
+                                  dados.imc, dados.tabaco)
+        modelo = 'nao_laboratorial'
+
+    caminho.append('escore')
+
+    if who is None:
+        return ResultadoHearts(
+            risco_pct=None,
+            categoria='Não calculável',
+            conduta=CONDUTA_POR_CATEGORIA['Não calculável'],
+            modelo=modelo,
+            caminho=caminho,
+            motivo_reclassificacao=None,
+        )
+
+    caminho.append('resultado')
+    categoria = who['categoria']
+    return ResultadoHearts(
+        risco_pct=who['risco_pct'],
+        categoria=categoria,
+        conduta=CONDUTA_POR_CATEGORIA.get(categoria, ''),
+        modelo=modelo,
+        caminho=caminho,
+        motivo_reclassificacao=None,
+    )

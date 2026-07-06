@@ -20,7 +20,9 @@ from utils.risco_cv import (
     calcular_who_lab, calcular_who_nonlab,
     calcular_risco_completo, classificar_risco_direto,
     cor_categoria_who, cor_categoria_completa, icone_categoria_who,
+    DadosPaciente, avaliar_hearts, COR_CATEGORIA_HEARTS,
 )
+from pathlib import Path
 
 st.set_page_config(
     page_title="Risco Cardiovascular · Navegador Clínico",
@@ -607,174 +609,249 @@ if _aba_rcv == "📊 Panorama Populacional":
 # ═══════════════════════════════════════════════════════════════
 
 if _aba_rcv == "🧮 Calculadora HEARTS":
+
+    # ── Helpers da calculadora (fluxograma reativo + cartão de resultado) ──
+    _MODELO_LBL = {
+        'laboratorial':          'Versão laboratorial',
+        'nao_laboratorial':      'Versão não-laboratorial',
+        'reclassificacao_direta': 'Reclassificação direta',
+    }
+
+    def _dot_hearts(res, dados):
+        """Monta o DOT do fluxograma HEARTS, destacando o caminho percorrido."""
+        ativos = set(res.caminho)
+        pares = set(zip(res.caminho, res.caminho[1:]))
+        sexo_lbl = "Masculino" if str(dados.sexo).lower().startswith('m') else "Feminino"
+        if res.risco_pct is not None:
+            result_lbl = f"{res.risco_pct:.1f}% em 10 anos\\n{res.categoria}"
+        else:
+            result_lbl = res.categoria
+
+        # id: (shape, label, categoria_terminal_ou_None)
+        nodes = {
+            'paciente':     ('box',     f"Paciente\\n{sexo_lbl}, {dados.idade} anos", None),
+            'q_dcv':        ('diamond', "DCV estabelecida?\\n(CI / AVC / DAP)", None),
+            'r_muito_alto': ('box',     "Muito alto\\n(reclassificação direta)", 'Muito alto'),
+            'q_dmdrc':      ('diamond', "DM ou DRC?", None),
+            'r_alto':       ('box',     "Alto\\n(reclassificação direta)", 'Alto'),
+            'q_col':        ('diamond', "Colesterol total\\ndisponível?", None),
+            'm_lab':        ('box',     "Modelo laboratorial\\nsexo · idade · tabaco · DM · PAS · colesterol", None),
+            'm_nonlab':     ('box',     "Modelo não-laboratorial\\nsexo · idade · tabaco · PAS · IMC", None),
+            'escore':       ('box',     "Escore WHO HEARTS 2019\\ntropical_latin_america", None),
+            'resultado':    ('box',     result_lbl, res.categoria),
+        }
+
+        def _node(nid):
+            shape, label, cat = nodes[nid]
+            box_style = "rounded,filled" if shape == 'box' else "filled"
+            if nid in ativos and cat is not None:              # terminal ativo → cor da categoria
+                c = COR_CATEGORIA_HEARTS.get(cat, '#9E9E9E')
+                return (f'  {nid} [shape={shape} style="{box_style}" fillcolor="{c}" '
+                        f'color="{c}" fontcolor="white" penwidth=2 label="{label}"];')
+            if nid in ativos:                                  # etapa/decisão ativa → destaque azul
+                return (f'  {nid} [shape={shape} style="{box_style}" fillcolor="#E8F0FE" '
+                        f'color="#4f8ef7" fontcolor="#1a1a2e" penwidth=2 label="{label}"];')
+            return (f'  {nid} [shape={shape} style="{box_style}" fillcolor="#F5F5F5" '   # inativo → esmaecido
+                    f'color="#D0D0D0" fontcolor="#B0B0B0" penwidth=1 label="{label}"];')
+
+        edges = [
+            ('paciente', 'q_dcv', None),
+            ('q_dcv', 'r_muito_alto', 'SIM'), ('q_dcv', 'q_dmdrc', 'NÃO'),
+            ('q_dmdrc', 'r_alto', 'SIM'),     ('q_dmdrc', 'q_col', 'NÃO'),
+            ('q_col', 'm_lab', 'SIM'),        ('q_col', 'm_nonlab', 'NÃO'),
+            ('m_lab', 'escore', None), ('m_nonlab', 'escore', None),
+            ('escore', 'resultado', None),
+        ]
+
+        def _edge(a, b, lbl):
+            on = (a, b) in pares
+            cor = "#333333" if on else "#D5D5D5"
+            fc = "#333333" if on else "#C0C0C0"
+            pw = 2.5 if on else 1.0
+            l = f' label="{lbl}" fontcolor="{fc}" fontsize=10' if lbl else ''
+            return f'  {a} -> {b} [color="{cor}" penwidth={pw}{l}];'
+
+        corpo = "\n".join(_node(n) for n in nodes)
+        corpo += "\n" + "\n".join(_edge(*e) for e in edges)
+        return ('digraph hearts {\n  rankdir=TB;\n  bgcolor="transparent";\n'
+                '  node [fontname="Helvetica" fontsize=11 margin="0.14,0.08"];\n'
+                '  edge [fontname="Helvetica"];\n' + corpo + '\n}')
+
+    def _legenda_categorias():
+        faixas = [('Baixo', '<5%'), ('Moderado', '5–10%'), ('Alto', '10–20%'),
+                  ('Muito alto', '20–30%'), ('Crítico', '≥30%')]
+        chips = "".join(
+            f"<span style='display:inline-flex; align-items:center; gap:5px; "
+            f"margin:2px 12px 2px 0; font-size:0.78rem; color:{T.TEXT_SECONDARY};'>"
+            f"<span style='width:12px; height:12px; border-radius:3px; "
+            f"background:{COR_CATEGORIA_HEARTS[c]}; display:inline-block;'></span>"
+            f"{c} ({fx})</span>"
+            for c, fx in faixas
+        )
+        st.markdown(
+            f"<div style='margin:2px 0 6px 0; line-height:1.9;'>{chips}</div>",
+            unsafe_allow_html=True,
+        )
+
+    def _card_resultado(res):
+        cor = COR_CATEGORIA_HEARTS.get(res.categoria, '#9E9E9E')
+        if res.risco_pct is not None:
+            num = f"{res.risco_pct:.1f}%"
+            sub = "risco de evento cardiovascular (infarto ou AVC) em 10 anos"
+        else:
+            num = res.categoria
+            sub = "classificação por reclassificação direta — o escore não foi aplicado"
+        modelo_lbl = _MODELO_LBL.get(res.modelo, res.modelo)
+        motivo_html = ""
+        if res.motivo_reclassificacao:
+            motivo_html = (f"<div style='color:{T.TEXT_SECONDARY}; margin-top:6px; "
+                           f"font-size:0.85rem;'>Motivo: {res.motivo_reclassificacao}</div>")
+        st.markdown(
+            f"<div style='border:1px solid {cor}; border-left:8px solid {cor}; "
+            f"border-radius:10px; padding:16px 20px; margin-top:4px; background:{cor}12;'>"
+            f"<div style='font-size:2.4rem; font-weight:700; color:{cor}; line-height:1;'>{num}</div>"
+            f"<div style='color:{T.TEXT_SECONDARY}; font-size:0.82rem; margin-top:3px;'>{sub}</div>"
+            f"<div style='display:inline-block; margin-top:12px; background:{cor}; color:white; "
+            f"padding:3px 14px; border-radius:20px; font-weight:600; font-size:0.95rem;'>{res.categoria}</div>"
+            f"<div style='color:{T.TEXT}; margin-top:12px; font-size:0.95rem;'>{res.conduta}</div>"
+            f"{motivo_html}"
+            f"<div style='color:{T.TEXT_MUTED}; margin-top:8px; font-size:0.8rem;'>Modelo: {modelo_lbl}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
     st.markdown("### 🧮 Calculadora de Risco Cardiovascular — WHO HEARTS 2019")
     st.caption(
         "Modelo calibrado para a América Latina tropical (Kaptoge et al., Lancet Global Health 2019). "
-        "Insira os dados do paciente para calcular o risco de eventos cardiovasculares em 10 anos."
+        "Preencha os dados à esquerda — o caminho de decisão do HEARTS é destacado ao vivo à direita."
     )
+    st.markdown("")
 
-    st.markdown("---")
+    col_in, col_out = st.columns([1, 1.15], gap="large")
 
-    # Formulário de entrada
-    fc1, fc2 = st.columns(2)
-
-    with fc1:
-        st.markdown("**Dados demográficos**")
-        calc_sexo = st.selectbox(
-            "Sexo", options=["Masculino", "Feminino"],
-            key="calc_sexo"
-        )
-        calc_idade = st.number_input(
-            "Idade (anos)", min_value=40, max_value=80, value=55,
-            key="calc_idade",
-            help="WHO HEARTS calcula entre 40 e 80 anos."
-        )
-        calc_tabaco = st.checkbox("Fumante ativo", value=False, key="calc_tabaco")
-        calc_dm = st.checkbox("Diabetes mellitus", value=False, key="calc_dm")
-        calc_irc = st.checkbox("Doença renal crônica (IRC)", value=False, key="calc_irc")
-
-        st.markdown("**Doença cardiovascular estabelecida:**")
-        calc_ci = st.checkbox("Cardiopatia isquêmica (IAM, angina)", value=False, key="calc_ci")
-        calc_avc = st.checkbox("AVC prévio", value=False, key="calc_avc")
-        calc_dap = st.checkbox("Doença arterial periférica", value=False, key="calc_dap")
-
-    with fc2:
-        st.markdown("**Dados clínicos**")
-        calc_pas = st.number_input(
-            "Pressão arterial sistólica (mmHg)",
-            min_value=80, max_value=250, value=130,
-            key="calc_pas"
-        )
-        calc_col = st.number_input(
-            "Colesterol total (mg/dL) — deixe 0 se indisponível",
-            min_value=0, max_value=500, value=0,
-            key="calc_col",
-            help="Se disponível, a versão laboratorial é usada. Senão, usa a versão não-laboratorial com IMC."
-        )
-        calc_imc = st.number_input(
-            "IMC (kg/m²) — usado se colesterol indisponível",
-            min_value=15.0, max_value=60.0, value=27.0, step=0.1,
-            key="calc_imc"
-        )
-        st.caption(
-            "ℹ️ **Reclassificação direta:** Pacientes com CI, AVC ou DAP são classificados "
-            "automaticamente como MUITO ALTO; com DM ou IRC, como ALTO — independente do escore."
-        )
-
-    st.markdown("---")
-
-    # Calcular
-    if st.button("🧮 Calcular risco cardiovascular", use_container_width=True, type="primary"):
-        genero_calc = calc_sexo.lower()
-
-        # Reclassificação direta
-        reclass = classificar_risco_direto(
-            dm=calc_dm, irc=calc_irc, ci=calc_ci, avc=calc_avc, dap=calc_dap
-        )
-
-        # WHO lab / non-lab (para referência)
-        resultado_lab = None
-        if calc_col > 0:
-            resultado_lab = calcular_who_lab(
-                genero=genero_calc, idade=calc_idade,
-                pressao_sistolica=calc_pas, colesterol_total_mgdl=calc_col,
-                dm=calc_dm, tabaco=calc_tabaco,
-            )
-        resultado_nonlab = calcular_who_nonlab(
-            genero=genero_calc, idade=calc_idade,
-            pressao_sistolica=calc_pas, imc=calc_imc, tabaco=calc_tabaco,
-        )
-
-        # Resultado final — reclassificação prevalece
-        resultado = calcular_risco_completo(
-            genero=genero_calc, idade=calc_idade,
-            pressao_sistolica=calc_pas,
-            colesterol_total_mgdl=calc_col if calc_col > 0 else None,
-            imc=calc_imc,
-            dm=calc_dm, tabaco=calc_tabaco,
-            irc=calc_irc, ci=calc_ci, avc=calc_avc, dap=calc_dap,
-        )
-
-        if resultado is None:
-            st.error("❌ Não foi possível calcular. Verifique se a idade está entre 40 e 80 anos.")
-        else:
-            st.markdown("---")
-            st.markdown("### Resultado")
-
-            cor = cor_categoria_completa(resultado['categoria'])
-            icone_cat = icone_categoria_who(resultado['categoria'])
-            risco_val = resultado.get('risco_pct')
-            motivo = resultado.get('motivo', '')
-            _modelo_label = {
-                'lab': 'versão laboratorial',
-                'non-lab': 'versão não-laboratorial',
-                'nao_calculavel': 'não calculável',
-            }
-            modelo_raw = resultado.get('modelo', '')
-            modelo_txt = _modelo_label.get(modelo_raw, modelo_raw)
-
-            if risco_val is not None:
-                titulo = f"{icone_cat} Risco CV em 10 anos: {risco_val:.1f}%"
-            else:
-                titulo = f"{icone_cat} Risco CV: {resultado['categoria']}"
-
-            detalhes = f"<h3 style='margin:5px 0 0 0; color:{cor};'>Categoria: {resultado['categoria']}</h3>"
-            if motivo:
-                detalhes += f"<p style='margin:10px 0 0 0; color:#666;'>Motivo: {motivo}</p>"
-            if modelo_txt:
-                detalhes += f"<p style='margin:5px 0 0 0; color:#999; font-size:0.9em;'>Modelo: {modelo_txt}</p>"
-
-            st.markdown(
-                f"<div style='background:{cor}20; border-left:6px solid {cor}; "
-                f"padding:20px; border-radius:8px; margin:10px 0;'>"
-                f"<h2 style='margin:0; color:{cor};'>{titulo}</h2>"
-                f"{detalhes}</div>",
-                unsafe_allow_html=True
-            )
-
-            if reclass and (resultado_lab or resultado_nonlab):
-                st.info(
-                    "ℹ️ Paciente classificado por **reclassificação direta**. "
-                    "O escore WHO é mostrado abaixo apenas como referência."
+    # ── Coluna de entrada — etapas em cartões ──
+    with col_in:
+        with st.container(border=True):
+            st.markdown("**1 · Demografia**")
+            d1, d2 = st.columns(2)
+            with d1:
+                calc_sexo = st.selectbox("Sexo", options=["Masculino", "Feminino"], key="calc_sexo")
+            with d2:
+                calc_idade = st.number_input(
+                    "Idade (anos)", min_value=40, max_value=80, value=55, key="calc_idade",
+                    help="As cartas WHO HEARTS 2019 são válidas entre 40 e 80 anos.",
                 )
 
-            # Comparação lab vs non-lab se ambos disponíveis
-            if resultado_lab and resultado_nonlab:
-                st.markdown("##### Comparação entre modelos")
-                cmp1, cmp2 = st.columns(2)
-                with cmp1:
-                    cor_lab = cor_categoria_completa(resultado_lab['categoria'])
-                    ic_lab = icone_categoria_who(resultado_lab['categoria'])
-                    with st.container(border=True):
-                        st.markdown(f"**Versão laboratorial** (com colesterol)")
-                        st.markdown(f"<h3 style='color:{cor_lab};'>{ic_lab} {resultado_lab['risco_pct']:.1f}% — {resultado_lab['categoria']}</h3>",
-                                    unsafe_allow_html=True)
-                with cmp2:
-                    cor_nl = cor_categoria_completa(resultado_nonlab['categoria'])
-                    ic_nl = icone_categoria_who(resultado_nonlab['categoria'])
-                    with st.container(border=True):
-                        st.markdown(f"**Versão não-laboratorial** (com IMC)")
-                        st.markdown(f"<h3 style='color:{cor_nl};'>{ic_nl} {resultado_nonlab['risco_pct']:.1f}% — {resultado_nonlab['categoria']}</h3>",
-                                    unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("**2 · Fatores de risco**")
+            calc_tabaco = st.checkbox("Fumante ativo", value=False, key="calc_tabaco",
+                                      help="Tabagismo atual (qualquer forma de tabaco).")
+            calc_dm = st.checkbox("Diabetes mellitus", value=False, key="calc_dm",
+                                  help="Reclassifica diretamente como Alto (ver nota clínica).")
+            calc_drc = st.checkbox("Doença renal crônica (DRC)", value=False, key="calc_irc",
+                                   help="Reclassifica diretamente como Alto (ver nota clínica).")
 
-            # Dados usados no cálculo
-            with st.expander("Dados usados no cálculo"):
-                st.markdown(f"""
-    | Variável | Valor |
-    |---|---|
-    | Sexo | {calc_sexo} |
-    | Idade | {calc_idade} anos |
-    | PAS | {calc_pas} mmHg |
-    | Colesterol total | {'Não informado' if calc_col == 0 else f'{calc_col} mg/dL'} |
-    | IMC | {calc_imc:.1f} kg/m² |
-    | Diabetes | {'Sim' if calc_dm else 'Não'} |
-    | Tabagismo | {'Sim' if calc_tabaco else 'Não'} |
-    | Modelo | {modelo_txt or '—'} |
-    | Região | tropical_latin_america |
-                """)
+        with st.container(border=True):
+            st.markdown("**3 · Doença cardiovascular estabelecida**")
+            st.caption("Qualquer uma reclassifica direto como **Muito alto**, sem escore.")
+            calc_ci = st.checkbox("Cardiopatia isquêmica (IAM, angina)", value=False, key="calc_ci")
+            calc_avc = st.checkbox("AVC prévio", value=False, key="calc_avc")
+            calc_dap = st.checkbox("Doença arterial periférica", value=False, key="calc_dap")
 
-    # Referências
-    st.markdown("---")
+        with st.container(border=True):
+            st.markdown("**4 · Dados clínicos**")
+            calc_pas = st.number_input(
+                "PA sistólica (mmHg)", min_value=80, max_value=250, value=130, key="calc_pas",
+                help="Média das medidas mais recentes de pressão arterial sistólica.",
+            )
+            calc_col = st.number_input(
+                "Colesterol total (mg/dL) — 0 se indisponível", min_value=0, max_value=500, value=0,
+                key="calc_col",
+                help="Com colesterol usa a versão laboratorial; sem, cai para a não-laboratorial (IMC).",
+            )
+            calc_imc = st.number_input(
+                "IMC (kg/m²)", min_value=15.0, max_value=60.0, value=27.0, step=0.1, key="calc_imc",
+                help="Usado na versão não-laboratorial, quando não há colesterol.",
+            )
+
+    # ── Avaliação ao vivo ──
+    dados = DadosPaciente(
+        sexo=calc_sexo, idade=int(calc_idade), pas=int(calc_pas),
+        tabaco=calc_tabaco, dm=calc_dm, drc=calc_drc,
+        ci=calc_ci, avc=calc_avc, dap=calc_dap,
+        colesterol_total_mgdl=(calc_col if calc_col > 0 else None), imc=calc_imc,
+    )
+    res = avaliar_hearts(dados)
+
+    # ── Coluna de saída — fluxograma + legenda + resultado ──
+    with col_out:
+        if res.modelo == 'nao_laboratorial':
+            st.info("Sem colesterol informado → usando a **versão não-laboratorial** (IMC).")
+        elif res.modelo == 'laboratorial':
+            st.caption("Colesterol disponível → **versão laboratorial**.")
+        elif res.modelo == 'reclassificacao_direta':
+            st.caption("Reclassificação direta → o escore WHO não é aplicado.")
+
+        st.graphviz_chart(_dot_hearts(res, dados), use_container_width=True)
+        _legenda_categorias()
+        _card_resultado(res)
+
+    st.markdown("")
+
+    # ── Detalhes e comparação entre modelos (fixa o resultado ao vivo) ──
+    with st.expander("Detalhes do cálculo e comparação entre modelos"):
+        genero_calc = calc_sexo.lower()
+        r_lab = calcular_who_lab(genero_calc, int(calc_idade), int(calc_pas),
+                                 calc_col, calc_dm, calc_tabaco) if calc_col > 0 else None
+        r_nl = calcular_who_nonlab(genero_calc, int(calc_idade), int(calc_pas),
+                                   calc_imc, calc_tabaco)
+
+        if res.modelo == 'reclassificacao_direta' and (r_lab or r_nl):
+            st.info(
+                "Este paciente foi classificado por **reclassificação direta**. "
+                "O escore WHO abaixo é apenas referência — não altera a categoria."
+            )
+
+        if r_lab and r_nl:
+            st.markdown("##### Escore WHO por modelo")
+            m1, m2 = st.columns(2)
+            with m1:
+                cl = COR_CATEGORIA_HEARTS.get(r_lab['categoria'], '#9E9E9E')
+                with st.container(border=True):
+                    st.markdown("**Versão laboratorial** (com colesterol)")
+                    st.markdown(f"<h3 style='color:{cl}; margin:4px 0;'>{r_lab['risco_pct']:.1f}% — {r_lab['categoria']}</h3>",
+                                unsafe_allow_html=True)
+            with m2:
+                cn = COR_CATEGORIA_HEARTS.get(r_nl['categoria'], '#9E9E9E')
+                with st.container(border=True):
+                    st.markdown("**Versão não-laboratorial** (com IMC)")
+                    st.markdown(f"<h3 style='color:{cn}; margin:4px 0;'>{r_nl['risco_pct']:.1f}% — {r_nl['categoria']}</h3>",
+                                unsafe_allow_html=True)
+
+        st.markdown("##### Dados usados")
+        st.markdown(f"""
+| Variável | Valor |
+|---|---|
+| Sexo | {calc_sexo} |
+| Idade | {int(calc_idade)} anos |
+| PAS | {int(calc_pas)} mmHg |
+| Colesterol total | {'Não informado' if calc_col == 0 else f'{calc_col} mg/dL'} |
+| IMC | {calc_imc:.1f} kg/m² |
+| Diabetes | {'Sim' if calc_dm else 'Não'} |
+| DRC | {'Sim' if calc_drc else 'Não'} |
+| Tabagismo | {'Sim' if calc_tabaco else 'Não'} |
+| Modelo aplicado | {_MODELO_LBL.get(res.modelo, res.modelo)} |
+| Região | tropical_latin_america |
+""")
+
+    # ── Sobre o HEARTS (conteúdo versionado em sobre_hearts.md) ──
+    with st.expander("Sobre o HEARTS"):
+        _p_sobre = Path(__file__).resolve().parent.parent / "sobre_hearts.md"
+        if _p_sobre.exists():
+            st.markdown(_p_sobre.read_text(encoding="utf-8"))
+        else:
+            st.caption("Conteúdo em preparação (`sobre_hearts.md` não encontrado).")
+
     with st.expander("Referências e metodologia"):
         st.markdown("""
     **WHO CVD Risk Charts 2019**
@@ -785,18 +862,6 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
     **Dois modelos em cascata:**
     - **Versão laboratorial** (prioridade): usa colesterol total, PAS, idade, sexo, DM, tabagismo
     - **Versão não-laboratorial** (alternativa): usa IMC, PAS, idade, sexo, tabagismo (sem colesterol nem DM)
-
-    **Categorias de risco:**
-
-    | Risco 10 anos | Categoria | Conduta |
-    |---|---|---|
-    | <5% | Baixo | Mudança de estilo de vida |
-    | 5-10% | Moderado | Reforçar MEV, considerar farmacoterapia |
-    | 10-20% | Alto | Tratamento farmacológico indicado |
-    | 20-30% | Muito Alto | Tratamento intensivo |
-    | ≥30% | Crítico | Prioridade máxima, avaliar DCV |
-
-    **Programa HEARTS (OMS/OPAS):** estratégia global de redução de risco CV em atenção primária, adotada pelo Ministério da Saúde brasileiro.
         """)
 
     # ═══════════════════════════════════════════════════════════════
@@ -804,7 +869,6 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
     # ═══════════════════════════════════════════════════════════════
     st.markdown("---")
     st.caption(
-    "Framingham: D'Agostino et al., Circulation 2008. "
-    "Reclassificação: Diretriz SBC 2019. "
+    "Reclassificação: Diretriz SBC 2019 / PCDT HAS. "
     "WHO: Kaptoge et al., Lancet Global Health 2019 — região tropical_latin_america."
     )
