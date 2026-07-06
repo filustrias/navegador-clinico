@@ -354,7 +354,7 @@ if _aba_rcv == "📊 Panorama Populacional":
       st.markdown(_card_html(
           "🌍 WHO/HEARTS calculado", f"{n_who_calc:,}",
           delta=f"{_p(n_who_calc, n_eleg_who):.0f}% dos elegíveis (40-80a)",
-          caption=f"Lab-based: {n_who_lab:,} · Non-lab: {n_who_nonlab:,}"
+          caption=f"Versão laboratorial: {n_who_lab:,} · Versão não-laboratorial: {n_who_nonlab:,}"
       ), unsafe_allow_html=True)
 
   # Variáveis mais ausentes
@@ -397,13 +397,13 @@ if _aba_rcv == "📊 Panorama Populacional":
           st.caption(f"Não calculável: {n_fram_nao_calculavel:,}")
   with cc2:
       with st.container(border=True):
-          st.markdown("**WHO lab-based (40-80a)**")
+          st.markdown("**WHO (versão laboratorial) — 40-80a**")
           st.metric("Calculável", f"{n_who_lab_calc:,}",
                     f"{_p(n_who_lab_calc, n_eleg_who):.0f}% dos elegíveis")
           st.caption(f"Não calculável: {n_who_lab_nao:,}")
   with cc3:
       with st.container(border=True):
-          st.markdown("**WHO non-lab (40-80a)**")
+          st.markdown("**WHO (versão não-laboratorial) — 40-80a**")
           st.metric("Calculável", f"{n_who_nonlab_calc:,}",
                     f"{_p(n_who_nonlab_calc, n_eleg_who):.0f}% dos elegíveis")
           st.caption(f"Não calculável: {n_who_nonlab_nao:,}")
@@ -431,11 +431,11 @@ if _aba_rcv == "📊 Panorama Populacional":
               st.markdown(f"🔴 **{label}**: {n:,} ({pct:.0f}% dos elegíveis)")
   with va2:
       with st.container(border=True):
-          st.markdown("**WHO (40-80a) — o que falta para lab-based**")
+          st.markdown("**WHO (40-80a) — o que falta para versão laboratorial**")
           ausentes_who = [
               (f"Colesterol total", n_who_sem_col, _p(n_who_sem_col, n_eleg_who)),
               (f"PA recente (≤365d)", n_who_sem_pa, _p(n_who_sem_pa, n_eleg_who)),
-              (f"IMC (fallback non-lab)", n_who_sem_imc, _p(n_who_sem_imc, n_eleg_who)),
+              (f"IMC (usado na versão não-laboratorial)", n_who_sem_imc, _p(n_who_sem_imc, n_eleg_who)),
           ]
           for label, n, pct in sorted(ausentes_who, key=lambda x: -x[1]):
               st.markdown(f"🔴 **{label}**: {n:,} ({pct:.0f}% dos elegíveis)")
@@ -644,7 +644,7 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
             "Colesterol total (mg/dL) — deixe 0 se indisponível",
             min_value=0, max_value=500, value=0,
             key="calc_col",
-            help="Se disponível, o modelo lab-based é usado. Senão, usa non-lab com IMC."
+            help="Se disponível, a versão laboratorial é usada. Senão, usa a versão não-laboratorial com IMC."
         )
         calc_imc = st.number_input(
             "IMC (kg/m²) — usado se colesterol indisponível",
@@ -653,7 +653,7 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
         )
         st.caption(
             "ℹ️ **Reclassificação direta:** Pacientes com CI, AVC ou DAP são classificados "
-            "automaticamente como MUITO ALTO; com DM ou IRC, como ALTO — independente do score."
+            "automaticamente como MUITO ALTO; com DM ou IRC, como ALTO — independente do escore."
         )
 
     st.markdown("---")
@@ -700,7 +700,13 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
             icone_cat = icone_categoria_who(resultado['categoria'])
             risco_val = resultado.get('risco_pct')
             motivo = resultado.get('motivo', '')
-            modelo_txt = resultado.get('modelo', '')
+            _modelo_label = {
+                'lab': 'versão laboratorial',
+                'non-lab': 'versão não-laboratorial',
+                'nao_calculavel': 'não calculável',
+            }
+            modelo_raw = resultado.get('modelo', '')
+            modelo_txt = _modelo_label.get(modelo_raw, modelo_raw)
 
             if risco_val is not None:
                 titulo = f"{icone_cat} Risco CV em 10 anos: {risco_val:.1f}%"
@@ -724,7 +730,7 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
             if reclass and (resultado_lab or resultado_nonlab):
                 st.info(
                     "ℹ️ Paciente classificado por **reclassificação direta**. "
-                    "O score WHO é mostrado abaixo apenas como referência."
+                    "O escore WHO é mostrado abaixo apenas como referência."
                 )
 
             # Comparação lab vs non-lab se ambos disponíveis
@@ -735,14 +741,14 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
                     cor_lab = cor_categoria_completa(resultado_lab['categoria'])
                     ic_lab = icone_categoria_who(resultado_lab['categoria'])
                     with st.container(border=True):
-                        st.markdown(f"**Lab-based** (com colesterol)")
+                        st.markdown(f"**Versão laboratorial** (com colesterol)")
                         st.markdown(f"<h3 style='color:{cor_lab};'>{ic_lab} {resultado_lab['risco_pct']:.1f}% — {resultado_lab['categoria']}</h3>",
                                     unsafe_allow_html=True)
                 with cmp2:
                     cor_nl = cor_categoria_completa(resultado_nonlab['categoria'])
                     ic_nl = icone_categoria_who(resultado_nonlab['categoria'])
                     with st.container(border=True):
-                        st.markdown(f"**Non-lab** (com IMC)")
+                        st.markdown(f"**Versão não-laboratorial** (com IMC)")
                         st.markdown(f"<h3 style='color:{cor_nl};'>{ic_nl} {resultado_nonlab['risco_pct']:.1f}% — {resultado_nonlab['categoria']}</h3>",
                                     unsafe_allow_html=True)
 
@@ -772,8 +778,8 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
     - Validação: pacote R `WHORiskCalculator` v1.0.0 (CRAN, 2026-04-07)
 
     **Dois modelos em cascata:**
-    - **Lab-based** (prioridade): usa colesterol total, PAS, idade, sexo, DM, tabagismo
-    - **Non-lab-based** (fallback): usa IMC, PAS, idade, sexo, tabagismo (sem colesterol nem DM)
+    - **Versão laboratorial** (prioridade): usa colesterol total, PAS, idade, sexo, DM, tabagismo
+    - **Versão não-laboratorial** (alternativa): usa IMC, PAS, idade, sexo, tabagismo (sem colesterol nem DM)
 
     **Categorias de risco:**
 
