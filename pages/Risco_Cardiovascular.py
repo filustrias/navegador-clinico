@@ -756,14 +756,17 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
             d1, d2 = st.columns(2)
             with d1:
                 calc_sexo = st.selectbox("Sexo", options=["Masculino", "Feminino"], key="calc_sexo")
-                calc_idade = st.number_input(
-                    "Idade (anos)", min_value=40, max_value=75, value=55, key="calc_idade",
-                    help="Válido de 40 a 74 anos; 75 é tratado como 74 (como a OPAS).")
-            with d2:
                 calc_pas = st.number_input(
                     "PA sistólica (mmHg)", min_value=90, max_value=200, value=130, key="calc_pas",
                     help="Média das medidas mais recentes de PA sistólica.")
-                calc_tabaco = st.checkbox("Fumante ativo", value=False, key="calc_tabaco")
+            with d2:
+                calc_idade = st.number_input(
+                    "Idade (anos)", min_value=40, max_value=75, value=55, key="calc_idade",
+                    help="Válido de 40 a 74 anos; 75 é tratado como 74 (como a OPAS).")
+                _tabaco_sel = st.segmented_control(
+                    "Tabagismo", options=["Não fuma", "Fumante"], default="Não fuma",
+                    key="calc_tabaco_seg")
+                calc_tabaco = (_tabaco_sel == "Fumante")
 
         with st.container(border=True):
             st.markdown("**3 · Colesterol**")
@@ -816,8 +819,9 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
                         "Masculino" if sexo_api == "male" else "Feminino", int(r['idade_usada'])),
             use_container_width=False)
         _legenda_categorias()
-        _card_resultado(r)
 
+    # ── Resultado em largura total, abaixo das duas colunas ──
+    _card_resultado(r)
     st.markdown("")
 
     with st.expander("Dados usados no cálculo"):
