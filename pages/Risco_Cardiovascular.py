@@ -635,8 +635,8 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
             'q_dcv':        ('diamond', "DCV estabelecida?", None),
             'r_muito_alto': ('box',     "Muito alto\\n(override por DCV)", 'Muito alto'),
             'q_col':        ('diamond', "Conhece o\\ncolesterol?", None),
-            'm_lab':        ('box',     "Modelo laboratorial\\nsexo·idade·tabaco·DM·PAS·colesterol", None),
-            'm_nonlab':     ('box',     "Modelo não-laboratorial\\nsexo·idade·tabaco·PAS·IMC", None),
+            'm_lab':        ('box',     "Modelo laboratorial\\n(com colesterol)", None),
+            'm_nonlab':     ('box',     "Modelo não-laboratorial\\n(com IMC)", None),
             'escore':       ('box',     "Escore CVD calibrado\\n(Tropical LA)", None),
             'q_drcdm':      ('diamond', "DRC ou DM?", None),
             'resultado':    ('box',     f"{risco_txt} → {cat_final}", cat_final),
@@ -676,7 +676,7 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
         corpo = "\n".join(_node(n) for n in nodes)
         corpo += "\n" + "\n".join(_edge(*e) for e in edges)
         return ('digraph hearts {\n  rankdir=TB;\n  bgcolor="transparent";\n'
-                '  ranksep=0.30;\n  nodesep=0.24;\n  size="5,6";\n  ratio="compress";\n'
+                '  ranksep=0.30;\n  nodesep=0.24;\n  size="4.2,6";\n  ratio="compress";\n'
                 '  node [fontname="Helvetica" fontsize=10 margin="0.16,0.05"];\n'
                 '  edge [fontname="Helvetica" fontsize=9];\n' + corpo + '\n}')
 
@@ -693,6 +693,29 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
         )
         st.markdown(
             f"<div style='margin:2px 0 6px 0; line-height:1.9;'>{chips}</div>",
+            unsafe_allow_html=True,
+        )
+
+    def _whatif_row(titulo, kw, base_pct):
+        """Recalcula um cenário 'e se…' pelo motor e mostra novo escore + variação."""
+        rr = calcular_risco(**kw)
+        novo = rr['risco_cvd'] * 100
+        delta = base_pct - novo                         # positivo = redução (bom)
+        corcat = COR_CATEGORIA_HEARTS.get(rr['categoria'], '#9E9E9E')
+        if delta >= 0.05:
+            dcor, dtxt = '#2E7D32', f"↓ {delta:.1f} pp"
+        elif delta <= -0.05:
+            dcor, dtxt = '#C62828', f"↑ {abs(delta):.1f} pp"
+        else:
+            dcor, dtxt = T.TEXT_MUTED, "≈ igual"
+        st.markdown(
+            f"<div style='border:1px solid {T.BORDER}; border-radius:8px; padding:9px 12px; margin-bottom:8px;'>"
+            f"<div style='font-size:0.88rem; color:{T.TEXT}; margin-bottom:3px;'>{titulo}</div>"
+            f"<div style='display:flex; align-items:baseline; gap:8px;'>"
+            f"<span style='font-size:1.45rem; font-weight:700; color:{corcat};'>{novo:.1f}%</span>"
+            f"<span style='font-weight:600; color:{dcor}; font-size:0.85rem;'>{dtxt}</span></div>"
+            f"<div style='font-size:0.72rem; color:{T.TEXT_MUTED};'>→ {rr['categoria']}</div>"
+            f"</div>",
             unsafe_allow_html=True,
         )
 
@@ -733,7 +756,7 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
     )
     st.markdown("")
 
-    col_in, col_out = st.columns([1, 1.25], gap="large")
+    col_in, col_mid, col_wi = st.columns([1.05, 1.05, 0.9], gap="large")
 
     # ── Coluna de entrada — fluxo igual à OPAS ──
     with col_in:
@@ -805,8 +828,8 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
         r = calcular_risco(sexo_api, calc_idade, calc_pas, calc_tabaco,
                            imc=imc_val, diabetes=calc_dm, dcv_estabelecida=calc_dcv, drc=calc_drc)
 
-    # ── Coluna de saída — fluxograma + legenda + resultado ──
-    with col_out:
+    # ── Coluna do meio — fluxograma + legenda ──
+    with col_mid:
         if modelo == "nonlab":
             st.info(f"Via **não-laboratorial** (IMC {imc_val:.1f} kg/m²) — sem colesterol informado.")
         else:
@@ -820,7 +843,55 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
             use_container_width=False)
         _legenda_categorias()
 
-    # ── Resultado em largura total, abaixo das duas colunas ──
+    # ── Coluna 3 — "O que aconteceria se…" ──
+    with col_wi:
+        st.markdown("**O que aconteceria se…**")
+        st.caption("Efeito no escore de mudanças nos fatores modificáveis.")
+        base_pct = r['risco_cvd'] * 100
+        base_kwargs = dict(
+            sexo=sexo_api, idade=calc_idade, pas=calc_pas, fumante=calc_tabaco,
+            diabetes=calc_dm, dcv_estabelecida=calc_dcv, drc=calc_drc,
+        )
+        if modelo == 'lab':
+            base_kwargs['colesterol_mmol'] = col_mgdl_para_mmol(calc_col)
+        else:
+            base_kwargs['imc'] = imc_val
+
+        cenarios = []
+        if calc_tabaco:
+            cenarios.append(("🚭 Parar de fumar", {**base_kwargs, 'fumante': False}))
+        if modelo == 'lab' and calc_col > 190:
+            cenarios.append(("🧪 Colesterol a 190 mg/dL",
+                             {**base_kwargs, 'colesterol_mmol': col_mgdl_para_mmol(190)}))
+        if calc_pas > 130:
+            cenarios.append(("🩺 PA sistólica a 130 mmHg", {**base_kwargs, 'pas': 130}))
+        if modelo == 'nonlab' and imc_val > 25:
+            cenarios.append(("⚖️ IMC a 25 kg/m²", {**base_kwargs, 'imc': 25.0}))
+        if len(cenarios) >= 2:
+            combo = dict(base_kwargs)
+            if calc_tabaco:
+                combo['fumante'] = False
+            if modelo == 'lab' and calc_col > 190:
+                combo['colesterol_mmol'] = col_mgdl_para_mmol(190)
+            if calc_pas > 130:
+                combo['pas'] = 130
+            if modelo == 'nonlab' and imc_val > 25:
+                combo['imc'] = 25.0
+            cenarios.append(("✨ Tudo combinado", combo))
+
+        if not cenarios:
+            st.success("Fatores de risco modificáveis já otimizados.")
+        else:
+            for titulo, kw in cenarios:
+                _whatif_row(titulo, kw, base_pct)
+            if calc_dcv:
+                st.caption("Com DCV estabelecida, a categoria final permanece **Muito alto**; "
+                           "os valores acima são o risco basal (escore).")
+            elif calc_dm or calc_drc:
+                st.caption("A categoria tem piso **Alto** por regra clínica: o escore pode cair "
+                           "abaixo disso, mas a categoria final não.")
+
+    # ── Resultado em largura total, abaixo das três colunas ──
     _card_resultado(r)
     st.markdown("")
 
