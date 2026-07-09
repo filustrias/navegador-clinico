@@ -758,10 +758,11 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
     )
     st.markdown("")
 
-    col_in, col_mid, col_wi = st.columns([1.05, 1.05, 0.9], gap="large")
+    # Linha 1: inputs | fluxograma | controles do simulador.
+    linha1 = st.columns([1.05, 1.05, 0.9], gap="large")
 
-    # ── Coluna de entrada — fluxo igual à OPAS ──
-    with col_in:
+    # ── Linha 1 · Coluna 1 — entrada (fluxo igual à OPAS) ──
+    with linha1[0]:
         with st.container(border=True):
             st.markdown("**1 · Condições de base**")
             st.caption("Gatilhos que reclassificam por regra clínica, por cima do escore.")
@@ -830,12 +831,8 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
         r = calcular_risco(sexo_api, calc_idade, calc_pas, calc_tabaco,
                            imc=imc_val, diabetes=calc_dm, dcv_estabelecida=calc_dcv, drc=calc_drc)
 
-    # ── Coluna 1, 2ª linha — resultado do risco calculado ──
-    with col_in:
-        _card_resultado(r)
-
-    # ── Coluna do meio — fluxograma ocupando as duas linhas ──
-    with col_mid:
+    # ── Linha 1 · Coluna 2 — fluxograma (ocupa a altura das duas linhas) ──
+    with linha1[1]:
         if modelo == "nonlab":
             st.info(f"Via **não-laboratorial** (IMC {imc_val:.1f} kg/m²) — sem colesterol informado.")
         else:
@@ -849,23 +846,23 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
             use_container_width=False)
         _legenda_categorias()
 
-    # ── Coluna 3 — "O que aconteceria se…" (simulador interativo) ──
-    with col_wi:
+    # ── Linha 1 · Coluna 3 — controles dos fatores modificáveis ──
+    base_pct = r['risco_cvd'] * 100
+    base_kwargs = dict(
+        sexo=sexo_api, idade=calc_idade, pas=calc_pas, fumante=calc_tabaco,
+        diabetes=calc_dm, dcv_estabelecida=calc_dcv, drc=calc_drc,
+    )
+    if modelo == 'lab':
+        base_kwargs['colesterol_mmol'] = col_mgdl_para_mmol(calc_col)
+    else:
+        base_kwargs['imc'] = imc_val
+
+    r_sim = None
+    with linha1[2]:
         st.markdown("**O que aconteceria se…**")
         st.caption("Ajuste os fatores modificáveis abaixo — o risco recalcula ao vivo, "
                    "sem alterar os dados do paciente.")
 
-        base_pct = r['risco_cvd'] * 100
-        base_kwargs = dict(
-            sexo=sexo_api, idade=calc_idade, pas=calc_pas, fumante=calc_tabaco,
-            diabetes=calc_dm, dcv_estabelecida=calc_dcv, drc=calc_drc,
-        )
-        if modelo == 'lab':
-            base_kwargs['colesterol_mmol'] = col_mgdl_para_mmol(calc_col)
-        else:
-            base_kwargs['imc'] = imc_val
-
-        # Controles — só aparecem os fatores modificáveis aplicáveis ao caso.
         tem_opcao = False
         sim_fumante = calc_tabaco
         if calc_tabaco:
@@ -903,8 +900,15 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
                 kw['colesterol_mmol'] = col_mgdl_para_mmol(sim_col)
             else:
                 kw['imc'] = sim_imc
-            _card_simulado(calcular_risco(**kw), base_pct)
+            r_sim = calcular_risco(**kw)
 
+    # ── Linha 2: risco calculado | (fluxograma acima) | risco recalculado ──
+    linha2 = st.columns([1.05, 1.05, 0.9], gap="large")
+    with linha2[0]:
+        _card_resultado(r)
+    with linha2[2]:
+        if r_sim is not None:
+            _card_simulado(r_sim, base_pct)
             if calc_dcv:
                 st.caption("Com DCV estabelecida, a categoria final permanece **Muito alto**; "
                            "o valor acima é o risco basal (escore).")
