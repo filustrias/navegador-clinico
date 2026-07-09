@@ -830,7 +830,11 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
         r = calcular_risco(sexo_api, calc_idade, calc_pas, calc_tabaco,
                            imc=imc_val, diabetes=calc_dm, dcv_estabelecida=calc_dcv, drc=calc_drc)
 
-    # ── Coluna do meio — fluxograma + legenda ──
+    # ── Coluna 1, 2ª linha — resultado do risco calculado ──
+    with col_in:
+        _card_resultado(r)
+
+    # ── Coluna do meio — fluxograma ocupando as duas linhas ──
     with col_mid:
         if modelo == "nonlab":
             st.info(f"Via **não-laboratorial** (IMC {imc_val:.1f} kg/m²) — sem colesterol informado.")
@@ -866,7 +870,9 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
         sim_fumante = calc_tabaco
         if calc_tabaco:
             tem_opcao = True
-            sim_fumante = not st.checkbox("🚭 Deixar de fumar", value=False, key="wi_parar")
+            _fumo = st.radio("🚬 Tabagismo", options=["Continuar fumando", "Parar de fumar"],
+                             index=0, key="wi_fumo")
+            sim_fumante = (_fumo == "Continuar fumando")
 
         sim_col = calc_col
         if modelo == 'lab' and calc_col > 130:
@@ -906,9 +912,15 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
                 st.caption("A categoria tem piso **Alto** por regra clínica: o escore pode cair "
                            "abaixo disso, mas a categoria final não.")
 
-    # ── Resultado em largura total, abaixo das três colunas ──
-    _card_resultado(r)
     st.markdown("")
+
+    # ── Sobre o HEARTS (conteúdo versionado em sobre_hearts.md) ──
+    with st.expander("Sobre o HEARTS"):
+        _p_sobre = Path(__file__).resolve().parent.parent / "sobre_hearts.md"
+        if _p_sobre.exists():
+            st.markdown(_p_sobre.read_text(encoding="utf-8"))
+        else:
+            st.caption("Conteúdo em preparação (`sobre_hearts.md` não encontrado).")
 
     with st.expander("Dados usados no cálculo"):
         st.markdown(f"""
@@ -929,14 +941,6 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
 | Categoria final | {r['categoria']} |
 | Motivo do override | {r['motivo_override'] or '—'} |
 """)
-
-    # ── Sobre o HEARTS (conteúdo versionado em sobre_hearts.md) ──
-    with st.expander("Sobre o HEARTS"):
-        _p_sobre = Path(__file__).resolve().parent.parent / "sobre_hearts.md"
-        if _p_sobre.exists():
-            st.markdown(_p_sobre.read_text(encoding="utf-8"))
-        else:
-            st.caption("Conteúdo em preparação (`sobre_hearts.md` não encontrado).")
 
     # ═══════════════════════════════════════════════════════════════
     # RODAPÉ
