@@ -870,49 +870,69 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
         base_kwargs['imc'] = imc_val
 
     r_sim = None
+    override = r['motivo_override'] is not None
     with linha1[2]:
         st.markdown("**O que aconteceria se…**")
-        st.caption("Ajuste os fatores modificáveis abaixo — o risco recalcula ao vivo, "
-                   "sem alterar os dados do paciente.")
-
-        tem_opcao = False
-        sim_fumante = calc_tabaco
-        if calc_tabaco:
-            tem_opcao = True
-            _fumo = st.radio("🚬 Tabagismo", options=["Continuar fumando", "Parar de fumar"],
-                             index=0, key="wi_fumo")
-            sim_fumante = (_fumo == "Continuar fumando")
-
-        sim_col = calc_col
-        if modelo == 'lab' and calc_col > 130:
-            tem_opcao = True
-            sim_col = st.slider("🧪 Colesterol total (mg/dL)", min_value=130, max_value=int(calc_col),
-                                value=int(calc_col), key=f"wi_col_{int(calc_col)}")
-
-        sim_pas = calc_pas
-        if calc_pas > 100:
-            tem_opcao = True
-            sim_pas = st.slider("🩺 PA sistólica (mmHg)", min_value=100, max_value=int(calc_pas),
-                                value=int(calc_pas), key=f"wi_pas_{int(calc_pas)}")
-
-        sim_imc = imc_val
-        _imc0 = round(float(imc_val), 1) if imc_val else None
-        if modelo == 'nonlab' and _imc0 and _imc0 > 18.5:
-            tem_opcao = True
-            sim_imc = st.slider("⚖️ IMC (kg/m²)", min_value=18.5, max_value=_imc0,
-                                value=_imc0, step=0.1, key=f"wi_imc_{_imc0}")
-
-        if not tem_opcao:
-            st.success("Sem fatores modificáveis a simular (não fumante, PA e colesterol já baixos).")
+        if override:
+            # Categoria definida por condição de base → simular fatores não muda a
+            # classificação; explicamos isso em vez de mostrar números.
+            piso = "Muito alto" if calc_dcv else "Alto"
+            _conds = []
+            if calc_dcv:
+                _conds.append("doença cardiovascular estabelecida")
+            if calc_drc:
+                _conds.append("doença renal crônica")
+            if calc_dm:
+                _conds.append("diabetes")
+            _cond_txt = _conds[0] if len(_conds) == 1 else ", ".join(_conds[:-1]) + " e " + _conds[-1]
+            _plural = "condições clínicas" if len(_conds) > 1 else "condição clínica"
+            st.info(
+                "Modificar os fatores de risco modificáveis faz parte do tratamento deste "
+                "paciente. Contudo, mesmo ao modificá-los, ele não deixará de ser considerado "
+                f"de risco **{piso}**, por já ter **{_cond_txt}** como {_plural} de base."
+            )
         else:
-            kw = dict(base_kwargs)
-            kw['fumante'] = sim_fumante
-            kw['pas'] = sim_pas
-            if modelo == 'lab':
-                kw['colesterol_mmol'] = col_mgdl_para_mmol(sim_col)
+            st.caption("Ajuste os fatores modificáveis abaixo — o risco recalcula ao vivo, "
+                       "sem alterar os dados do paciente.")
+
+            tem_opcao = False
+            sim_fumante = calc_tabaco
+            if calc_tabaco:
+                tem_opcao = True
+                _fumo = st.radio("🚬 Tabagismo", options=["Continuar fumando", "Parar de fumar"],
+                                 index=0, key="wi_fumo")
+                sim_fumante = (_fumo == "Continuar fumando")
+
+            sim_col = calc_col
+            if modelo == 'lab' and calc_col > 130:
+                tem_opcao = True
+                sim_col = st.slider("🧪 Colesterol total (mg/dL)", min_value=130, max_value=int(calc_col),
+                                    value=int(calc_col), key=f"wi_col_{int(calc_col)}")
+
+            sim_pas = calc_pas
+            if calc_pas > 100:
+                tem_opcao = True
+                sim_pas = st.slider("🩺 PA sistólica (mmHg)", min_value=100, max_value=int(calc_pas),
+                                    value=int(calc_pas), key=f"wi_pas_{int(calc_pas)}")
+
+            sim_imc = imc_val
+            _imc0 = round(float(imc_val), 1) if imc_val else None
+            if modelo == 'nonlab' and _imc0 and _imc0 > 18.5:
+                tem_opcao = True
+                sim_imc = st.slider("⚖️ IMC (kg/m²)", min_value=18.5, max_value=_imc0,
+                                    value=_imc0, step=0.1, key=f"wi_imc_{_imc0}")
+
+            if not tem_opcao:
+                st.success("Sem fatores modificáveis a simular (não fumante, PA e colesterol já baixos).")
             else:
-                kw['imc'] = sim_imc
-            r_sim = calcular_risco(**kw)
+                kw = dict(base_kwargs)
+                kw['fumante'] = sim_fumante
+                kw['pas'] = sim_pas
+                if modelo == 'lab':
+                    kw['colesterol_mmol'] = col_mgdl_para_mmol(sim_col)
+                else:
+                    kw['imc'] = sim_imc
+                r_sim = calcular_risco(**kw)
 
     # ── Linha 2: risco calculado | (fluxograma acima) | risco recalculado ──
     linha2 = st.columns([1.05, 1.05, 0.9], gap="large")
@@ -921,12 +941,6 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
     with linha2[2]:
         if r_sim is not None:
             _card_simulado(r_sim, base_pct)
-            if calc_dcv:
-                st.caption("Com DCV estabelecida, a categoria final permanece **Muito alto**; "
-                           "o valor acima é o risco basal (escore).")
-            elif calc_dm or calc_drc:
-                st.caption("A categoria tem piso **Alto** por regra clínica: o escore pode cair "
-                           "abaixo disso, mas a categoria final não.")
 
     st.markdown("")
 
