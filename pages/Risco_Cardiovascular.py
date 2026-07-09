@@ -724,16 +724,29 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
     def _card_resultado(r):
         cat = r['categoria']
         cor = COR_CATEGORIA_HEARTS.get(cat, '#9E9E9E')
-        risco_txt = f"{r['risco_cvd'] * 100:.1f}%"
         motivo = r['motivo_override']
-        badge_txt = cat if not motivo else f"{cat} — por {motivo}"
-        override_html = ""
-        if motivo and r['categoria'] != r['categoria_escore']:
-            override_html = (
-                f"<div style='color:{T.TEXT_SECONDARY}; margin-top:8px; font-size:0.85rem;'>"
-                f"O escore indica <strong>{r['categoria_escore']}</strong>; a classificação sobe "
-                f"para <strong>{cat}</strong> por regra clínica ({motivo}).</div>")
         modelo_lbl = _MODELO_LBL.get(r['modelo'], r['modelo'])
+
+        if motivo:
+            # Categoria definida por regra clínica (DCV/DRC/DM) → mostra só a categoria,
+            # sem o valor do escore (exibir o número pode confundir).
+            st.markdown(
+                f"<div style='border:1px solid {cor}; border-left:8px solid {cor}; "
+                f"border-radius:10px; padding:16px 20px; margin-top:4px; background:{cor}12;'>"
+                f"<div style='color:{T.TEXT_MUTED}; font-size:0.74rem; text-transform:uppercase; "
+                f"letter-spacing:0.04em;'>Classificação de risco</div>"
+                f"<div style='font-size:2.0rem; font-weight:700; color:{cor}; line-height:1.15;'>{cat}</div>"
+                f"<div style='color:{T.TEXT_SECONDARY}; font-size:0.82rem;'>definida por regra clínica — "
+                f"{motivo}</div>"
+                f"<div style='color:{T.TEXT}; margin-top:12px; font-size:0.95rem;'>{r['conduta']}</div>"
+                f"<div style='color:{T.TEXT_MUTED}; margin-top:8px; font-size:0.8rem;'>Modelo: {modelo_lbl}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            return
+
+        # Sem override → mostra o escore em %.
+        risco_txt = f"{r['risco_cvd'] * 100:.1f}%"
         st.markdown(
             f"<div style='border:1px solid {cor}; border-left:8px solid {cor}; "
             f"border-radius:10px; padding:16px 20px; margin-top:4px; background:{cor}12;'>"
@@ -743,8 +756,7 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
             f"<div style='color:{T.TEXT_SECONDARY}; font-size:0.82rem;'>risco de evento cardiovascular "
             f"(infarto ou AVC) em 10 anos</div>"
             f"<div style='display:inline-block; margin-top:12px; background:{cor}; color:white; "
-            f"padding:3px 14px; border-radius:20px; font-weight:600; font-size:0.95rem;'>{badge_txt}</div>"
-            f"{override_html}"
+            f"padding:3px 14px; border-radius:20px; font-weight:600; font-size:0.95rem;'>{cat}</div>"
             f"<div style='color:{T.TEXT}; margin-top:12px; font-size:0.95rem;'>{r['conduta']}</div>"
             f"<div style='color:{T.TEXT_MUTED}; margin-top:8px; font-size:0.8rem;'>Modelo: {modelo_lbl}</div>"
             f"</div>",
