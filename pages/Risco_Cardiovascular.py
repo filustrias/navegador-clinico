@@ -696,25 +696,27 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
             unsafe_allow_html=True,
         )
 
-    def _whatif_row(titulo, kw, base_pct):
-        """Recalcula um cenário 'e se…' pelo motor e mostra novo escore + variação."""
-        rr = calcular_risco(**kw)
-        novo = rr['risco_cvd'] * 100
+    def _card_simulado(rs, base_pct):
+        """Cartão do risco recalculado ao vivo conforme os controles do 'e se…'."""
+        novo = rs['risco_cvd'] * 100
         delta = base_pct - novo                         # positivo = redução (bom)
-        corcat = COR_CATEGORIA_HEARTS.get(rr['categoria'], '#9E9E9E')
+        cor = COR_CATEGORIA_HEARTS.get(rs['categoria'], '#9E9E9E')
         if delta >= 0.05:
-            dcor, dtxt = '#2E7D32', f"↓ {delta:.1f} pp"
+            dcor, dtxt = '#2E7D32', f"↓ {delta:.1f} pp vs. atual ({base_pct:.1f}%)"
         elif delta <= -0.05:
-            dcor, dtxt = '#C62828', f"↑ {abs(delta):.1f} pp"
+            dcor, dtxt = '#C62828', f"↑ {abs(delta):.1f} pp vs. atual ({base_pct:.1f}%)"
         else:
-            dcor, dtxt = T.TEXT_MUTED, "≈ igual"
+            dcor, dtxt = T.TEXT_MUTED, f"igual ao atual ({base_pct:.1f}%)"
         st.markdown(
-            f"<div style='border:1px solid {T.BORDER}; border-radius:8px; padding:9px 12px; margin-bottom:8px;'>"
-            f"<div style='font-size:0.88rem; color:{T.TEXT}; margin-bottom:3px;'>{titulo}</div>"
+            f"<div style='border:1px solid {cor}; border-left:6px solid {cor}; border-radius:8px; "
+            f"padding:12px 14px; margin-top:8px; background:{cor}12;'>"
+            f"<div style='color:{T.TEXT_MUTED}; font-size:0.72rem; text-transform:uppercase; "
+            f"letter-spacing:0.04em;'>Risco simulado</div>"
             f"<div style='display:flex; align-items:baseline; gap:8px;'>"
-            f"<span style='font-size:1.45rem; font-weight:700; color:{corcat};'>{novo:.1f}%</span>"
-            f"<span style='font-weight:600; color:{dcor}; font-size:0.85rem;'>{dtxt}</span></div>"
-            f"<div style='font-size:0.72rem; color:{T.TEXT_MUTED};'>→ {rr['categoria']}</div>"
+            f"<span style='font-size:1.9rem; font-weight:700; color:{cor};'>{novo:.1f}%</span>"
+            f"<span style='font-weight:600; color:{dcor}; font-size:0.78rem;'>{dtxt}</span></div>"
+            f"<div style='display:inline-block; margin-top:6px; background:{cor}; color:white; "
+            f"padding:2px 12px; border-radius:20px; font-weight:600; font-size:0.85rem;'>{rs['categoria']}</div>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -843,10 +845,12 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
             use_container_width=False)
         _legenda_categorias()
 
-    # ── Coluna 3 — "O que aconteceria se…" ──
+    # ── Coluna 3 — "O que aconteceria se…" (simulador interativo) ──
     with col_wi:
         st.markdown("**O que aconteceria se…**")
-        st.caption("Efeito no escore de mudanças nos fatores modificáveis.")
+        st.caption("Ajuste os fatores modificáveis abaixo — o risco recalcula ao vivo, "
+                   "sem alterar os dados do paciente.")
+
         base_pct = r['risco_cvd'] * 100
         base_kwargs = dict(
             sexo=sexo_api, idade=calc_idade, pas=calc_pas, fumante=calc_tabaco,
@@ -857,36 +861,47 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
         else:
             base_kwargs['imc'] = imc_val
 
-        cenarios = []
+        # Controles — só aparecem os fatores modificáveis aplicáveis ao caso.
+        tem_opcao = False
+        sim_fumante = calc_tabaco
         if calc_tabaco:
-            cenarios.append(("🚭 Parar de fumar", {**base_kwargs, 'fumante': False}))
-        if modelo == 'lab' and calc_col > 190:
-            cenarios.append(("🧪 Colesterol a 190 mg/dL",
-                             {**base_kwargs, 'colesterol_mmol': col_mgdl_para_mmol(190)}))
-        if calc_pas > 130:
-            cenarios.append(("🩺 PA sistólica a 130 mmHg", {**base_kwargs, 'pas': 130}))
-        if modelo == 'nonlab' and imc_val > 25:
-            cenarios.append(("⚖️ IMC a 25 kg/m²", {**base_kwargs, 'imc': 25.0}))
-        if len(cenarios) >= 2:
-            combo = dict(base_kwargs)
-            if calc_tabaco:
-                combo['fumante'] = False
-            if modelo == 'lab' and calc_col > 190:
-                combo['colesterol_mmol'] = col_mgdl_para_mmol(190)
-            if calc_pas > 130:
-                combo['pas'] = 130
-            if modelo == 'nonlab' and imc_val > 25:
-                combo['imc'] = 25.0
-            cenarios.append(("✨ Tudo combinado", combo))
+            tem_opcao = True
+            sim_fumante = not st.checkbox("🚭 Deixar de fumar", value=False, key="wi_parar")
 
-        if not cenarios:
-            st.success("Fatores de risco modificáveis já otimizados.")
+        sim_col = calc_col
+        if modelo == 'lab' and calc_col > 130:
+            tem_opcao = True
+            sim_col = st.slider("🧪 Colesterol total (mg/dL)", min_value=130, max_value=int(calc_col),
+                                value=int(calc_col), key=f"wi_col_{int(calc_col)}")
+
+        sim_pas = calc_pas
+        if calc_pas > 100:
+            tem_opcao = True
+            sim_pas = st.slider("🩺 PA sistólica (mmHg)", min_value=100, max_value=int(calc_pas),
+                                value=int(calc_pas), key=f"wi_pas_{int(calc_pas)}")
+
+        sim_imc = imc_val
+        _imc0 = round(float(imc_val), 1) if imc_val else None
+        if modelo == 'nonlab' and _imc0 and _imc0 > 18.5:
+            tem_opcao = True
+            sim_imc = st.slider("⚖️ IMC (kg/m²)", min_value=18.5, max_value=_imc0,
+                                value=_imc0, step=0.1, key=f"wi_imc_{_imc0}")
+
+        if not tem_opcao:
+            st.success("Sem fatores modificáveis a simular (não fumante, PA e colesterol já baixos).")
         else:
-            for titulo, kw in cenarios:
-                _whatif_row(titulo, kw, base_pct)
+            kw = dict(base_kwargs)
+            kw['fumante'] = sim_fumante
+            kw['pas'] = sim_pas
+            if modelo == 'lab':
+                kw['colesterol_mmol'] = col_mgdl_para_mmol(sim_col)
+            else:
+                kw['imc'] = sim_imc
+            _card_simulado(calcular_risco(**kw), base_pct)
+
             if calc_dcv:
                 st.caption("Com DCV estabelecida, a categoria final permanece **Muito alto**; "
-                           "os valores acima são o risco basal (escore).")
+                           "o valor acima é o risco basal (escore).")
             elif calc_dm or calc_drc:
                 st.caption("A categoria tem piso **Alto** por regra clínica: o escore pode cair "
                            "abaixo disso, mas a categoria final não.")
@@ -922,15 +937,6 @@ if _aba_rcv == "🧮 Calculadora HEARTS":
             st.markdown(_p_sobre.read_text(encoding="utf-8"))
         else:
             st.caption("Conteúdo em preparação (`sobre_hearts.md` não encontrado).")
-
-    with st.expander("Referências e metodologia"):
-        st.markdown("""
-    **WHO CVD Risk Charts 2019** — Kaptoge S et al. *Lancet Global Health* 2019;7(10):e1332-e1345.
-    - Coeficientes: Tabela 1.6 do suplemento WHO 2019 (versões laboratorial e não-laboratorial).
-    - **Recalibração** afim do risco CVD combinado contra o app da OPAS, região **Tropical Latin America**
-      (erro < 0,65pp), estratificada por sexo, via e tabagismo.
-    - **Overlay clínico** (PCDT HAS): DCV estabelecida → Muito alto; DRC ou diabetes → ao menos Alto.
-        """)
 
     # ═══════════════════════════════════════════════════════════════
     # RODAPÉ
