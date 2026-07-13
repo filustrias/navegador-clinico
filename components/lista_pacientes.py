@@ -2002,232 +2002,232 @@ def create_patient_card(patient_data, key_prefix: str = '',
 
         # ========== TAB 2: RISCO CARDIOVASCULAR ==========
         if _aba_card == "❤️ Risco Cardiovascular":
-            from utils.risco_cv import (calcular_who_lab, calcular_who_nonlab,
-                                        calcular_risco_completo, cor_categoria_who,
-                                        cor_categoria_completa, classificar_risco_direto,
-                                        icone_categoria_who)
+            # Motor calibrado (mesma fórmula da página admin — hearts.py).
+            from hearts import calcular_risco as hearts_calc, col_mgdl_para_mmol, _CONDUTA
+            from utils.risco_cv import COR_CATEGORIA_HEARTS
 
             st.markdown("#### ❤️ Risco Cardiovascular — WHO HEARTS")
 
-            who_risco = patient_data.get('who_risco_cvd_pct')
-            who_cat = patient_data.get('who_categoria_risco')
-            who_cat_simpl = patient_data.get('who_categoria_risco_simplificada')
-            who_modelo = patient_data.get('who_modelo_utilizado')
-            who_lab_calc = patient_data.get('who_lab_calculavel')
-            who_nonlab_calc = patient_data.get('who_nonlab_calculavel')
-            pac_idade = patient_data.get('idade')
+            pac_idade  = patient_data.get('idade')
             pac_genero = patient_data.get('genero', '')
-            pac_pas = patient_data.get('pressao_sistolica')
-            pac_col = patient_data.get('colesterol_total')
-            pac_imc = patient_data.get('IMC')
-            pac_dm = patient_data.get('DM') in [True, 1, '1', 'True']
+            pac_pas    = patient_data.get('pressao_sistolica')
+            pac_col    = patient_data.get('colesterol_total')
+            pac_imc    = patient_data.get('IMC')
+            pac_peso   = patient_data.get('peso')
+            pac_altura = patient_data.get('altura')
+            pac_dm  = patient_data.get('DM')  in [True, 1, '1', 'True']
             pac_irc = patient_data.get('IRC') in [True, 1, '1', 'True']
-            pac_ci = patient_data.get('CI') in [True, 1, '1', 'True']
+            pac_ci  = patient_data.get('CI')  in [True, 1, '1', 'True']
             pac_avc = patient_data.get('stroke') in [True, 1, '1', 'True']
             pac_dap = patient_data.get('vascular_periferica') in [True, 1, '1', 'True']
-            pac_tabaco_registrado = pd.notna(patient_data.get('tabaco'))
-            pac_tabaco_desconhecido = not pac_tabaco_registrado
+            pac_tab_reg = pd.notna(patient_data.get('tabaco'))   # registrado => fumante (convenção do datalake)
 
-            # Reclassificação direta (DCV, DM, IRC)
-            reclass_direto = classificar_risco_direto(
-                dm=pac_dm, irc=pac_irc, ci=pac_ci, avc=pac_avc, dap=pac_dap
-            )
-
-            # Função para exibir resultado do RCV
-            def _mostrar_resultado_rcv(resultado, recalc=False):
-                cat = resultado.get('categoria', '')
-                cor_r = cor_categoria_completa(cat)
-                icone = icone_categoria_who(cat)
-                sufixo = " (recalculado)" if recalc else ""
-                risco = resultado.get('risco_pct')
-                modelo = resultado.get('modelo', '')
-                motivo = resultado.get('motivo', '')
-
-                if risco is not None:
-                    titulo = f"{icone} Risco CV em 10 anos: {risco:.1f}%{sufixo}"
-                else:
-                    titulo = f"{icone} Risco CV: {cat}{sufixo}"
-
-                detalhes = f"<p style='margin:5px 0 0 0; color:{cor_r};'><strong>Categoria: {cat}</strong></p>"
-                if motivo:
-                    detalhes += f"<p style='margin:5px 0 0 0; color:#666;'>Motivo: {motivo}</p>"
-                if modelo:
-                    detalhes += f"<p style='margin:2px 0 0 0; color:#999; font-size:0.85em;'>Modelo: {modelo}</p>"
-
-                st.markdown(
-                    f"<div style='background:{cor_r}20; border-left:6px solid {cor_r}; "
-                    f"padding:16px; border-radius:8px; margin:8px 0;'>"
-                    f"<h3 style='margin:0; color:{cor_r};'>{titulo}</h3>"
-                    f"{detalhes}</div>",
-                    unsafe_allow_html=True
-                )
-
+            dcv = pac_ci or pac_avc or pac_dap
+            drc = pac_irc
+            dm  = pac_dm
+            override = dcv or drc or dm
+            sexo_api = "female" if str(pac_genero).lower().strip().startswith('f') else "male"
             cpk = patient_data.get('cpf', '')
-            genero_pronome = "Esta paciente" if pac_genero and pac_genero.lower() in ('f','feminino') else "Este paciente"
-            pac_peso = patient_data.get('peso')
-            pac_altura = patient_data.get('altura')
+            genero_pronome = "Esta paciente" if sexo_api == "female" else "Este paciente"
 
-            # Verificar faixa etária
-            if pac_idade and (pac_idade < 40 or pac_idade > 80):
-                st.warning(f"⚠️ Idade do paciente ({pac_idade} anos) fora da faixa WHO HEARTS (40-80 anos). Cálculo não disponível para esta faixa.")
+            def _calc(pas, col_mgdl, imc, tabaco):
+                """Chama o hearts.py; devolve o dict ou None se faltar dado essencial."""
+                if pas is None or pac_idade is None:
+                    return None
+                try:
+                    if col_mgdl is not None:
+                        return hearts_calc(sexo_api, pac_idade, pas, tabaco,
+                                           colesterol_mmol=col_mgdl_para_mmol(col_mgdl),
+                                           diabetes=dm, dcv_estabelecida=dcv, drc=drc)
+                    if imc is not None:
+                        return hearts_calc(sexo_api, pac_idade, pas, tabaco, imc=imc,
+                                           diabetes=dm, dcv_estabelecida=dcv, drc=drc)
+                except Exception:
+                    return None
+                return None
 
+            def _override_sintetico():
+                """Resultado de override quando o escore não é calculável (sem dados)."""
+                piso = "Muito alto" if dcv else "Alto"
+                motivo = ("DCV estabelecida" if dcv else
+                          "Diabetes + DRC" if (dm and drc) else "Diabetes" if dm else "DRC")
+                return {'risco_cvd': None, 'categoria': piso, 'categoria_escore': None,
+                        'conduta': _CONDUTA.get(piso, ''), 'modelo': None,
+                        'motivo_override': motivo, 'idade_usada': pac_idade}
+
+            def _card_rcv(r, rotulo=""):
+                cat = r['categoria']
+                cor = COR_CATEGORIA_HEARTS.get(cat, '#9E9E9E')
+                motivo = r.get('motivo_override')
+                head = (f"<div style='font-size:0.7rem;text-transform:uppercase;letter-spacing:.04em;"
+                        f"color:#888'>{rotulo}</div>") if rotulo else ""
+                if motivo:
+                    corpo = (f"<div style='font-size:1.5rem;font-weight:700;color:{cor};line-height:1.15'>{cat}</div>"
+                             f"<div style='font-size:0.78rem;color:#666'>definida por regra clínica — {motivo}</div>")
+                else:
+                    corpo = (f"<div style='font-size:1.9rem;font-weight:700;color:{cor};line-height:1.1'>"
+                             f"{r['risco_cvd']*100:.1f}%</div>"
+                             f"<div style='font-size:0.78rem;color:#666'>risco de evento CV em 10 anos · {cat}</div>")
+                st.markdown(f"<div style='border-left:6px solid {cor};background:{cor}12;padding:12px 14px;"
+                            f"border-radius:8px;margin:6px 0'>{head}{corpo}"
+                            f"<div style='margin-top:8px;font-size:0.88rem'>{r.get('conduta','')}</div></div>",
+                            unsafe_allow_html=True)
+
+            idade_ok = pac_idade is not None and 40 <= pac_idade <= 80
+            if not idade_ok and not override:
+                if pac_idade is None:
+                    st.info("Idade não informada — cálculo do escore indisponível.")
+                else:
+                    st.warning(f"⚠️ Idade ({pac_idade} anos) fora da faixa WHO HEARTS (40-80). "
+                               "Cálculo do escore não disponível para esta faixa.")
             else:
-                falta_pas = not pd.notna(pac_pas)
                 falta_col = not pd.notna(pac_col)
                 falta_imc = not pd.notna(pac_imc)
-                falta_algo = falta_pas or falta_col or falta_imc or pac_tabaco_desconhecido
+                falta_tab = not pac_tab_reg
 
-                col_esq, col_dir = st.columns([1, 1])
+                dl_pas = int(pac_pas) if pd.notna(pac_pas) else None
+                dl_col = int(pac_col) if pd.notna(pac_col) else None
+                dl_imc = float(pac_imc) if pd.notna(pac_imc) else None
+                dl_tab = pac_tab_reg
 
-                # Resultado recalculado pelo usuário — persistido em
-                # session_state para sobreviver a reruns subsequentes.
-                # Aparece NA COLUNA DIREITA (junto ao formulário); a
-                # esquerda continua mostrando o valor original do banco.
-                _recalc_key = f"{key_prefix}rcv_recalc_{cpk}"
-                _resultado_recalc = st.session_state.get(_recalc_key)
+                col1, col2, col3 = st.columns(3)
 
-                # ── COLUNA ESQUERDA: Resultado original do datalake ──
-                with col_esq:
-                    # Mostrar reclassificação direta se aplicável
-                    if reclass_direto:
-                        _mostrar_resultado_rcv(reclass_direto)
+                # ── COLUNA 1: risco calculado a partir do datalake ──
+                with col1:
+                    st.markdown("**Risco CV calculado**")
+                    base_dl = _calc(dl_pas, dl_col, dl_imc, dl_tab)
+                    if base_dl is not None:
+                        _card_rcv(base_dl, "Dados do datalake")
+                    elif override:
+                        _card_rcv(_override_sintetico(), "Regra clínica")
+                    else:
+                        st.info("Escore não calculável com os dados do datalake.")
 
-                    # Mostrar WHO do banco se disponível (usa categoria
-                    # simplificada PAHO/HEARTS). Quando há reclassificação
-                    # direta, score WHO NÃO é exibido (não é o risco final).
-                    cat_badge = who_cat_simpl if pd.notna(who_cat_simpl) and who_cat_simpl else None
-                    if cat_badge and not reclass_direto:
-                        who_res = {'risco_pct': who_risco if pd.notna(who_risco) else None,
-                                   'categoria': cat_badge,
-                                   'modelo': "Lab-based" if who_modelo == 'lab' else "Non-lab"}
-                        _mostrar_resultado_rcv(who_res)
-                    if cat_badge:
-                        if pac_idade and pac_idade >= 70:
-                            st.caption(
-                                "**Nota ≥70 anos:** a idade domina o cálculo. "
-                                "Considerar expectativa de vida, fragilidade e preferências."
-                            )
-                    elif not reclass_direto:
-                        st.info("Score WHO não calculado — dados insuficientes.")
+                    # Frase de subestimação — só quando NÃO há lesão de órgão-alvo (override).
+                    if not override and (falta_col or falta_tab):
+                        _fs = []
+                        if falta_col: _fs.append("colesterol")
+                        if falta_imc: _fs.append("IMC")
+                        if falta_tab: _fs.append("tabagismo")
+                        _fs_txt = _fs[0] if len(_fs) == 1 else ", ".join(_fs[:-1]) + " e " + _fs[-1]
+                        st.warning(f"O RCV deste paciente pode estar **subestimado**, pois não temos "
+                                   f"informações sobre {_fs_txt}.")
 
                     st.markdown("**Dados provenientes do datalake:**")
-                    if pd.notna(pac_pas): st.write(f"✅ PAS: {int(pac_pas)} mmHg")
-                    else: st.write("🔴 PAS: não informada")
-                    if pd.notna(pac_col): st.write(f"✅ Colesterol: {int(pac_col)} mg/dL")
-                    else: st.write("🔴 Colesterol: não disponível")
-                    if pd.notna(pac_imc): st.write(f"✅ IMC: {pac_imc:.1f} kg/m²")
-                    else: st.write(f"🔴 IMC: não calculável")
-                    st.write(f"{'✅' if pac_dm else '⬜'} Diabetes: {'Sim' if pac_dm else 'Não'}")
-                    if pac_tabaco_registrado: st.write("✅ Tabagismo: Sim (registrado)")
-                    else: st.write("❓ Tabagismo: não informado")
+                    st.write((f"✅ PAS: {int(pac_pas)} mmHg") if pd.notna(pac_pas) else "🔴 PAS: não informada")
+                    st.write((f"✅ Colesterol: {int(pac_col)} mg/dL") if pd.notna(pac_col) else "🔴 Colesterol: não disponível")
+                    st.write((f"✅ IMC: {pac_imc:.1f} kg/m²") if pd.notna(pac_imc) else "🔴 IMC: não calculável")
+                    st.write(f"{'✅' if dm else '⬜'} Diabetes: {'Sim' if dm else 'Não'}")
+                    st.write("✅ Tabagismo: Sim (registrado)" if pac_tab_reg else "❓ Tabagismo: não informado")
 
-                # ── COLUNA DIREITA: Formulário para dados faltantes ──
-                with col_dir:
-                    if falta_algo:
-                        st.markdown("**Complete para calcular (ou recalcular):**")
-
-                        input_pas = int(pac_pas) if pd.notna(pac_pas) else None
-                        input_col = int(pac_col) if pd.notna(pac_col) else None
-                        input_imc = float(pac_imc) if pd.notna(pac_imc) else None
-                        input_tabaco = "Sim" if pac_tabaco_registrado else None
-
-                        if falta_pas:
-                            input_pas = st.number_input(
-                                "PAS (mmHg)", min_value=80, max_value=250, value=130, step=1,
-                                key=f"{key_prefix}rcv_pas_{cpk}")
-
-                        if falta_col:
-                            input_col = st.number_input(
-                                "Colesterol total (mg/dL) — 0 se não souber",
-                                min_value=0, max_value=500, value=0, step=1,
-                                key=f"{key_prefix}rcv_col_{cpk}")
-
-                        if falta_imc:
-                            st.markdown("**Peso e altura:**")
-                            ic1, ic2 = st.columns(2)
-                            peso_default = float(pac_peso) if pd.notna(pac_peso) and pac_peso > 0 else 70.0
-                            peso_clamp = max(30.0, min(300.0, peso_default))
-                            alt_raw = int(float(pac_altura)*100) if pd.notna(pac_altura) and pac_altura > 0 else 165
-                            alt_clamp = max(100, min(230, alt_raw))
-                            with ic1:
-                                input_peso = st.number_input(
-                                    "Peso (kg)", min_value=30.0, max_value=300.0,
-                                    value=peso_clamp,
-                                    step=0.1, format="%.1f", key=f"{key_prefix}rcv_peso_{cpk}")
-                            with ic2:
-                                input_altura = st.number_input(
-                                    "Altura (cm)", min_value=100, max_value=230,
-                                    value=alt_clamp,
-                                    step=1, key=f"{key_prefix}rcv_alt_{cpk}")
-                            input_imc = round(input_peso / ((input_altura/100)**2), 1)
-                            st.caption(f"IMC calculado: **{input_imc:.1f} kg/m²**")
-
-                        if pac_tabaco_desconhecido:
-                            input_tabaco = st.radio(
-                                f"{genero_pronome} é tabagista?",
-                                options=["Não", "Sim"], index=0,
-                                key=f"{key_prefix}rcv_tab_{cpk}", horizontal=True)
-
-                        if st.button(
-                            "🧮 Calcular risco com estes valores",
-                            key=f"{key_prefix}rcv_btn_{cpk}", type="primary",
-                            use_container_width=True,
-                        ):
-                            genero_c = str(pac_genero).lower().strip() if pac_genero else ''
-                            tab_c = (input_tabaco == "Sim") if input_tabaco else False
-                            col_val = input_col if input_col and input_col > 0 else None
-                            imc_val = input_imc if input_imc and input_imc > 0 else None
-                            idade_c = int(pac_idade) if pd.notna(pac_idade) else None
-                            pas_c = int(input_pas) if input_pas else None
-
-                            resultado = calcular_risco_completo(
-                                genero=genero_c, idade=idade_c,
-                                pressao_sistolica=pas_c,
-                                colesterol_total_mgdl=col_val,
-                                imc=imc_val,
-                                dm=pac_dm, tabaco=tab_c,
-                                irc=pac_irc, ci=pac_ci, avc=pac_avc, dap=pac_dap,
-                            )
-
-                            if resultado:
-                                st.session_state[_recalc_key] = resultado
-                            else:
-                                st.session_state.pop(_recalc_key, None)
-                                falta_motivos = []
-                                if not genero_c or genero_c not in ('m', 'f', 'masculino', 'feminino'):
-                                    falta_motivos.append(f"gênero ('{pac_genero}' inválido)")
-                                if idade_c is None or not (40 <= idade_c <= 80):
-                                    falta_motivos.append(f"idade ({pac_idade}) fora da faixa 40-80")
-                                if pas_c is None:
-                                    falta_motivos.append("PAS")
-                                if col_val is None and imc_val is None:
-                                    falta_motivos.append("colesterol e IMC (ao menos um)")
-                                motivo = "; ".join(falta_motivos) if falta_motivos else "dados insuficientes"
-                                st.error(f"❌ Não foi possível calcular — {motivo}.")
-
-                        # Lê o resultado da session_state (canônica) em
-                        # vez de variável local — garante que a exibição
-                        # capte o valor recém-gravado pelo clique no
-                        # mesmo render, sem depender de continuidade de
-                        # escopo entre blocos `with`/`if` aninhados.
-                        _resultado_recalc = st.session_state.get(_recalc_key)
-
-                        if _resultado_recalc:
-                            st.markdown(
-                                "<div style='margin-top:10px;'></div>",
-                                unsafe_allow_html=True,
-                            )
-                            _mostrar_resultado_rcv(
-                                _resultado_recalc, recalc=True,
-                            )
-                            if st.button(
-                                "↺ Limpar recálculo",
-                                key=f"{key_prefix}rcv_limpar_{cpk}",
-                            ):
-                                st.session_state.pop(_recalc_key, None)
-                                st.rerun()
+                # ── COLUNA 2: completar / recalcular (ao vivo) ──
+                with col2:
+                    st.markdown("**Complete para calcular (ou recalcular):**")
+                    in_pas = st.number_input(
+                        "PAS (mmHg)", min_value=90, max_value=200,
+                        value=int(dl_pas) if dl_pas else 130, step=1, key=f"{key_prefix}h_pas_{cpk}")
+                    _conhece = st.radio("Colesterol total conhecido?", ["Sim", "Não"],
+                                        index=0 if dl_col else 1, horizontal=True,
+                                        key=f"{key_prefix}h_ccol_{cpk}")
+                    if _conhece == "Sim":
+                        in_col = st.number_input(
+                            "Colesterol total (mg/dL)", min_value=140, max_value=300,
+                            value=int(dl_col) if dl_col and dl_col >= 140 else 200, step=1,
+                            key=f"{key_prefix}h_col_{cpk}")
+                        in_imc = None
                     else:
-                        st.success("✅ Todos os dados disponíveis no datalake.")
+                        in_col = None
+                        _pdef = float(pac_peso) if pd.notna(pac_peso) and pac_peso > 0 else 70.0
+                        _adef = int(float(pac_altura) * 100) if pd.notna(pac_altura) and pac_altura > 0 else 165
+                        pc1, pc2 = st.columns(2)
+                        with pc1:
+                            in_peso = st.number_input("Peso (kg)", 30.0, 300.0,
+                                                      max(30.0, min(300.0, _pdef)), step=0.5,
+                                                      key=f"{key_prefix}h_peso_{cpk}")
+                        with pc2:
+                            in_alt = st.number_input("Altura (cm)", 100, 230,
+                                                     max(100, min(230, _adef)), step=1,
+                                                     key=f"{key_prefix}h_alt_{cpk}")
+                        in_imc = round(in_peso / ((in_alt / 100) ** 2), 1)
+                        st.caption(f"IMC: **{in_imc:.1f} kg/m²**")
+                    _tab_sel = st.radio(f"{genero_pronome} é tabagista?", ["Não", "Sim"],
+                                        index=1 if dl_tab else 0, horizontal=True,
+                                        key=f"{key_prefix}h_tab_{cpk}")
+                    in_tab = (_tab_sel == "Sim")
+
+                    r_recalc = _calc(in_pas, in_col, in_imc, in_tab)
+                    if r_recalc is not None:
+                        _card_rcv(r_recalc, "Recalculado")
+                    else:
+                        st.info("Informe PAS e (colesterol ou peso/altura) para calcular.")
+
+                # ── COLUNA 3: O que aconteceria se… ──
+                with col3:
+                    st.markdown("**O que aconteceria se…**")
+                    if override:
+                        piso = "Muito alto" if dcv else "Alto"
+                        _conds = []
+                        if dcv: _conds.append("doença cardiovascular estabelecida")
+                        if drc: _conds.append("doença renal crônica")
+                        if dm:  _conds.append("diabetes")
+                        _ct = _conds[0] if len(_conds) == 1 else ", ".join(_conds[:-1]) + " e " + _conds[-1]
+                        _pl = "condições clínicas" if len(_conds) > 1 else "condição clínica"
+                        st.info("Modificar os fatores de risco modificáveis faz parte do tratamento "
+                                "deste paciente. Contudo, mesmo ao modificá-los, ele não deixará de ser "
+                                f"considerado de risco **{piso}**, por já ter **{_ct}** como {_pl} de base.")
+                    else:
+                        eff = r_recalc if r_recalc is not None else base_dl
+                        if eff is None:
+                            st.caption("Complete os dados ao lado para simular.")
+                        else:
+                            eff_modelo = eff['modelo']
+                            base_pct = eff['risco_cvd'] * 100
+                            st.caption("Ajuste os fatores modificáveis — o risco recalcula ao vivo.")
+                            tem = False
+                            s_tab = in_tab
+                            if in_tab:
+                                tem = True
+                                s_tab = (st.radio("🚬 Tabagismo", ["Continuar fumando", "Parar de fumar"],
+                                                  index=0, key=f"{key_prefix}wi_tab_{cpk}") == "Continuar fumando")
+                            s_col = in_col
+                            if eff_modelo == 'lab' and in_col and in_col > 130:
+                                tem = True
+                                s_col = st.slider("🧪 Colesterol (mg/dL)", 130, int(in_col), int(in_col),
+                                                  key=f"{key_prefix}wi_col_{cpk}_{int(in_col)}")
+                            s_pas = in_pas
+                            if in_pas and in_pas > 100:
+                                tem = True
+                                s_pas = st.slider("🩺 PAS (mmHg)", 100, int(in_pas), int(in_pas),
+                                                  key=f"{key_prefix}wi_pas_{cpk}_{int(in_pas)}")
+                            s_imc = in_imc
+                            _i0 = round(float(in_imc), 1) if in_imc else None
+                            if eff_modelo == 'nonlab' and _i0 and _i0 > 18.5:
+                                tem = True
+                                s_imc = st.slider("⚖️ IMC (kg/m²)", 18.5, _i0, _i0, step=0.1,
+                                                  key=f"{key_prefix}wi_imc_{cpk}_{_i0}")
+                            if not tem:
+                                st.success("Sem fatores modificáveis a simular.")
+                            else:
+                                rs = _calc(s_pas, s_col if eff_modelo == 'lab' else None,
+                                           s_imc if eff_modelo == 'nonlab' else None, s_tab)
+                                if rs is not None:
+                                    novo = rs['risco_cvd'] * 100
+                                    d = base_pct - novo
+                                    cor = COR_CATEGORIA_HEARTS.get(rs['categoria'], '#9E9E9E')
+                                    dcolor = '#2E7D32' if d >= 0.05 else '#C62828' if d <= -0.05 else '#777'
+                                    dtxt = ("↓ %.1f pp" % d if d >= 0.05 else
+                                            "↑ %.1f pp" % abs(d) if d <= -0.05 else "≈ igual")
+                                    st.markdown(
+                                        f"<div style='border-left:6px solid {cor};background:{cor}12;"
+                                        f"padding:12px 14px;border-radius:8px;margin-top:8px'>"
+                                        f"<div style='font-size:0.72rem;text-transform:uppercase;color:#888'>Risco simulado</div>"
+                                        f"<div style='font-size:1.7rem;font-weight:700;color:{cor}'>{novo:.1f}%</div>"
+                                        f"<div style='font-size:0.78rem;font-weight:600;color:{dcolor}'>"
+                                        f"{dtxt} vs. atual ({base_pct:.1f}%)</div>"
+                                        f"<div style='display:inline-block;margin-top:6px;background:{cor};"
+                                        f"color:white;padding:2px 12px;border-radius:20px;font-size:0.82rem;"
+                                        f"font-weight:600'>{rs['categoria']}</div></div>",
+                                        unsafe_allow_html=True)
             
 
         
