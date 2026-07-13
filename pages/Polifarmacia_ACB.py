@@ -191,8 +191,13 @@ def carregar_polifarmacia_por_charlson(ap=None, clinica=None, esf=None) -> pd.Da
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def carregar_acb_por_charlson(ap=None, clinica=None, esf=None) -> pd.DataFrame:
-    """ACB score total por categoria Charlson (para violin)."""
+def carregar_acb_dist_por_charlson(ap=None, clinica=None, esf=None) -> pd.DataFrame:
+    """Distribuição pré-binada do ACB score total por categoria Charlson.
+
+    Agrega no BigQuery (GROUP BY categoria, score) em vez de trazer 1 linha por
+    paciente — de centenas de milhares de linhas para algumas dezenas. O violin
+    é reconstruído no app a partir dessas contagens.
+    """
     where = _where(ap, clinica, esf, extra=[
         "charlson_categoria IS NOT NULL",
         "charlson_categoria != 'Não Classificado'",
@@ -201,27 +206,42 @@ def carregar_acb_por_charlson(ap=None, clinica=None, esf=None) -> pd.DataFrame:
     sql = f"""
     SELECT
         charlson_categoria,
-        COALESCE(acb_score_total, 0) AS acb_score_total
+        COALESCE(acb_score_total, 0) AS acb_score_total,
+        COUNT(*)                     AS n
     FROM {_fqn(config.TABELA_FATO)}
     {where}
+    GROUP BY charlson_categoria, acb_score_total
     """
     return run_query(sql)
 
 
 @st.cache_data(ttl=900, show_spinner=False)
 def carregar_top_medicamentos_acb(ap=None, clinica=None, esf=None) -> pd.DataFrame:
-    """Top medicamentos anticolinérgicos prescritos, com seus scores."""
+    """Medicamentos anticolinérgicos já agregados (medicamento, score, n).
+
+    Faz o SPLIT/parse do campo "Med(score); Med(score)" no BigQuery
+    (UNNEST + REGEXP) em vez de trazer até 50k strings e parsear em Python a
+    cada rerun.
+    """
     where = _where(ap, clinica, esf, extra=[
         "medicamentos_acb_positivos IS NOT NULL",
-        "medicamentos_acb_positivos != ''"
+        "medicamentos_acb_positivos != ''",
+        r"REGEXP_CONTAINS(TRIM(item), r'\(\d\)$')",
     ])
     sql = f"""
-    SELECT medicamentos_acb_positivos
-    FROM {_fqn(config.TABELA_FATO)}
+    SELECT
+        TRIM(REGEXP_EXTRACT(TRIM(item), r'^(.+)\\(\\d\\)$'))            AS medicamento,
+        SAFE_CAST(REGEXP_EXTRACT(TRIM(item), r'\\((\\d)\\)$') AS INT64) AS score,
+        COUNT(*)                                                       AS n
+    FROM {_fqn(config.TABELA_FATO)},
+         UNNEST(SPLIT(medicamentos_acb_positivos, ';')) AS item
     {where}
-    LIMIT 50000
+    GROUP BY medicamento, score
+    ORDER BY n DESC
+    LIMIT 100
     """
-    return run_query(sql)
+    df = run_query(sql)
+    return df[df['medicamento'].notna()] if not df.empty else df
 
 
 @st.cache_data(ttl=900, show_spinner=False)
@@ -936,8 +956,22 @@ if aba_sel == 2:
     """)
 
     with st.spinner("Carregando dados de ACB..."):
-        df_acb_ch  = carregar_acb_por_charlson(ap, clinica, esf)
+        df_acb_bins = carregar_acb_dist_por_charlson(ap, clinica, esf)
         df_meds_acb = carregar_top_medicamentos_acb(ap, clinica, esf)
+
+    # Reconstrói os pontos do violin a partir da distribuição pré-binada, com
+    # downsample proporcional (cap) para manter o KDE barato. O cache guarda só
+    # as ~dezenas de bins, não 1 linha por paciente.
+    if df_acb_bins.empty:
+        df_acb_ch = df_acb_bins
+    else:
+        _tot = int(df_acb_bins['n'].sum())
+        _cap = 40000
+        _reps = ((df_acb_bins['n'] * (_cap / _tot)).round().astype(int).clip(lower=1)
+                 if _tot > _cap else df_acb_bins['n'].astype(int))
+        df_acb_ch = df_acb_bins.loc[
+            df_acb_bins.index.repeat(_reps), ['charlson_categoria', 'acb_score_total']
+        ].reset_index(drop=True)
 
     col_v, col_t = st.columns([1, 1])
 
@@ -991,32 +1025,16 @@ if aba_sel == 2:
     with col_t:
         st.subheader("Top Medicamentos Anticolinérgicos Prescritos")
         if df_meds_acb.empty:
-            st.warning("Sem dados.")
+            st.warning("Nenhum medicamento anticolinérgico identificado.")
         else:
-            # Parsear string "Medicamento(score); Medicamento(score)"
-            contagens = Counter()
-            scores_map = {}
-            for row in df_meds_acb['medicamentos_acb_positivos'].dropna():
-                for item in str(row).split(';'):
-                    item = item.strip()
-                    if not item:
-                        continue
-                    import re
-                    m = re.match(r'^(.+)\((\d)\)$', item)
-                    if m:
-                        nome_med = m.group(1).strip()
-                        score    = int(m.group(2))
-                        contagens[nome_med] += 1
-                        scores_map[nome_med] = score
-
-            if not contagens:
+            # Já vem agregado do BigQuery (medicamento, score, n).
+            top = df_meds_acb.sort_values('n', ascending=False).head(15)
+            if top.empty:
                 st.warning("Nenhum medicamento anticolinérgico identificado.")
             else:
-                top_n = 15
-                top_meds = contagens.most_common(top_n)
-                nomes  = [m for m, _ in top_meds]
-                counts = [c for _, c in top_meds]
-                scores = [scores_map.get(m, 1) for m in nomes]
+                nomes  = top['medicamento'].tolist()
+                counts = top['n'].astype(int).tolist()
+                scores = top['score'].fillna(1).astype(int).tolist()
 
                 cor_score = {1: '#F4D03F', 2: '#E67E22', 3: '#E74C3C'}
                 cores_barras = [cor_score.get(s, '#888') for s in scores]
