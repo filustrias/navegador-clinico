@@ -187,7 +187,7 @@ def carregar_dados_farmaco_territorio(ap=None, clinica=None, esf=None):
         return pd.DataFrame()
 
 
-@st.cache_data(show_spinner=False, ttl=1)  # ← MUDAR DE 600 PARA 1
+@st.cache_data(show_spinner=False, ttl=900)
 def carregar_dados_piramides(ap=None, clinica=None, esf=None):
     """Carrega dados agregados - COM AGREGAÇÃO NO BIGQUERY"""
     
@@ -4070,7 +4070,7 @@ if aba_escolhida == 5:
         st.markdown("#### B · Cobertura por Faixa Etária — Pirâmides")
         st.caption("Fonte: MM_consultas_agregado · população (cinza) vs pacientes com ao menos 1 consulta por período")
 
-        @st.cache_data(show_spinner=False, ttl=1)
+        @st.cache_data(show_spinner=False, ttl=900)
         def carregar_consultas_agregado(ap=None, clinica=None, esf=None):
             # Filtros diretos na tabela fato (sem grupo_etario que é calculado)
             clauses = ["genero IS NOT NULL", "idade IS NOT NULL",

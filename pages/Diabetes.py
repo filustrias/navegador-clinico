@@ -230,7 +230,12 @@ def carregar_resumo_hba1c(ap, clinica, esf):
 
 @st.cache_data(show_spinner=False, ttl=900)
 def carregar_nph_ui_kg(ap, clinica, esf):
-    """Retorna UI/kg de NPH por paciente (para histograma). Exclui doses absurdas."""
+    """Histograma pré-binado de UI/kg de NPH + métricas — tudo agregado no BigQuery.
+
+    Antes trazia 1 linha por paciente (varredura da fato) só para desenhar o
+    histograma e calcular média/mediana em pandas. Agora o BQ devolve os bins
+    (~150 linhas) e as estatísticas prontas.
+    """
     clauses = [
         "DM IS NOT NULL",
         "dose_NPH_ui_kg IS NOT NULL",
@@ -241,12 +246,24 @@ def carregar_nph_ui_kg(ap, clinica, esf):
     if clinica: clauses.append(f"nome_clinica_cadastro = '{clinica}'")
     if esf:     clauses.append(f"nome_esf_cadastro = '{esf}'")
     where = "WHERE " + " AND ".join(clauses)
-    sql = f"""
-    SELECT dose_NPH_ui_kg AS ui_kg
-    FROM `{_fqn(config.TABELA_FATO)}`
+    fqn = _fqn(config.TABELA_FATO)
+    hist = bq(f"""
+    SELECT ROUND(dose_NPH_ui_kg, 2) AS ui_kg_bin, COUNT(*) AS n
+    FROM `{fqn}`
     {where}
-    """
-    return bq(sql)
+    GROUP BY ui_kg_bin
+    ORDER BY ui_kg_bin
+    """)
+    stats = bq(f"""
+    SELECT
+        COUNT(*)                                       AS n,
+        AVG(dose_NPH_ui_kg)                            AS media,
+        APPROX_QUANTILES(dose_NPH_ui_kg, 2)[OFFSET(1)] AS mediana,
+        COUNTIF(dose_NPH_ui_kg > 1.0)                  AS n_acima_1
+    FROM `{fqn}`
+    {where}
+    """)
+    return {'hist': hist, 'stats': stats.iloc[0].to_dict() if not stats.empty else {}}
 
 
 @st.cache_data(show_spinner=False, ttl=900)
@@ -917,51 +934,46 @@ if aba_sel == 2:
         "ou ainda doses acima de 1,5 UI/kg, consideradas erros de digitação."
     )
 
-    df_nph = carregar_nph_ui_kg(ap_sel, cli_sel, esf_sel)
-    if df_nph.empty or 'ui_kg' not in df_nph.columns:
+    _nph = carregar_nph_ui_kg(ap_sel, cli_sel, esf_sel)
+    _hist = _nph.get('hist')
+    _stats = _nph.get('stats') or {}
+    if _hist is None or _hist.empty or int(_stats.get('n', 0) or 0) == 0:
         st.info("Sem dados de dose NPH + peso para os filtros selecionados.")
     else:
-        df_nph = df_nph.dropna(subset=['ui_kg'])
-        df_nph = df_nph[df_nph['ui_kg'] > 0]
-        if df_nph.empty:
-            st.info("Sem dados válidos de UI/kg.")
-        else:
-            media_ui = df_nph['ui_kg'].mean()
-            mediana_ui = df_nph['ui_kg'].median()
-            n_acima_1 = (df_nph['ui_kg'] > 1.0).sum()
+        n_tot      = int(_stats['n'])
+        media_ui   = float(_stats['media'])
+        mediana_ui = float(_stats['mediana'])
+        n_acima_1  = int(_stats['n_acima_1'])
 
-            mi1, mi2, mi3, mi4 = st.columns(4)
-            mi1.metric("Pacientes com dose calculável", f"{len(df_nph):,}")
-            mi2.metric("Média UI/kg", f"{media_ui:.2f}")
-            mi3.metric("Mediana UI/kg", f"{mediana_ui:.2f}")
-            mi4.metric(">1,0 UI/kg (resistência)", f"{n_acima_1:,}",
-                       f"{_p(n_acima_1, len(df_nph)):.0f}%", delta_color="inverse")
+        mi1, mi2, mi3, mi4 = st.columns(4)
+        mi1.metric("Pacientes com dose calculável", f"{n_tot:,}")
+        mi2.metric("Média UI/kg", f"{media_ui:.2f}")
+        mi3.metric("Mediana UI/kg", f"{mediana_ui:.2f}")
+        mi4.metric(">1,0 UI/kg (resistência)", f"{n_acima_1:,}",
+                   f"{_p(n_acima_1, n_tot):.0f}%", delta_color="inverse")
 
-            n_bins = 150  # bins de ~0.01 UI/kg no range 0–1.5
-            fig_nph = px.histogram(
-                df_nph, x='ui_kg', nbins=n_bins,
-                labels={'ui_kg': 'UI/kg/dia', 'count': 'Pacientes'},
-                title='Distribuição da dose de NPH (UI/kg/dia)',
-                color_discrete_sequence=['#3498DB'],
-            )
-            fig_nph.update_traces(
-                marker_line_color='#1a5276',
-                marker_line_width=0.8,
-            )
-            fig_nph.add_vline(x=0.5, line_dash="dash", line_color="#2ECC71",
-                              annotation_text="0,5 UI/kg (habitual)")
-            fig_nph.add_vline(x=1.0, line_dash="dash", line_color="#E74C3C",
-                              annotation_text="1,0 UI/kg (resistência)")
-            fig_nph.update_layout(
-                height=420,
-                paper_bgcolor=T.PAPER_BG,
-                plot_bgcolor=T.PLOT_BG,
-                font=dict(color=T.TEXT),
-                margin=dict(l=60, r=20, t=50, b=60),
-            )
-            fig_nph.update_xaxes(range=[0, 1.5], title='UI/kg/dia')
-            fig_nph.update_yaxes(title='Pacientes', gridcolor=T.GRID)
-            st.plotly_chart(fig_nph, use_container_width=True)
+        # Histograma a partir das contagens pré-binadas (0,01 UI/kg) — sem trazer
+        # 1 linha por paciente ao app.
+        fig_nph = go.Figure(go.Bar(
+            x=_hist['ui_kg_bin'], y=_hist['n'],
+            marker=dict(color='#3498DB', line=dict(color='#1a5276', width=0.8)),
+            hovertemplate='UI/kg: %{x:.2f}<br>Pacientes: %{y:,}<extra></extra>',
+        ))
+        fig_nph.update_layout(
+            title='Distribuição da dose de NPH (UI/kg/dia)',
+            height=420, bargap=0,
+            paper_bgcolor=T.PAPER_BG,
+            plot_bgcolor=T.PLOT_BG,
+            font=dict(color=T.TEXT),
+            margin=dict(l=60, r=20, t=50, b=60),
+        )
+        fig_nph.add_vline(x=0.5, line_dash="dash", line_color="#2ECC71",
+                          annotation_text="0,5 UI/kg (habitual)")
+        fig_nph.add_vline(x=1.0, line_dash="dash", line_color="#E74C3C",
+                          annotation_text="1,0 UI/kg (resistência)")
+        fig_nph.update_xaxes(range=[0, 1.5], title='UI/kg/dia')
+        fig_nph.update_yaxes(title='Pacientes', gridcolor=T.GRID)
+        st.plotly_chart(fig_nph, use_container_width=True)
 
 
 # ──────────────────────────────────────────────────────────────
